@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Commit Conventional JA"
+  short_description: "Delegate and execute safe Japanese Conventional Commits"
+  default_prompt: "Use $git-commit-conventional-ja to delegate commit work to an appropriate sub-agent and create a safe Japanese Conventional Commit."

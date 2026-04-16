@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify spec-dock runtime script exists
+        run: test -f ./spec-dock/scripts/spec-dock
+      - name: Sync generated state (local only)
+        run: python3 ./spec-dock/scripts/spec-dock sync
+      - name: Validate spec-dock workspace
+        run: python3 ./spec-dock/scripts/spec-dock validate

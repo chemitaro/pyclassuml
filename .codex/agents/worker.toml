@@ -1,0 +1,16 @@
+name = "worker"
+description = "Deprecated legacy worker role kept for compatibility."
+
+# model_context_window = 400000
+# model_auto_compact_token_limit = 340000
+sandbox_mode = "workspace-write"
+approval_policy = "never"
+
+# サブエージェントでは外部 notify フックを起動しない
+notify = ["uvx", "--from", "git+https://github.com/chemitaro/codex-agent-logger", "codex-logger"]
+
+developer_instructions = """
+Legacy compatibility worker role.
+Follow higher-priority instructions from the invoking context.
+Keep behavior neutral and concise.
+"""

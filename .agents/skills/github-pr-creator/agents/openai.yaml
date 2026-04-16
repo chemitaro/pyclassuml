@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub PR Creator"
+  short_description: "Delegate and execute safe GitHub pull request creation"
+  default_prompt: "Use $github-pr-creator to delegate PR work to an appropriate sub-agent and safely create a GitHub pull request."

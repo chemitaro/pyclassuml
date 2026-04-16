@@ -1,0 +1,16 @@
+name = "default"
+description = "Default fallback sub-agent role with minimal behavior."
+
+# model_context_window = 400000
+# model_auto_compact_token_limit = 340000
+sandbox_mode = "workspace-write"
+approval_policy = "never"
+
+# サブエージェントでは外部 notify フックを起動しない
+notify = ["uvx", "--from", "git+https://github.com/chemitaro/codex-agent-logger", "codex-logger"]
+
+developer_instructions = """
+Use this as a minimal fallback role.
+Follow higher-priority instructions from the invoking context.
+Keep behavior neutral and concise.
+"""
