@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "type": "initiative",
+  "id": "init-00001",
+  "title": "PyClassUML Prototype",
+  "slug": "pyclassuml-prototype",
+  "created_at": "2026-04-16T17:00:24+09:00",
+  "updated_at": "2026-04-16T17:00:24+09:00",
+  "parent_id": null,
+  "initiative_id": null,
+  "epic_id": null,
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 1,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  }
+}
