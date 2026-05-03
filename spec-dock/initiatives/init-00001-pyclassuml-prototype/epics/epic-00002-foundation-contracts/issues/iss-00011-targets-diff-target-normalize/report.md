@@ -142,9 +142,11 @@ spec-dock/docs/README.md
 #### レビュー / QA
 - Implementation review: self-review pass。scope filtering / diagnostics / failure reason / shared ignore helper の責務分離を確認した。
 - QA review: self-review pass。AC/EC coverage、zero-target failure、deterministic ordering、explicit target 回帰、vcs collection 回帰を pytest で確認した。
+- QA reviewer pass 1: fail。完了証跡の末尾に古い未完了メモが残り、report 内で完了 / 未完了が自己矛盾していると指摘された。
+- QA reviewer finding resolution: 古い未完了メモを削除し、レビュー完了後に最終 reviewer verdict と commit hash をこの report に追記する。
 
 #### コミット
-- 実施予定。
+- `b624945 feat(targets): diffターゲット正規化を追加`
 
 #### メモ
 - `uv` が生成した `uv.lock` は scope 外生成物のため成果差分から除外する。
@@ -160,4 +162,6 @@ spec-dock/docs/README.md
 - 実装時は `iss-00009` の ignore matcher と result shape を流用可能か確認しつつ、explicit target の scope violation hard failure と diff target の scope exclusion warning を混同しない。
 
 ## 省略/例外メモ
-- 現時点では未完了。実装、targeted/full tests、review pass、`sync --github`、final report update が未実施である。
+- root `AGENTS.md`、README、SpecDock workflow docs への恒久 docs 変更は不要。変更は issue-scoped docs と targets seam implementation に限定した。
+- `uv` が生成した `uv.lock` は scope 外生成物のため成果差分から除外した。
+- 現時点の残作業は external implementation review / QA re-review の pass 証跡反映、GitHub issue close、`sync --github` による dashboard の done 反映である。
