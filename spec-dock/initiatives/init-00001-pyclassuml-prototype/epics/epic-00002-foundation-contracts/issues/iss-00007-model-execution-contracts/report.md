@@ -46,6 +46,17 @@ ID: "iss-00007"
 ./spec-dock/scripts/spec-dock validate
 # spec-dock: ok (validate) nodes=21
 
+./spec-dock/scripts/spec-dock close --id iss-00007
+# spec-dock: ok (close) target=iss-00007 node=iss-00007 kind=issue github=#7 state=CLOSED already_closed=false
+
+./spec-dock/scripts/spec-dock active clear
+# spec-dock: ok (active clear)
+
+./spec-dock/scripts/spec-dock sync --github && ./spec-dock/scripts/spec-dock validate
+# spec-dock: ok (sync)
+# spec-dock: ok (validate) nodes=21
+# dashboard: todo_total=15, doing=0, ready=2 (`iss-00006`, `iss-00008`), blocked=13
+
 uv run --with pytest pytest tests/model/test_contracts.py -q
 # 17 passed in 0.01s
 
@@ -86,6 +97,7 @@ rm -f uv.lock && test ! -e uv.lock && echo 'uv.lock absent'
 - `code-reviewer` final verdict: pass。最後の P3 coverage gap は追加テストで解消済み。
 - `qa-reviewer` verdict: pass。残 P2 は追加テストで解消済み。
 - `uv run --with pytest` は一時的に `uv.lock` を生成するが、この issue の write set 外の実行副産物として削除済み。
+- GitHub issue `#7` は `close --id iss-00007` で closed。active pointer は完了 issue から clear し、dashboard 上の next ready は `iss-00006` と `iss-00008`。
 
 ---
 
