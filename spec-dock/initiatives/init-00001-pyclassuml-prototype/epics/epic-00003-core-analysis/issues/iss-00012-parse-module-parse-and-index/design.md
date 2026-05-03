@@ -53,6 +53,8 @@ index --> downstream
   - `ExecutionContext(project_root, package_root, scope_root)`
   - `AnalysisConfig(ignore, mode)`
 - output:
+  - seam-local result:
+    - `ParseResult(parsed_modules, module_index, observations, diagnostics)`
   - shared DTO:
     - `ParsedModule[]`
   - seam-local handoff:
@@ -62,6 +64,8 @@ index --> downstream
       - `class_id -> owning module`
       - `seed_project_relative_paths`
       - import candidate lookup table
+    - `ParseObservations`
+      - `ignored_dependency_candidate_count`
   - diagnostics:
     - syntax error
     - candidate ignore
@@ -70,6 +74,10 @@ index --> downstream
   - 起点 file から始まる deterministic order を保つ。
   - `ModuleIndex` は `analyze` が raw filesystem を再探索しなくても frontier 判定できる最小 lookup と seed provenance を持つ。
   - parse は `TargetSet.seed_files` から始めて、ignore を通過した Python source candidate を再帰的に materialize し、downstream `analyze` が raw source reread や lazy parse を行わずに reachability を判定できる parse closure を作る。
+  - syntax error module は degraded module として `ParsedModule[]` と `ModuleIndex` には含めず、`ParseResult.diagnostics` に `OriginSeam.PARSE` の error diagnostic として保持する。
+  - syntax error が import candidate で発生した場合、parse 成功済み seed / dependency module は保持し、error module の lookup だけを除外する。
+  - ignored dependency candidate count は `ParseResult.observations.ignored_dependency_candidate_count` に保持し、diagnostics には重複して数値 summary を作らない。
+  - `ModuleIndex.import_candidate_paths` は package_root 外 / scope_root 外も含む discovered Python candidate lookup 材料を保持するが、frontier 採否は行わない。
 
 ## 主要フロー
 1. `TargetSet.seed_files` を deterministic order で巡回する。
@@ -77,17 +85,20 @@ index --> downstream
 3. import candidate を列挙し、`project_root` 相対 ignore / default ignore を適用して parse universe 候補を絞る。
 4. ignore を通過した candidate file が未 parse なら同じ手順で再帰的に AST parse し、その candidate から見つかった import candidate も同様に処理する。
 5. 新規 candidate がなくなった時点で parse closure を確定し、`TargetSet.seed_files` を `project_root` relative path に正規化して `ModuleIndex.seed_project_relative_paths` に保持する。
-6. `ParsedModule[]` と `ModuleIndex` をまとめて downstream に渡す。
+6. syntax error module は parsed module lookup から除外し、diagnostics だけを `ParseResult` で downstream に渡す。
+7. `ParsedModule[]`、`ModuleIndex`、`ParseObservations`、diagnostics を `ParseResult` として downstream に渡す。
 
 ## data / handoff
 - shared DTO:
   - `ParsedModule[]` は initiative canonical DTO として `analyze` / `frameworks` / `report` が参照できる。
 - seam-local:
   - `ModuleIndex` は class lookup、module path reverse lookup、candidate file 判定だけを担う parse 内部 handoff であり、initiative canonical docs へは昇格させない。
+  - `ParseResult` と `ParseObservations` は parse -> app/analyze/report の seam-local handoff であり、shared DTO へは昇格させない。
+  - `ParseObservations.ignored_dependency_candidate_count` は report summary の素材であり、analyze traversal は解釈しない。
 - downstream consumption:
-  - `analyze.traversal` は、parse closure 済み `ParsedModule[]` と `ModuleIndex` だけを使って frontier expansion を行う。
+  - `analyze.traversal` は、parse closure 済み `ParsedModule[]` と `ModuleIndex` だけを使って frontier expansion を行う。syntax error module は frontier に入らない。
   - `analyze.relationship-and-selection` と `frameworks.*` は `ParsedModule[]` から import / class / annotation 情報を読む。
-  - `report` は syntax diagnostics と candidate ignore 件数だけを summary 素材として読む。
+  - `report` は `ParseResult.diagnostics` の syntax diagnostics と `ParseResult.observations.ignored_dependency_candidate_count` だけを summary 素材として読む。
 
 ## テスト戦略
 - Unit:
