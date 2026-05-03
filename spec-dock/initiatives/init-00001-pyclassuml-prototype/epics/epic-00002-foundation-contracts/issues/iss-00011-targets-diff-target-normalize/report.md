@@ -144,9 +144,12 @@ spec-dock/docs/README.md
 - QA review: self-review pass。AC/EC coverage、zero-target failure、deterministic ordering、explicit target 回帰、vcs collection 回帰を pytest で確認した。
 - QA reviewer pass 1: fail。完了証跡の末尾に古い未完了メモが残り、report 内で完了 / 未完了が自己矛盾していると指摘された。
 - QA reviewer finding resolution: 古い未完了メモを削除し、レビュー完了後に最終 reviewer verdict と commit hash をこの report に追記する。
+- Implementation review: pass。code-reviewer は AC/EC と `targets.diff` / `targets.ignore` / `targets.explicit` の実装整合を確認し、finding なし。
+- QA re-review: pass。QA reviewer は前回 finding 解消、AC/EC coverage、targeted/full pytest、SpecDock validate evidence を確認し、finding なし。
 
 #### コミット
 - `b624945 feat(targets): diffターゲット正規化を追加`
+- `99cc13f docs(spec-dock): iss-00011の完了証跡を修正`
 
 #### メモ
 - `uv` が生成した `uv.lock` は scope 外生成物のため成果差分から除外する。
@@ -164,4 +167,4 @@ spec-dock/docs/README.md
 ## 省略/例外メモ
 - root `AGENTS.md`、README、SpecDock workflow docs への恒久 docs 変更は不要。変更は issue-scoped docs と targets seam implementation に限定した。
 - `uv` が生成した `uv.lock` は scope 外生成物のため成果差分から除外した。
-- 現時点の残作業は external implementation review / QA re-review の pass 証跡反映、GitHub issue close、`sync --github` による dashboard の done 反映である。
+- 現時点の残作業は GitHub issue close、`sync --github` による dashboard の done 反映である。
