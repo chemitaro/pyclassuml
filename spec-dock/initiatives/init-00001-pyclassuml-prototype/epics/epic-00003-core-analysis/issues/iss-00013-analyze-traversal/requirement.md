@@ -5,7 +5,7 @@ ID: "iss-00013"
 関連GitHub: ["#13"]
 状態: "draft"
 作成者: "iwasawayuuta"
-最終更新: "2026-04-17"
+最終更新: "2026-05-04"
 親: ["epic-00003", "init-00001"]
 ---
 
@@ -13,7 +13,7 @@ ID: "iss-00013"
 
 ## 目的
 - `ParsedModule[]` を受けて、depth / package / scope 境界つきの reachability を `analyze` seam で authoritative に確定する。
-- traversal stop の理由と件数を保持し、relation extraction と report summary が同じ frontier を共有できるようにする。
+- traversal stop の理由別件数を保持し、relation extraction と report summary が同じ frontier を共有できるようにする。
 
 ## スコープ
 - MUST:
@@ -21,7 +21,8 @@ ID: "iss-00013"
   - parse から受け取った seed provenance を保持し、起点 frontier を deterministic に確定する。
   - `package_root` と `scope_root` の境界を守る。
   - depth は seed module を hop `0`、seed module の direct import を hop `1` とする import-graph hop semantics として deterministic に扱う。
-  - scope 外で frontier を打ち切った件数を保持する。
+  - `depth=None` は traversal safety limit だけを上限にした無制限 traversal として扱う。
+  - `package_root` 外、`scope_root` 外、depth 超過で frontier を打ち切った件数を理由別に保持する。
   - 探索上限到達を `analyze` owner の error として扱う。
 - MUST NOT:
   - relation extraction や class selection を決めない。
@@ -47,11 +48,11 @@ ID: "iss-00013"
   - Actor:
     - CLI 利用者
   - Given:
-    - depth=0 と depth=1 の実行条件がある。
+    - depth=0、depth=1、depth 未指定の実行条件がある。
   - When:
     - traversal を実行する。
   - Then:
-    - `depth=0` では seed module だけが reachable になり、`depth=1` では seed module の direct import までが reachable になる。
+    - `depth=0` では seed module だけが reachable になり、`depth=1` では seed module の direct import までが reachable になり、depth 未指定では traversal safety limit まで import graph を辿る。
   - 観測点:
     - `fx-traversal-depth-matrix` scenario。
 - AC-003:
