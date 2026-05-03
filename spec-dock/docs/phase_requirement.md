@@ -18,6 +18,27 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 - 非ゴール: HOW の先取り、source のない断定、未確定論点の隠蔽
 - 正本参照: この playbook の `review / handoff gate` が shared minimum gate。scope 固有 gate は `workflow_*.md` が additive に定義する
 
+## scope ownership
+
+- Initiative requirement:
+  - 所有する判断:
+    - why now、outcome、success metric、全体 scope / non-goal、非交渉制約
+  - 所有しない判断:
+    - Epic / Issue の設計詳細、実装順序、API / DB / file-level contract
+- Epic requirement:
+  - 所有する判断:
+    - Initiative outcome を実現する capability / change area、Epic-level requirement、Epic acceptance criteria
+  - 所有しない判断:
+    - Issue の実装手順、module / class 詳細、Initiative requirement の再記述
+- Issue requirement:
+  - 所有する判断:
+    - 最小実行単位で満たす振る舞い、AC / EC、上位 Epic から具体化した差分
+  - 所有しない判断:
+    - file / module / class の変更方針、TDD 手順、上位文書の全文再記述
+- trace rule:
+  - 下位文書は上位文書を再記述せず、参照と具体化差分だけを書く
+  - 下位で上位 requirement と矛盾する場合は、下位で上書きせず上位文書または ADR / decision log を更新する
+
 ## 標準順
 
 1. 対象 scope の workflow と template を開く
@@ -54,6 +75,31 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
   - Initiative: `目的`, `背景と Why now`, `成功指標`, `スコープ`, `境界`, `非交渉制約`, `未確定事項`
   - Epic: `目的`, `ユースケース`, `Epic requirements`, `Epic acceptance criteria`, `スコープ`, `境界`, `依存 / 影響範囲`, `未確定事項`
   - Issue: `目的`, `背景・現状`, `スコープ`, `境界`, `受け入れ条件`, `例外・エッジケース`, `未確定事項`
+
+## diagram guidance
+
+- requirement の図表は、要求の理解や trace を助ける場合だけ置く
+- Initiative:
+  - 推奨:
+    - impact map / outcome map
+    - traceability matrix
+  - 原則不要:
+    - detailed sequence / class diagram
+- Epic:
+  - 推奨:
+    - capability map
+    - Initiative item / Epic requirement / Issue candidate の traceability matrix
+  - 原則不要:
+    - function-level diagram
+- Issue:
+  - 推奨:
+    - AC / EC / constraint / verification の test matrix
+    - 条件分岐が多い場合の simple activity diagram
+  - 原則不要:
+    - detailed class / sequence diagram
+- review:
+  - 図表だけにしか存在しない要求がない
+  - 図表が scope / acceptance criteria / trace と矛盾していない
 
 ## 論点の逃がし先
 

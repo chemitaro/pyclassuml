@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00013",
+  "title": "Analyze Traversal",
+  "slug": "analyze-traversal",
+  "created_at": "2026-04-17T01:09:05+09:00",
+  "updated_at": "2026-04-17T01:09:38+09:00",
+  "parent_id": "epic-00003",
+  "initiative_id": "init-00001",
+  "epic_id": "epic-00003",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 13,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  },
+  "depends_on": [
+    "iss-00012"
+  ]
+}

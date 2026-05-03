@@ -1,8 +1,8 @@
 name = "spec-reviewer"
 description = "Read-only specification review agent that returns prioritized findings plus an authoritative review_status (`pass` or `fail`) for workflow gating."
 
-model = "gpt-5.4"
-model_reasoning_effort = "medium"
+model = "gpt-5.5"
+model_reasoning_effort = "high"
 web_search = "disabled"
 # model_context_window = 400000
 # model_auto_compact_token_limit = 340000

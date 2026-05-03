@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00012",
+  "title": "Parse Module Parse And Index",
+  "slug": "parse-module-parse-and-index",
+  "created_at": "2026-04-17T01:09:04+09:00",
+  "updated_at": "2026-04-17T01:09:38+09:00",
+  "parent_id": "epic-00003",
+  "initiative_id": "init-00001",
+  "epic_id": "epic-00003",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 12,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  },
+  "depends_on": [
+    "iss-00009",
+    "iss-00011",
+    "iss-00008"
+  ]
+}

@@ -24,6 +24,27 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - 出力: reviewer が handoff できる `plan.md` と必要な `disc` / `research` / `adr`
 - 非ゴール: requirement / design の再議論、設計不足の隠蔽、将来作業の過剰先読み
 
+## scope ownership
+
+- Initiative plan:
+  - 所有する判断:
+    - Epic portfolio、roadmap、dependency、milestone、Initiative-level gate、metric review
+  - 所有しない判断:
+    - 個別 Issue の TODO、code-level 作業手順、未承認の requirement / design
+- Epic plan:
+  - 所有する判断:
+    - Issue slicing、Issue dependency、integration checkpoint、Epic-level quality gate、E-RQ / E-AC closure
+  - 所有しない判断:
+    - Issue plan の詳細手順、Initiative roadmap の再記述
+- Issue plan:
+  - 所有する判断:
+    - 実装 step、変更対象、test / review gate、rollback / compatibility、docs impact、final diff gate
+  - 所有しない判断:
+    - 未承認の requirement / design、上位目的の再説明、未解決設計論点の先送り
+- trace rule:
+  - 各 plan item は requirement item または design decision に紐づける
+  - trace できない step / issue / epic は scope creep として削るか、前 phase に戻す
+
 ## shared terminology
 
 - `shared minimum gate`: 全 scope に共通して満たす最小 gate
@@ -46,6 +67,27 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - gate と exit が plan に反映されている
 - `plan.md` と必要な `disc` / `research` / `adr` を束で渡せる
 - reviewer が「この計画で次へ進める」と判断できる
+
+## diagram guidance
+
+- Initiative:
+  - 推奨:
+    - roadmap
+    - Epic dependency map
+    - Metric / I-AC / Epic / evidence の traceability matrix
+- Epic:
+  - 推奨:
+    - Issue dependency graph
+    - tranche / rollout map
+    - E-RQ / E-AC / design decision / Issue / verification の traceability matrix
+- Issue:
+  - 推奨:
+    - step dependency graph
+    - AC / EC / constraint / expected tests の test matrix
+    - rollback map
+- review:
+  - 図表の依存関係が本文の順序・depends on・gate と一致している
+  - 図表だけにしか存在しない作業や gate がない
 
 ## escape hatch
 

@@ -338,6 +338,20 @@ def ensure_no_legacy_meta_json(specdock_dir: Path) -> None:
     )
 
 
+def _require_non_empty_meta_string(meta: dict[str, Any], *, field: str, meta_path: Path) -> str:
+    raw_value = meta.get(field)
+    if not isinstance(raw_value, str):
+        raise RuntimeError(
+            f"Invalid .meta.json (required non-empty string field={field}): {meta_path}"
+        )
+    value = raw_value.strip()
+    if not value:
+        raise RuntimeError(
+            f"Invalid .meta.json (required non-empty string field={field}): {meta_path}"
+        )
+    return value
+
+
 def load_node_records(specdock_dir: Path) -> list[StoredMetaRecord]:
     ensure_no_legacy_meta_json(specdock_dir)
     initiatives_root = _initiatives_root(specdock_dir)
@@ -352,12 +366,10 @@ def load_node_records(specdock_dir: Path) -> list[StoredMetaRecord]:
         if not isinstance(meta, dict):
             raise RuntimeError(f"Invalid .meta.json (expected object): {meta_path}")
 
-        node_type = str(meta.get("type", "")).strip()
-        node_id = str(meta.get("id", "")).strip()
+        node_type = _require_non_empty_meta_string(meta, field="type", meta_path=meta_path)
+        node_id = _require_non_empty_meta_string(meta, field="id", meta_path=meta_path)
         title = str(meta.get("title", "")).strip()
         slug = str(meta.get("slug", "")).strip()
-        if not node_type or not node_id:
-            continue
         if node_id in seen_ids:
             raise RuntimeError(f"Duplicate id detected: {node_id} ({meta_path})")
         seen_ids.add(node_id)

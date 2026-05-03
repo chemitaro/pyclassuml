@@ -1,8 +1,8 @@
 name = "dev-coder"
 description = "Implementation agent for approved code changes with minimal necessary tests."
 
-model = "gpt-5.3-codex"
-model_reasoning_effort = "xhigh"
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
 web_search = "live"
 # model_context_window = 400000
 # model_auto_compact_token_limit = 340000

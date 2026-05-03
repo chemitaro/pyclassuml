@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00020",
+  "title": "App Generate Wiring",
+  "slug": "app-generate-wiring",
+  "created_at": "2026-04-17T01:09:14+09:00",
+  "updated_at": "2026-04-17T01:09:41+09:00",
+  "parent_id": "epic-00005",
+  "initiative_id": "init-00001",
+  "epic_id": "epic-00005",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 20,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  },
+  "depends_on": [
+    "iss-00006",
+    "iss-00007",
+    "iss-00008",
+    "iss-00009",
+    "iss-00012",
+    "iss-00013",
+    "iss-00014",
+    "iss-00015",
+    "iss-00016",
+    "iss-00017",
+    "iss-00018",
+    "iss-00019"
+  ]
+}

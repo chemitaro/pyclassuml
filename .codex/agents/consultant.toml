@@ -1,8 +1,8 @@
 name = "consultant"
 description = "Read-only decision support agent for option framing, trade-off analysis, and experiment proposals."
 
-model = "gpt-5.4"
-model_reasoning_effort = "xhigh"
+model = "gpt-5.5"
+model_reasoning_effort = "high"
 web_search = "live"
 # model_context_window = 400000
 # model_auto_compact_token_limit = 340000

@@ -36,6 +36,12 @@ shared axiom は [phase_plan.md](phase_plan.md)、Initiative の lifecycle / gov
 - `Epic readiness contract` を置く
 - `final exit contract` を置く
 
+## diagram / trace guidance
+
+- 必要な場合だけ roadmap、Epic dependency map、Metric / Epic / evidence の対応表を置く
+- 図表は `Epic ポートフォリオ`、`順序と理由`、`意思決定ゲート` の理解を助ける用途に限定する
+- 個別 Issue の作業手順、test command、file-level dependency は図表化しない
+
 ## review gate
 
 - Epic へ handoff できる粒度まで分解されている

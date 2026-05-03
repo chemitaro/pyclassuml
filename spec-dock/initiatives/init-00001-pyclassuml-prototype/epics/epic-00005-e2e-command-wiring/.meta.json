@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "type": "epic",
+  "id": "epic-00005",
+  "title": "E2E Command Wiring",
+  "slug": "e2e-command-wiring",
+  "created_at": "2026-04-17T01:08:42+09:00",
+  "updated_at": "2026-04-17T01:08:42+09:00",
+  "parent_id": "init-00001",
+  "initiative_id": "init-00001",
+  "epic_id": null,
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 5,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  }
+}

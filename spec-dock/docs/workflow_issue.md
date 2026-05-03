@@ -48,14 +48,20 @@ Issue は実装の最小単位です。
 
 - active issue 配下の `requirement.md` / `design.md` / `plan.md` を埋める
 - `discussions/`: `new doc {adr|disc|research|note} --issue <issue-id> --title "..."` で、この issue の `discussions/` 配下に timestamp-prefixed original を作成する。標準形は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md`。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
+- templates は完成形ではなく、書き始めるための最小 scaffold に留める。仕様書作成の説明や判断基準は docs / skills を参照する
+- agent は、プロジェクトの目的、作業内容、人間の理解しやすさ、エージェントの実行可能性に合わせて、項目を追加・削除・統合・並べ替えてよい
+- 不要な placeholder や該当しない節は削ってよいが、正確性、検証可能性、人間の理解、エージェントの実行に必要な情報は削らない
+- テンプレートにない図表や節も、[phase_design.md](phase_design.md) の `optional diagram catalog` から必要なものを選んで追加してよい。カタログ外でも、構造・境界・責務・流れ・状態・依存を人間が理解しやすくする情報なら追加してよい
 - shared な書き方は `phase_*.md`、Issue plan の構造化は `phase_plan_issue.md`、Issue 固有の実行 policy はこの workflow を正本とする
+- Issue design では [phase_design.md](phase_design.md) に従い、必要な粒度で依存関係分析、`Module Dependency Diagram`、Linux `tree` style の `ディレクトリ / ファイル変更計画` を置く
+- Issue plan では [phase_plan_issue.md](phase_plan_issue.md) に従い、design の依存関係分析、module dependency diagram、directory / file change plan から step 順を導く
 
 ## 実行 contract
 
-- 実装前に `requirement.md` / `design.md` / `plan.md` の整合を確認し、特に `design.md` の依存関係分析と `plan.md` の step 順が一致していることを確認して、plan upfront approval を得る
+- 実装前に `requirement.md` / `design.md` / `plan.md` の整合を確認し、特に `design.md` の依存関係分析 / module dependency diagram / directory tree と `plan.md` の step 順が一致していることを確認して、plan upfront approval を得る
 - 各 step は `Red → Green → Refactor → review → fix → re-review → report → コミット/no-op` の順で進める
 - `Refactor` は Green 後の bounded decision point とし、plan では詳細 task を事前確定しない
-- step 順は `design.md` の依存関係分析を根拠に、upstream / prerequisite から downstream へ組む
+- step 順は `design.md` の依存関係分析、module dependency diagram、directory / file change plan を根拠に、upstream / prerequisite から downstream へ組む
 - cleanup が既知で大きい場合は `Green` / design / 別 step へ切り出す
 - review / QA / spec の各 stage gate は `pass` まで回す
 - 各 stage gate の `pass` 後は、`spec-dock/active/issue/report.md` を更新し、差分確認後に report とまとめてコミットするか no-op とするかを判断する

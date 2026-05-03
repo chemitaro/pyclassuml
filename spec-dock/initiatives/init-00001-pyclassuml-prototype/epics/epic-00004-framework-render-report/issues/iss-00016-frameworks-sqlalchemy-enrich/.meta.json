@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00016",
+  "title": "Frameworks SQLAlchemy Enrich",
+  "slug": "frameworks-sqlalchemy-enrich",
+  "created_at": "2026-04-17T01:09:09+09:00",
+  "updated_at": "2026-04-17T01:09:39+09:00",
+  "parent_id": "epic-00004",
+  "initiative_id": "init-00001",
+  "epic_id": "epic-00004",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 16,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  },
+  "depends_on": [
+    "iss-00014",
+    "iss-00012"
+  ]
+}

@@ -20,12 +20,59 @@ ID: "<INIT_ID>"
 - To-Be:
   - ...
 
-### UML（任意: high-level context / target-state）
+## System Context
+- Title:
+  - System context / target-state overview
+- Question answered:
+  - ...
+- Scope:
+  - ...
+- Excluded details:
+  - ...
+- Update trigger:
+  - ...
+
+### UML（推奨: system context / target-state overview）
 ```plantuml
 @startuml
-' 必要なら high-level context / target-state を記載
+!include C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title System context / target-state overview
+
+Person(user, "User", "Primary actor")
+System(system, "Target system", "System under this initiative")
+System_Ext(external, "External system", "External dependency")
+
+Rel(user, system, "Uses")
+Rel(system, external, "Depends on")
 @enduml
 ```
+
+## ドメイン境界 / ユビキタス言語（必要時）
+- bounded context / domain area:
+  - ...
+- core / supporting / generic domain:
+  - ...
+- key domain terms:
+  - ...
+- cross-epic actor-goal overview:
+  - N/A: reason
+
+## Container Overview（必要時）
+- Title:
+  - ...
+- Question answered:
+  - ...
+- Scope:
+  - ...
+- Excluded details:
+  - ...
+- Update trigger:
+  - ...
+- UML:
+  - N/A: reason
 
 ## 対象境界 / 依存
 - in scope:

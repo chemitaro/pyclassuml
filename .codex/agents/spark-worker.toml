@@ -2,7 +2,7 @@ name = "spark-worker"
 description = "Fast lightweight worker for simple read-only triage and operational tasks."
 
 model = "gpt-5.3-codex-spark"
-model_reasoning_effort = "high"
+model_reasoning_effort = "medium"
 web_search = "live"
 # model_context_window = 128000
 # model_auto_compact_token_limit = 108000

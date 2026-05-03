@@ -13,6 +13,11 @@ description: Leaf skill for issue execution tasks in spec-dock.
   - `spec-dock/docs/phase_requirement.md`
   - `spec-dock/docs/phase_design.md`
   - `spec-dock/docs/phase_plan.md`
+  - `spec-dock/docs/phase_plan_issue.md`
+- Keep templates as scaffolds. Use the docs above for authoring guidance, including Issue dependency analysis, `Module Dependency Diagram`, Linux `tree` style file-change planning, and step ordering.
+- Spec authoring mode: shape `requirement.md`, `design.md`, and `plan.md` for the project. Add, remove, merge, reorder, or rewrite template sections when it improves correctness, human understanding, or agent executability. Remove irrelevant placeholders.
+- In spec authoring mode, use the optional diagram catalog in `spec-dock/docs/phase_design.md` as the authoritative source for diagram choices. Add catalog-listed or project-specific sections only when they clarify the issue.
+- Execution mode: follow the approved issue docs. If the docs are missing required detail or contradict the implementation path, update/review the docs before implementation continues.
 - Do not skip the docs impact resolution step or the final diff review quality gate.
 - Issue execution is not complete unless the active issue is set and confirmed, and `spec-dock/active/issue/requirement.md`, `design.md`, `plan.md`, and `report.md` contain issue-specific content rather than template, placeholder, or effectively blank content.
 - `spec-dock/active/issue/report.md` must record command evidence for required `sync`, `validate`, and review steps, including whether each required step succeeded, passed, or reached approval.

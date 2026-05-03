@@ -36,6 +36,12 @@ shared axiom は [phase_plan.md](phase_plan.md)、Epic の lifecycle / governanc
 - `Issue readiness contract` を置く
 - `final exit contract` を置く
 
+## diagram / trace guidance
+
+- 必要な場合だけ Issue dependency graph、tranche / rollout map、Closure matrix を置く
+- 図表は E-RQ / E-AC、design decision、Issue、verification の対応を確認する用途に限定する
+- Issue 内 step、TDD cadence、commit rhythm は図表化しない
+
 ## review gate
 
 - issue 群で E-AC を閉じられる説明がある

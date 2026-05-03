@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "type": "epic",
+  "id": "epic-00003",
+  "title": "Core Analysis",
+  "slug": "core-analysis",
+  "created_at": "2026-04-17T01:08:31+09:00",
+  "updated_at": "2026-04-17T01:08:31+09:00",
+  "parent_id": "init-00001",
+  "initiative_id": "init-00001",
+  "epic_id": null,
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 3,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  }
+}
