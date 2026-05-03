@@ -15,7 +15,8 @@ ID: "iss-00012"
 ## 実装サマリー
 - 2026-05-04 時点では、active issue を `iss-00012-parse-module-parse-and-index` として復元し、`requirement.md` / `design.md` を確認した。
 - `plan.md` / `report.md` がテンプレート状態だったため、`parse` seam の実装可能な execution contract と evidence log へ置き換えた。
-- 実装対象は `TargetSet` から import 非実行 AST parse closure を作る `parse` seam に限定し、traversal / relation / changed class / framework / report policy は非スコープとして維持する。
+- `parse_target_set(TargetSet, ExecutionContext, AnalysisConfig) -> ParseResult` を追加し、`TargetSet` から import 非実行 AST parse closure、`ParsedModule[]`、`ModuleIndex`、syntax diagnostics、dependency candidate ignore observations を構築した。
+- 実装対象は `parse` seam に限定し、traversal / relation / changed class / framework / report policy は非スコープとして維持する。
 - spec-reviewer pass 1 は fail。syntax error module の discard / lookup 含有可否、ignore count の返却場所、scope 外 candidate lookup 観測が不足していたため、`ParseResult` / `ParseObservations` と `ModuleIndex.import_candidate_paths` の handoff 契約を design / plan に追記した。
 
 ## 実装記録（セッションログ）
@@ -97,6 +98,61 @@ spec-dock: ok (validate) nodes=21
 #### コミット
 - spec-review pass 後に判断する。
 
+### 2026-05-04 implementation and verification
+
+#### 対象
+- Step: S01, S02, S03, S90, S99
+- AC/EC: AC-001, AC-002, AC-003, EC-001, EC-002, EC-003
+
+#### 実施内容
+- `src/pyclassuml/parse/__init__.py` と `src/pyclassuml/parse/indexer.py` を追加した。
+- seam-local DTO として `ParseResult`、`ParseObservations`、`ModuleIndex` を追加した。
+- AST-only で module imports / class qualname を抽出し、class id は `<module_path>:<qualname>` 形式で返す。
+- seed imports から package-local dependency candidate を deterministic に探索し、recursive parse closure を作る。
+- syntax error module は `ParsedModule[]` / `ModuleIndex` lookup から除外し、`ParseResult.diagnostics` に `bad_syntax` diagnostic として carry する。
+- dependency candidate ignore は `targets.ignore` を再利用し、`ParseResult.observations.ignored_dependency_candidate_count` に反映する。
+- QA pass 1 は fail。recursive parse closure と default ignore candidate のテスト観測不足を指摘されたため、transitive dependency closure と default ignore の coverage を追加した。
+
+#### 実行コマンド / 結果
+```bash
+uv run --with pytest pytest tests/parse/test_module_parse_and_index.py -q
+
+6 passed in 0.03s
+```
+
+```bash
+uv run --with pytest pytest tests/targets/test_diff_target_normalize.py tests/targets/test_explicit_target_normalize.py -q
+
+25 passed in 0.04s
+```
+
+```bash
+uv run --with pytest pytest -q
+
+99 passed in 1.05s
+```
+
+```bash
+./spec-dock/scripts/spec-dock validate
+
+spec-dock: ok (validate) nodes=21
+```
+
+#### 変更したファイル
+- `src/pyclassuml/parse/__init__.py` - parse seam public surface。
+- `src/pyclassuml/parse/indexer.py` - parse target set implementation。
+- `tests/parse/test_module_parse_and_index.py` - AC/EC と QA finding coverage の unit tests。
+- `spec-dock/active/issue/report.md` - implementation / validation evidence。
+
+#### レビュー / QA
+- Implementation review: pass。code-reviewer は AC/EC と実装整合、AST-only/read-only/deterministic、syntax error diagnostics、ignore count、seam-local `ModuleIndex` を確認し、finding なし。
+- QA review pass 1: fail。recursive parse closure と default ignore candidate exclusion のテスト観測不足を指摘。
+- QA finding resolution: `a.py -> b.py -> c.py` の transitive dependency closure と `venv/**` default ignore dependency candidate exclusion をテストへ追加。
+- QA re-review: pass。QA reviewer は recursive parse closure と default ignore candidate exclusion の finding 解消、targeted parse pytest、SpecDock validate、AC/EC coverage を確認し、finding なし。
+
+#### コミット
+- 実施予定。
+
 ## 遭遇した問題と解決
 - 問題: `plan.md` / `report.md` がテンプレート状態で、workflow_issue の complete 条件を満たせない状態だった。
   - 解決: issue requirement / design に合わせ、実装ステップ、検証、review、docs impact、final exit contract を具体化した。
@@ -108,4 +164,6 @@ spec-dock: ok (validate) nodes=21
 - 実装時は `targets.ignore` を再利用し、seed target normalize と dependency candidate ignore の semantics を分岐させない。
 
 ## 省略/例外メモ
-- 現時点では未完了。spec review、実装、targeted/full tests、implementation review、QA review、`sync --github`、final report update が未実施である。
+- root `AGENTS.md`、README、SpecDock workflow docs への恒久 docs 変更は不要。変更は issue-scoped docs と parse seam implementation に限定した。
+- `uv` が生成した `uv.lock` は scope 外生成物のため成果差分から除外した。
+- 現時点の残作業は commit、GitHub issue close、`sync --github` による dashboard の done 反映である。
