@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
-from fnmatch import fnmatchcase
 from glob import glob
 from pathlib import Path
 
@@ -21,8 +19,8 @@ from pyclassuml.model import (
     TargetObservations,
     TargetSet,
 )
+from pyclassuml.targets.ignore import apply_ignore
 
-_DEFAULT_IGNORE = (".venv/**", "venv/**", "**/__pycache__/**", "site-packages/**")
 _GLOB_META = ("*", "?", "[")
 
 
@@ -52,7 +50,7 @@ def normalize_explicit_targets(
     try:
         raw_targets = _generate_targets(request)
         candidates = _expand_targets(raw_targets, context)
-        seed_files, ignored_count = _apply_ignore(candidates, context.project_root, config.ignore)
+        seed_files, ignored_count = apply_ignore(candidates, context.project_root, config.ignore)
         if not seed_files:
             raise TargetNormalizationError(
                 "generate_zero_target_after_normalize",
@@ -145,52 +143,6 @@ def _ensure_in_scope(path: Path, scope_root: Path) -> None:
             f"explicit target is outside scope_root: {path}",
             FailureReason.GENERATE_SCOPE_VIOLATION,
         ) from exc
-
-
-def _apply_ignore(candidates: list[Path], project_root: Path, user_ignore: tuple[str, ...]) -> tuple[list[Path], int]:
-    patterns = (*_DEFAULT_IGNORE, *user_ignore)
-    seed_files: list[Path] = []
-    ignored_count = 0
-
-    for candidate in candidates:
-        if _is_ignored(candidate, project_root, patterns):
-            ignored_count += 1
-        else:
-            seed_files.append(candidate)
-
-    return seed_files, ignored_count
-
-
-def _is_ignored(path: Path, project_root: Path, patterns: tuple[str, ...]) -> bool:
-    try:
-        relative = path.relative_to(project_root).as_posix()
-    except ValueError:
-        relative = path.as_posix()
-    return any(_matches_ignore_pattern(relative, pattern) for pattern in patterns)
-
-
-def _matches_ignore_pattern(relative_path: str, pattern: str) -> bool:
-    path_segments = tuple(segment for segment in relative_path.split("/") if segment)
-    pattern_segments = tuple(segment for segment in pattern.replace("\\", "/").split("/") if segment)
-
-    @lru_cache(maxsize=None)
-    def matches(pattern_index: int, path_index: int) -> bool:
-        if pattern_index == len(pattern_segments):
-            return path_index == len(path_segments)
-
-        pattern_segment = pattern_segments[pattern_index]
-        if pattern_segment == "**":
-            return matches(pattern_index + 1, path_index) or (
-                path_index < len(path_segments) and matches(pattern_index, path_index + 1)
-            )
-
-        return (
-            path_index < len(path_segments)
-            and fnmatchcase(path_segments[path_index], pattern_segment)
-            and matches(pattern_index + 1, path_index + 1)
-        )
-
-    return matches(0, 0)
 
 
 def _has_glob_meta(path: Path) -> bool:
