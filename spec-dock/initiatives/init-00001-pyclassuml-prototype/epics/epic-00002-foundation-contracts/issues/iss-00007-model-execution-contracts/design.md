@@ -59,6 +59,70 @@ downstream --> model
 | `RunSummary` | `report` (usage error のみ `cli`) | `cli` | counters と `failure_reason` を持つ |
 | `CommandResult` | `report` (usage error のみ `cli`) | `cli`, `app.*-wiring` | optional `artifact_path`, mandatory `summary`, `diagnostics`, `exit_code` |
 
+### DTO value shapes / invariants
+- primitive aliases:
+  - `ClassId`: non-empty `str`。prototype MVP では `<module_path>:<qualname>` 形式を推奨し、厳密な parse は後続 `parse` / `analyze` issue の owner とする。
+  - `ModulePath`: `Path`。
+  - `DiagnosticCode`: non-empty snake_case `str`。
+  - `RelationType`, `EvidenceKind`, `GroupingKey`, `Alias`: non-empty `str`。各値域の意味付けは producer seam の後続 issue が所有する。
+- finite enums / value domains:
+  - `CommandName`: `generate | diff`
+  - `AnalysisMode`: `warn | strict`
+  - `DiffCurrentState`: `working-tree | head`
+  - `DiagnosticSeverity`: `warning | error`
+  - `Recoverability`: `recoverable | degraded_output | fatal`
+  - `OriginSeam`: `cli | config | targets | vcs | parse | analyze | frameworks | render | report | app`
+  - `FailureReason`: initiative `requirement.md` の `failure reason taxonomy` に列挙された有限集合。
+- nested option shapes:
+  - `CommandOptions(command, cwd, config, project_root, package_root, scope_root, output, ignore, depth, strict, target_python, generate, diff)` を `CommandRequest.cli_options` の canonical shape とする。
+  - `CommandOptions.command: CommandName`
+  - `CommandOptions.cwd: None | Path`
+  - `CommandOptions.config: None | Path`
+  - `CommandOptions.project_root: None | Path`
+  - `CommandOptions.package_root: None | Path`
+  - `CommandOptions.scope_root: None | Path`
+  - `CommandOptions.output: None | Path`
+  - `CommandOptions.ignore: tuple[str, ...]`。未指定時は empty tuple。
+  - `CommandOptions.depth: None | int >= 0`
+  - `CommandOptions.strict: bool`。`config` が `AnalysisConfig.mode` へ正規化する前の CLI carry として保持する。
+  - `CommandOptions.target_python: None | "3.<minor>"`
+  - `CommandOptions.generate: None | GenerateOptions`
+  - `CommandOptions.diff: None | DiffOptions`
+  - `GenerateOptions(targets)` は tuple of `Path | str`。未指定時は empty tuple。path/glob/dir の意味解釈は `targets.explicit-target-normalize` が所有する。
+  - `DiffOptions(base_ref, current_state, include_untracked)` は diff seed collection の option carry に限定する。
+  - `DiffOptions.base_ref: str`。空文字列は許可しない。
+  - `DiffOptions.current_state: DiffCurrentState`
+  - `DiffOptions.include_untracked: bool`
+  - command-specific absence rule:
+    - `CommandOptions.command=generate` の場合、`generate` は必須、`diff` は `None`。
+    - `CommandOptions.command=diff` の場合、`diff` は必須、`generate` は `None`。
+    - command と nested option の組み合わせが不一致なら `ValueError` とする。
+  - `AnalysisConfig.mode` は `strict: bool` ではなく `AnalysisMode` に正規化済みとする。
+  - `AnalysisConfig.ignore: tuple[str, ...]`
+  - `AnalysisConfig.output: None | Path`
+  - `AnalysisConfig.depth: None | int >= 0`
+  - `AnalysisConfig.target_python: None | "3.<minor>"`
+  - `AnalysisConfig.diff_current_state: DiffCurrentState`
+  - `AnalysisConfig.diff_include_untracked: bool`
+  - `diff.current_state` / `diff.include_untracked` は upstream logical provenance の表記であり、実装上の public dataclass field は `diff_current_state` / `diff_include_untracked` とする。
+- collection and counter invariants:
+  - collection fields は construction 時に tuple 化し、呼び出し側 mutable collection を共有しない。
+  - counter fields は `int >= 0`。
+  - `TargetSet.seed_files` は `.py` suffix の `Path` のみ許可する。
+  - `AnalysisConfig.depth` は `None | int >= 0`。
+  - `AnalysisConfig.target_python` は `None | "3.<minor>"` 形式の `str`。
+- DTO minimal field shapes:
+  - `ParsedModule(module_path: Path, imports: tuple[str, ...], classes: tuple[ClassId, ...], diagnostics: tuple[Diagnostic, ...])`
+  - `DependencyGraph(reachable_files: tuple[Path, ...], edges: tuple[tuple[Path, Path], ...])`
+  - `SelectedClasses(class_ids: tuple[ClassId, ...])`
+  - `ChangedClassInventory(class_count: int >= 0, changed_files: tuple[Path, ...])`
+  - `RenderReadyModel(classes: tuple[ClassId, ...], members: tuple[str, ...], relations: tuple[tuple[ClassId, ClassId, RelationType], ...], class_decorations: tuple[tuple[ClassId, str], ...], grouping_keys: tuple[GroupingKey, ...], diagnostics: tuple[Diagnostic, ...])`
+  - `DiagramModel(containers: tuple[str, ...], rendered_classes: tuple[ClassId, ...], rendered_relations: tuple[tuple[ClassId, ClassId, RelationType], ...], aliases: tuple[tuple[ClassId, Alias], ...])`
+  - `RunSummary(counters: Mapping[str, int >= 0], failure_reason: None | FailureReason)`
+  - `CommandResult(artifact_path: None | Path, summary: RunSummary, diagnostics: tuple[Diagnostic, ...], exit_code: int >= 0)`
+- opaque placeholders:
+  - `imports`, `members`, `class_decorations`, `containers`, `aliases` の semantic meaning は後続 seam が所有する。この issue は type shape、immutability、non-negative counters、failure/nullability rule までを固定する。
+
 ## data / DTO handoff
 - path handoff:
   - `CommandRequest.process_cwd` は `config` が `execution_cwd` を導出する唯一の起点。
@@ -70,6 +134,12 @@ downstream --> model
   - `report` は `TargetSet.observations` から `RunSummary.counters` を構築する。
 - diagnostics handoff:
   - すべての seam は `Diagnostic.origin_seam` と `recoverability` を carry し、`report` が最終 policy を決める。
+  - `Diagnostic.severity=error` のとき `failure_reason` は必須、`severity=warning` のとき `failure_reason` は `null` とする。
+  - `FailureReason` は initiative `requirement.md` の taxonomy と一致させ、任意文字列を許可しない。
+- stream-routing ownership:
+  - initiative `plan.md` の `CommandResult.exit_code=0` / non-zero による stdout / stderr invariant は、`cli` / `report` の consumer-side contract として扱う。
+  - この issue の `model` 実装は `CommandResult.exit_code` の carry と non-negative invariant までを固定し、stdout / stderr の選択処理や stream target policy は実装しない。
+  - したがって、この issue が親 baseline の stream-routing verification に対して提供する evidence は「`CommandResult.exit_code` が必須かつ `int >= 0` で consumer へ渡ること」に限定する。stdout / stderr への実出力 evidence は後続 `cli.request-bind-and-exit-contract` と `report.artifact-summary-exit-policy` で観測する。
 - output handoff:
   - `RenderReadyModel` と `DiagramModel` を分け、analysis result と PlantUML-specific shaping を混同しない。
 
@@ -84,6 +154,44 @@ downstream --> model
   - `RenderReadyModel -> DiagramModel -> PlantUmlText`
 - Verification:
   - initiative `plan.md` の canonical verification に従い、DTO 一覧と producer / consumer 表を evidence にする。
+
+## ディレクトリ / ファイル変更計画
+```text
+pyproject.toml
+src/
+  pyclassuml/
+    __init__.py
+    model/
+      __init__.py
+      contracts.py
+tests/
+  model/
+    test_contracts.py
+```
+
+- `pyproject.toml`:
+  - prototype package と test runner の最小設定を置く。
+  - この issue では console script / CLI entrypoint は追加しない。
+- `src/pyclassuml/model/contracts.py`:
+  - issue baseline table にある DTO と enum / value invariant を定義する。
+  - immutable value object として `dataclass(frozen=True)` を使い、field validation は DTO 内の local invariant に限定する。
+  - path は `pathlib.Path`、collection は tuple 化して保持し、呼び出し側の mutable list を共有しない。
+  - `Mapping` 入力は immutable copy へ正規化し、counter 値が後から変わらないようにする。
+- `src/pyclassuml/model/__init__.py`:
+  - downstream issue が import する public contract surface を re-export する。
+- `tests/model/test_contracts.py`:
+  - DTO の必須 field、nullability、diagnostic failure rule、summary / exit carry、collection immutability を観測する。
+
+## 依存関係分析
+- upstream:
+  - なし。repo に runtime package が存在しないため、この issue が `src/pyclassuml` の最初の product code slice を作る。
+- internal order:
+  - package scaffold と `pyproject.toml` が先。
+  - enum / primitive validation が次。
+  - CLI/front-stage DTO、analysis/render/report DTO、diagnostic/result DTO の順に積む。
+- downstream impact:
+  - `iss-00006`, `iss-00008` 以降は `pyclassuml.model` の public re-export を通じて DTO を利用する。
+  - この issue では downstream algorithm、filesystem I/O、Git I/O、stream routing は実装しない。
 
 ## non-goals
 - changed-file collection のような seam-local handoff を initiative 全体の shared DTO に昇格させること。

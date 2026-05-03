@@ -37,9 +37,11 @@ ID: "iss-00007"
 - MUST NOT:
   - algorithm、stream routing、Git / filesystem I/O を `model` に持ち込まない。
   - issue baseline にない convenience field を rationale なしで追加しない。
+  - `CommandResult.exit_code` から stdout / stderr を選ぶ実処理、または stream target 決定 policy を実装しない。
 - OUT OF SCOPE:
   - file split、serializer、永続化。
   - seam-local handoff で十分な内部構造の標準化。
+  - `report` / `cli` が行う stream routing の振る舞い検証。
 
 ## 受け入れ条件
 - AC-001:
@@ -62,6 +64,7 @@ ID: "iss-00007"
     - handoff rule を確認する。
   - Then:
     - `process_cwd -> execution_cwd`、diagnostic origin / recoverability / failure_reason、summary / exit_code carry が明文化されている。
+    - stream routing は `report` / `cli` owner の後続契約であり、この issue は `CommandResult.exit_code` を routing 判定に使える形で carry するところまでを固定している。
   - 観測点:
     - `CommandRequest`, `ExecutionContext`, `Diagnostic`, `CommandResult` の contract。
 
