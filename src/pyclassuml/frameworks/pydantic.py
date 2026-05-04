@@ -44,6 +44,16 @@ def extract_pydantic_enrichment_hints(
         (relation.source_class_id, relation.target_class_id, relation.relation_type)
         for relation in selected_relations.relations
     }
+    selected_relation_endpoints = {
+        (relation.source_class_id, relation.target_class_id)
+        for relation in selected_relations.relations
+    }
+    semantic_field_reference_keys = {
+        (reference.source_class_id, reference.target_name)
+        for module in parsed_modules
+        for reference in module.class_references
+        if reference.reference_kind in {"field_annotation", "init_field_annotation"}
+    }
     added_relations: set[SelectedRelation] = set()
     warning_diagnostics: set[Diagnostic] = set()
 
@@ -71,6 +81,8 @@ def extract_pydantic_enrichment_hints(
             selected_class_ids=selected_class_ids,
         )
         if diagnostic_code is not None:
+            if (reference.source_class_id, reference.target_name) in semantic_field_reference_keys:
+                continue
             warning_diagnostics.add(
                 _warning_diagnostic(
                     code=diagnostic_code,
@@ -82,6 +94,8 @@ def extract_pydantic_enrichment_hints(
             continue
 
         if target_class_id is None:
+            continue
+        if (reference.source_class_id, target_class_id) in selected_relation_endpoints:
             continue
         relation = SelectedRelation(
             source_class_id=reference.source_class_id,

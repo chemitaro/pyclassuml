@@ -449,6 +449,93 @@ def test_direct_quoted_forward_ref_adds_selected_relation_hint() -> None:
     assert hints.warning_diagnostics == ()
 
 
+def test_analyze_association_suppresses_duplicate_pydantic_forward_ref_use() -> None:
+    hints = extract_pydantic_enrichment_hints(
+        parsed_modules=(
+            parsed_module(
+                base_reference(),
+                ClassReference(
+                    source_class_id="pkg/models.py:A",
+                    target_name="B",
+                    reference_kind="field_annotation",
+                    reference_owner="child",
+                ),
+                annotation_reference(target_name="B"),
+            ),
+        ),
+        module_index=module_index("pkg/models.py:A", "pkg/models.py:B"),
+        selected_classes=SelectedClasses(class_ids=("pkg/models.py:A", "pkg/models.py:B")),
+        selected_relations=SelectedRelations(
+            (
+                SelectedRelation(
+                    source_class_id="pkg/models.py:A",
+                    target_class_id="pkg/models.py:B",
+                    relation_type="association",
+                    evidence_kind="field_annotation",
+                ),
+            )
+        ),
+    )
+
+    assert hints.added_relations == ()
+    assert hints.warning_diagnostics == ()
+
+
+def test_selected_inherits_endpoint_suppresses_duplicate_pydantic_forward_ref_use() -> None:
+    hints = extract_pydantic_enrichment_hints(
+        parsed_modules=(
+            parsed_module(
+                base_reference(),
+                ClassReference(
+                    source_class_id="pkg/models.py:A",
+                    target_name="B",
+                    reference_kind="field_annotation",
+                    reference_owner="child",
+                ),
+                annotation_reference(target_name="B"),
+            ),
+        ),
+        module_index=module_index("pkg/models.py:A", "pkg/models.py:B"),
+        selected_classes=SelectedClasses(class_ids=("pkg/models.py:A", "pkg/models.py:B")),
+        selected_relations=SelectedRelations(
+            (
+                SelectedRelation(
+                    source_class_id="pkg/models.py:A",
+                    target_class_id="pkg/models.py:B",
+                    relation_type="inherits",
+                    evidence_kind="class_base",
+                ),
+            )
+        ),
+    )
+
+    assert hints.added_relations == ()
+    assert hints.warning_diagnostics == ()
+
+
+def test_semantic_field_evidence_suppresses_duplicate_pydantic_warning() -> None:
+    hints = extract_pydantic_enrichment_hints(
+        parsed_modules=(
+            parsed_module(
+                base_reference(),
+                ClassReference(
+                    source_class_id="pkg/models.py:A",
+                    target_name="Missing",
+                    reference_kind="field_annotation",
+                    reference_owner="child",
+                ),
+                annotation_reference(target_name="Missing"),
+            ),
+        ),
+        module_index=module_index("pkg/models.py:A"),
+        selected_classes=SelectedClasses(class_ids=("pkg/models.py:A",)),
+        selected_relations=SelectedRelations(),
+    )
+
+    assert hints.added_relations == ()
+    assert hints.warning_diagnostics == ()
+
+
 def test_pydantic_module_base_eligibility_adds_selected_relation_hint() -> None:
     hints = extract_pydantic_enrichment_hints(
         parsed_modules=(

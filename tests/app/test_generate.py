@@ -137,6 +137,46 @@ def test_happy_path_writes_artifact_summary_and_does_not_emit_streams(
     assert captured.err == ""
 
 
+def test_generate_renders_typed_relation_labels_without_duplicate_pydantic_fallback(
+    tmp_path: Path,
+) -> None:
+    write_file(
+        tmp_path / "pkg" / "models.py",
+        "\n".join(
+            [
+                "class BaseModel:",
+                "    pass",
+                "class Aggregate:",
+                "    pass",
+                "class Customer:",
+                "    pass",
+                "class Receipt:",
+                "    pass",
+                "class Order(Aggregate, BaseModel):",
+                "    customer: \"Customer\"",
+                "    def submit(self, receipt: Receipt) -> Receipt:",
+                "        return receipt",
+            ]
+        ),
+    )
+
+    result = run_generate(
+        generate_request(tmp_path, ("pkg/models.py",), output=Path("typed-relations.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (tmp_path / "typed-relations.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert " --> " in output
+    assert " : inherits" in output
+    assert " : association" in output
+    assert " : uses" in output
+    assert output.count(" : association") == 1
+    assert output.count(" : uses") == 1
+    assert "pydantic_forward_ref" not in output
+
+
 def test_zero_changed_inventory_is_built_from_empty_context_and_handed_to_report(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -247,13 +287,15 @@ def test_ignored_target_observation_and_warning_diagnostic_are_reported_without_
     )
     captured = capsys.readouterr()
 
-    assert result.outcome_kind == "degraded_success"
+    assert result.outcome_kind == "warning_only_success"
     assert result.command_result.exit_code == 0
     assert result.command_result.artifact_path == tmp_path / "warning.puml"
     assert result.stderr_text == ""
     assert "ignored_file_count: 1" in result.stdout_text
-    assert "warning_count: 1" in result.stdout_text
-    assert "warning:pydantic_forward_ref_unresolved:" in result.stdout_text
+    assert "warning_count: 2" in result.stdout_text
+    assert "warning:typed_relation_unresolved:" in result.stdout_text
+    assert "target_name=BaseModel" in result.stdout_text
+    assert "target_name=Missing" in result.stdout_text
     assert captured.out == ""
     assert captured.err == ""
 
