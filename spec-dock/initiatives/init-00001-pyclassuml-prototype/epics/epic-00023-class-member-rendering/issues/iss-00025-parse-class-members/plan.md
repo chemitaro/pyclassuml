@@ -237,6 +237,15 @@ ID: "iss-00025"
   - base ref test
   - parameter / return ref test
   - Pydantic quoted ref handoff test
+  - exact semantic `reference_kind` / `reference_owner` vocabulary test:
+    - `class_base/base`
+    - `field_annotation/<field_name>`
+    - `method_parameter_annotation/<method_name>.<parameter_name>`
+    - `method_return_annotation/<method_name>`
+    - `init_field_annotation/<field_name>` is reserved by requirement/design here, but asserted with `__init__` extraction in S03.
+  - source-position deterministic reference ordering test
+  - quoted container forward-ref test for `list["Item"]`, `Optional["Item"]`, `Union["A", "B"]`, and `Literal["ignored"]`
+  - syntactic Pydantic eligibility evidence test for both `BaseModel` and `pydantic.BaseModel`
 - report update:
   - evidence vocabulary を残す
 
@@ -254,7 +263,10 @@ ID: "iss-00025"
   - `tests/parse/test_module_parse_and_index.py`
 - expected tests:
   - `__init__` parameter annotation reuse test
+  - exact semantic `reference_kind` / `reference_owner` assertion for `init_field_annotation/<field_name>`
+  - direct assignment inclusion test for top-level statements and assignments under `if` / `for` / `while` / `try`
   - nested function exclusion test
+  - nested class exclusion test
 - report update:
   - direct assignment boundary を記録する
 
@@ -271,7 +283,15 @@ ID: "iss-00025"
   - `src/pyclassuml/parse/indexer.py`
   - `tests/parse/test_module_parse_and_index.py`
 - expected tests:
-  - unsupported annotation fixture
+  - unsupported annotation fixture:
+    - member is retained
+    - annotation text degrades to `None`
+    - `ParsedModule.diagnostics` contains the full diagnostic payload when stable text conversion raises:
+      - `code="annotation_text_unavailable"`
+      - `severity=WARNING`
+      - `origin_seam=PARSE`
+      - `recoverability=DEGRADED_OUTPUT`
+      - `failure_reason=None`
   - existing syntax error regression
 - report update:
   - degraded output policy を残す
