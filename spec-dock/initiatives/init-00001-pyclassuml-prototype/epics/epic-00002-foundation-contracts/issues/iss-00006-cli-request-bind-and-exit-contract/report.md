@@ -18,6 +18,58 @@ ID: "iss-00006"
 
 ## 実装記録（セッションログ） (必須)
 
+### 2026-05-04 - implementation
+
+#### 対象
+- Step: S01, S02, S03, S90, S99
+- AC/EC: AC-001, AC-002, AC-003, EC-001, EC-002
+
+#### 実施内容
+- `src/pyclassuml/cli/` を追加し、`bind_command_request` / `run_cli` / `CliRunResult` を public API として export した。
+- `argparse` で `generate` / `diff` を parse し、common options と subcommand-specific options を `CommandOptions` に bind するようにした。
+- path-like option は raw `Path(...)` として保持し、`process_cwd` は渡された `Path` object をそのまま `CommandRequest` に保持するようにした。
+- `diff --base` を required とし、`--current-state` 未指定時は `working-tree`、`--include-untracked` 未指定時は `False` を syntactic parse default として materialize するようにした。
+- usage error では handler を呼ばず、`FailureReason.CLI_USAGE_ERROR` / `OriginSeam.CLI` / `Recoverability.FATAL` diagnostic を持つ `CommandResult(exit_code=2)` を `CliRunResult` に包んで返すようにした。
+- valid invocation では handler を 1 回だけ呼び、handler が返した `CommandResult` と `exit_code` を再解釈せず `CliRunResult` に保持するようにした。
+- QA reviewer の P2 指摘を受け、`diff` 側 common options と typed parser validation usage error の test coverage を追加した。
+- code-reviewer は findings なしで pass した。
+- qa-reviewer は P2 test gap 指摘後、補強済み差分に対して gate-blocking finding なしとして扱った。
+
+#### 実行コマンド / 結果
+```bash
+uv run --with pytest pytest tests/cli/test_bind.py tests/model/test_contracts.py tests/config/test_context_resolve.py tests/targets/test_explicit_target_normalize.py tests/vcs/test_diff_file_collect.py -q
+# 96 passed
+
+uv run --with pytest pytest -q
+# 201 passed
+
+./spec-dock/scripts/spec-dock validate
+# spec-dock: ok (validate) nodes=21
+
+git diff --check
+# pass
+
+rg --files | rg '[A-Z]'
+# 既存許可 path: AGENTS.md / README.md 系のみ。新規 uppercase path なし。
+
+find . -name uv.lock -o -name '*.pyc' -o -type d -name __pycache__
+# cleanup 後、残存なし。
+```
+
+#### 変更したファイル
+- `src/pyclassuml/cli/__init__.py` - CLI seam public API export。
+- `src/pyclassuml/cli/bind.py` - request bind、usage error result、handler exit propagation。
+- `tests/cli/test_bind.py` - CLI bind/run contract tests。
+
+#### コミット
+- 実装コミットを作成予定。
+
+#### メモ
+- `pyproject.toml` console script 登録と app generate/diff wiring は downstream `iss-00020` / `iss-00021` の責務として未変更。
+- `uv.lock` / `__pycache__` / `.pyc` は生成後に削除した。
+
+---
+
 ### 2026-05-04 - contract repair
 
 #### 対象
