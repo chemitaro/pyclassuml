@@ -49,6 +49,7 @@ ID: "iss-00032"
   - mapping generic `dict[str, Target]` / `Mapping[str, Target]` / `MutableMapping[str, Target]` など、field が mapping value として selected internal class を参照する場合は aggregation とする。
   - mapping key type は ownership target とみなさず、`dict[TargetKey, TargetValue]` では value 側の selected internal class だけを aggregation 候補にする。
   - `Annotated[Target, ...]` のように metadata wrapper がある場合、内側の Target 判定を維持する。
+  - `Optional[list[Target]]`、`Annotated[list[Target], ...]`、`dict[str, list[Target]]` のような nested wrapper は、内側の item / value target を aggregation として扱う。
   - PlantUML render では composition を黒塗り diamond、aggregation を白抜き diamond として、diamond 側が field owner class になる向きで出力する。
   - composition / aggregation relation は通常矢印頭を持たない line として出力する。
   - 同一 source / target 間に field-origin ownership relation と method-origin uses relation が併存する場合、ownership relation を優先して diagram に出す。
@@ -70,7 +71,7 @@ ID: "iss-00032"
   - annotation の構文上の shape を根拠に分類し、runtime 値や import 実行で判断しない。
   - 直接型は stronger ownership として composition、nullable / choice / collection は weaker ownership として aggregation に分類する。
 - Ask:
-  - nested container / nested mapping をどこまで value extraction するか判断が必要な場合。
+  - recursive wrapper extraction が ambiguity や探索爆発を起こす未知の typing construct に遭遇した場合。
   - field name label や multiplicity label も同時に出したい場合。
 - Never:
   - duck typing や constructor body assignment の推測だけで composition / aggregation を作らない。
@@ -156,8 +157,12 @@ ID: "iss-00032"
   - 観測点: diagnostics と `.puml`。
 - EC-005:
   - 条件: `field: dict[UnknownKey, Target]` のように mapping key が解決不能で value は解決可能。
-  - 期待: key 側 warning / unresolved は所有関係を作らず、value 側の aggregation は保持する。
-  - 観測点: diagnostics と `.puml`。
+  - 期待: key 側は ownership 抽出対象外のため、key 由来の ownership relation も key 由来の unresolved warning も必須にしない。value 側の aggregation は保持する。
+  - 観測点: `.puml` に value 側 aggregation が含まれ、key 側 ownership relation が含まれない。
+- EC-006:
+  - 条件: `field: Optional[list[Target]]`、`field: Annotated[list[Target], ...]`、`field: dict[str, list[Target]]` のように wrapper が nested している。
+  - 期待: 内側の selected internal class は aggregation として扱う。
+  - 観測点: `.puml` に owner side の矢印頭なし aggregation relation が含まれる。
 
 ## 入力→出力例
 - EX-001:
