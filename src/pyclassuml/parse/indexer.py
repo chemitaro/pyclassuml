@@ -235,7 +235,12 @@ def _extract_class_references(tree: ast.AST, module_path: Path) -> tuple[ClassRe
             if isinstance(child, ast.ClassDef):
                 qualname = (*parents, child.name)
                 source_class_id = f"{module_path.as_posix()}:{'.'.join(qualname)}"
-                references.update(_class_body_references(child, source_class_id))
+                references.update(
+                    _class_body_references(
+                        child,
+                        source_class_id,
+                    )
+                )
                 visit(child, qualname)
             elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -246,13 +251,71 @@ def _extract_class_references(tree: ast.AST, module_path: Path) -> tuple[ClassRe
     return tuple(sorted(references, key=_class_reference_sort_key))
 
 
-def _class_body_references(class_def: ast.ClassDef, source_class_id: str) -> tuple[ClassReference, ...]:
+def _class_body_references(
+    class_def: ast.ClassDef,
+    source_class_id: str,
+) -> tuple[ClassReference, ...]:
     references: set[ClassReference] = set()
+    references.update(_class_base_references(class_def, source_class_id))
     for statement in class_def.body:
         if isinstance(statement, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
+        references.update(_annotation_string_references_in_statement(statement, source_class_id))
         references.update(_annotation_subscript_references_in_statement(statement, source_class_id))
         references.update(_call_string_arg_references(statement, source_class_id))
+    return tuple(sorted(references, key=_class_reference_sort_key))
+
+
+def _class_base_references(class_def: ast.ClassDef, source_class_id: str) -> tuple[ClassReference, ...]:
+    references: set[ClassReference] = set()
+    for base in class_def.bases:
+        target_name = _dotted_name(base)
+        if target_name is None:
+            continue
+        references.add(
+            ClassReference(
+                source_class_id=source_class_id,
+                target_name=target_name,
+                reference_kind="class_base",
+                reference_owner="base",
+            )
+        )
+    return tuple(sorted(references, key=_class_reference_sort_key))
+
+
+def _annotation_string_references_in_statement(
+    statement: ast.AST,
+    source_class_id: str,
+) -> tuple[ClassReference, ...]:
+    references: set[ClassReference] = set()
+    for node in _walk_without_nested_definition_bodies(statement):
+        if isinstance(node, ast.AnnAssign):
+            references.update(_annotation_string_references(node.annotation, source_class_id))
+    return tuple(sorted(references, key=_class_reference_sort_key))
+
+
+def _annotation_string_references(annotation: ast.AST, source_class_id: str) -> tuple[ClassReference, ...]:
+    references: set[ClassReference] = set()
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str) and annotation.value:
+        references.add(
+            ClassReference(
+                source_class_id=source_class_id,
+                target_name=annotation.value,
+                reference_kind="annotation_string",
+                reference_owner="annotation",
+            )
+        )
+        return tuple(sorted(references, key=_class_reference_sort_key))
+
+    for owner, target_name in _quoted_subscript_members(annotation):
+        references.add(
+            ClassReference(
+                source_class_id=source_class_id,
+                target_name=target_name,
+                reference_kind="annotation_string",
+                reference_owner=owner,
+            )
+        )
     return tuple(sorted(references, key=_class_reference_sort_key))
 
 
@@ -272,7 +335,7 @@ def _annotation_subscript_references(annotation: ast.AST, source_class_id: str) 
     if not isinstance(annotation, ast.Subscript):
         return ()
     owner = _terminal_name(annotation.value)
-    if owner is None:
+    if owner is None or owner == "Literal":
         return ()
     for target_name in _class_like_names(annotation.slice):
         references.add(
@@ -331,6 +394,77 @@ def _terminal_name(node: ast.AST) -> str | None:
     return None
 
 
+def _dotted_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Subscript):
+        return _dotted_name(node.value)
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _dotted_name(node.value)
+        if parent is None:
+            return node.attr
+        return f"{parent}.{node.attr}"
+    return None
+
+
+def _quoted_subscript_members(node: ast.AST) -> tuple[tuple[str, str], ...]:
+    members: set[tuple[str, str]] = set()
+
+    def collect(current: ast.AST) -> None:
+        if not isinstance(current, ast.Subscript):
+            for child in ast.iter_child_nodes(current):
+                collect(child)
+            return
+
+        owner = _terminal_name(current.value)
+        if owner == "Annotated":
+            first_arg = _first_subscript_arg(current.slice)
+            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str) and first_arg.value:
+                members.add((owner, first_arg.value))
+                return
+            collect(first_arg)
+            return
+        if owner is not None and owner != "Literal":
+            for target_name in _quoted_string_constants(current.slice):
+                members.add((owner, target_name))
+            return
+        if owner == "Literal":
+            return
+        collect(current.slice)
+
+    collect(node)
+    return tuple(sorted(members))
+
+
+def _quoted_string_constants(node: ast.AST) -> tuple[str, ...]:
+    values: set[str] = set()
+
+    def collect(current: ast.AST, *, ignored_wrapper_depth: int = 0) -> None:
+        if isinstance(current, ast.Subscript):
+            owner = _terminal_name(current.value)
+            if owner == "Annotated":
+                collect(_first_subscript_arg(current.slice), ignored_wrapper_depth=ignored_wrapper_depth)
+                return
+            next_ignored_wrapper_depth = ignored_wrapper_depth + 1 if owner == "Literal" else ignored_wrapper_depth
+            collect(current.slice, ignored_wrapper_depth=next_ignored_wrapper_depth)
+            return
+        if isinstance(current, ast.Constant) and isinstance(current.value, str) and current.value:
+            if ignored_wrapper_depth == 0:
+                values.add(current.value)
+            return
+        for child in ast.iter_child_nodes(current):
+            collect(child, ignored_wrapper_depth=ignored_wrapper_depth)
+
+    collect(node)
+    return tuple(sorted(values))
+
+
+def _first_subscript_arg(node: ast.AST) -> ast.AST:
+    if isinstance(node, ast.Tuple) and node.elts:
+        return node.elts[0]
+    return node
+
+
 def _class_like_names(node: ast.AST) -> tuple[str, ...]:
     names: set[str] = set()
 
@@ -338,6 +472,9 @@ def _class_like_names(node: ast.AST) -> tuple[str, ...]:
         if isinstance(child, ast.Subscript):
             owner = _terminal_name(child.value)
             if owner == "Literal":
+                return
+            if owner == "Annotated":
+                collect(_first_subscript_arg(child.slice), in_literal=in_literal)
                 return
             collect(child.slice, in_literal=in_literal or owner == "Literal")
             return

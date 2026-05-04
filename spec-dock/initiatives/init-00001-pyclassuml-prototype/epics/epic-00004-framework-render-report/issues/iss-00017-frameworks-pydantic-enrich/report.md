@@ -61,6 +61,81 @@ ClassReference は存在するが、Pydantic direct quoted annotation evidence �
 
 ---
 
+### 2026-05-04 - implementation and validation
+
+#### 対象
+- Step: S01, S02, S90, S99
+- AC/EC: AC-001, AC-002, EC-001, EC-002, EC-003, EC-004
+
+#### 実施内容
+- `src/pyclassuml/parse/indexer.py` に framework-neutral な `class_base/base` evidence と `annotation_string` evidence を追加した。
+- direct quoted annotation、quoted subscript annotation、direct class base を既存 `ClassReference` で表現するようにした。
+- nested function / async function / nested class / lambda body の quoted annotation evidence が outer class に混入しないようにした。
+- `src/pyclassuml/frameworks/pydantic.py` を追加し、`PydanticEnrichmentHints` と `extract_pydantic_enrichment_hints` を実装した。
+- Pydantic eligibility は `class_base/base/BaseModel` と `class_base/base/pydantic.BaseModel` evidence に限定した。
+- `annotation_string` evidence のみを forward reference として解釈し、all-internal candidate で一意解決でき、source / target が selected の場合だけ `pydantic_forward_ref` relation hint を返すようにした。
+- generic base `BaseModel[T]` / `pydantic.BaseModel[T]` / `CustomBase[T]` は parse seam の direct base evidence として扱うようにした。
+- nested class の quoted annotation は outer class に混入させず、nested class 自身の source id で保持するようにした。
+- Pydantic の `ClassVar["T"]` は field relation ではないため warning / relation なしで無視するようにした。
+- unresolved / ambiguous / selection outside / mixed collision は warning diagnostic として返し、relation は追加しないようにした。
+- existing relation inventory と同一 extraction 内の source / target / relation_type triple dedupe を実装した。
+- Pydantic seam を `src/pyclassuml/frameworks/__init__.py` から export した。
+- parse tests と Pydantic framework tests を追加・更新し、SQLAlchemy framework tests の regression を確認した。
+- code-reviewer は P2 指摘修正後に findings なしで pass した。
+- qa-reviewer は generic base coverage の P1、nested class / `ClassVar` edge の P2 を指摘し、修正後に pass した。
+
+#### 実行コマンド / 結果
+```bash
+uv run --with pytest pytest tests/parse/test_module_parse_and_index.py tests/frameworks/test_pydantic.py tests/frameworks/test_sqlalchemy.py -q
+# 56 passed in 0.06s
+
+uv run --with pytest pytest -q
+# 182 passed in 1.04s
+
+./spec-dock/scripts/spec-dock validate
+# spec-dock: ok (validate) nodes=21
+
+git diff --check
+# pass
+
+rg --files | rg '[A-Z]'
+# 既存 uppercase path のみ:
+# AGENTS.md
+# spec-dock/templates/README.md
+# spec-dock/scripts/README.md
+# spec-dock/system/README.md
+# spec-dock/system/active-none/initiative/README.md
+# spec-dock/system/active-none/issue/README.md
+# spec-dock/system/active-none/epic/README.md
+# spec-dock/system/active-none/README.md
+# spec-dock/docs/README.md
+
+find . -name '__pycache__' -o -name 'uv.lock'
+# cleanup 後は出力なし
+```
+
+#### レビュー結果
+- code-reviewer: pass。P2 指摘修正後の fresh review で findings なし。
+- qa-reviewer: pass。generic class-base coverage の P1 は `CustomBase[T]` / `BaseModel[T]` / `pydantic.BaseModel[T]` の parse / handoff regression 追加で解消。
+- qa-reviewer: pass。nested class quoted annotation と parser-backed `ClassVar["B"]` no relation/no warning の P2 は regression 追加で解消。
+
+#### 変更したファイル
+- `src/pyclassuml/parse/indexer.py` - generic class-base / quoted annotation evidence 抽出を追加。
+- `src/pyclassuml/frameworks/pydantic.py` - Pydantic enrichment hint seam を追加。
+- `src/pyclassuml/frameworks/__init__.py` - Pydantic seam export を追加。
+- `tests/parse/test_module_parse_and_index.py` - parse evidence と exclusion の coverage を追加。
+- `tests/frameworks/test_pydantic.py` - Pydantic AC/EC coverage を追加。
+- `spec-dock/active/issue/report.md` - 実装と検証結果を記録。
+
+#### コミット
+- 未作成。最終検証後に docs commit `0c5584b` とは別の implementation commit を作成する。
+
+#### メモ
+- `uv run --with pytest` により `uv.lock` と `__pycache__` が生成されたため削除した。
+- render shared DTO への合成は downstream `iss-00018` の責務として残した。
+
+---
+
 ## 遭遇した問題と解決 (任意)
 - 該当なし
 

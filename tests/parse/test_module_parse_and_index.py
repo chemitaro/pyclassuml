@@ -109,6 +109,231 @@ def test_class_body_references_are_generic_and_deterministic(tmp_path: Path) -> 
     )
 
 
+def test_class_base_references_are_generic_and_deterministic(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A(BaseModel):",
+                "    pass",
+                "class B(pydantic.BaseModel):",
+                "    pass",
+                "class C(CustomBase):",
+                "    pass",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="BaseModel",
+            reference_kind="class_base",
+            reference_owner="base",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:B",
+            target_name="pydantic.BaseModel",
+            reference_kind="class_base",
+            reference_owner="base",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:C",
+            target_name="CustomBase",
+            reference_kind="class_base",
+            reference_owner="base",
+        ),
+    )
+
+
+def test_generic_class_base_references_use_direct_base_name(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A(CustomBase[T]):",
+                "    pass",
+                "class B(BaseModel[T]):",
+                "    pass",
+                "class C(pydantic.BaseModel[T]):",
+                "    pass",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="CustomBase",
+            reference_kind="class_base",
+            reference_owner="base",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:B",
+            target_name="BaseModel",
+            reference_kind="class_base",
+            reference_owner="base",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:C",
+            target_name="pydantic.BaseModel",
+            reference_kind="class_base",
+            reference_owner="base",
+        ),
+    )
+
+
+def test_quoted_annotation_references_are_generic_and_owner_scoped(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    direct: \"B\"",
+                "    many: list[\"C\"]",
+                "    optional: Optional[\"D\"]",
+                "    union: Union[\"E\", \"F\"]",
+                "    literal: Literal[\"Ignored\"]",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="B",
+            reference_kind="annotation_string",
+            reference_owner="annotation",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="C",
+            reference_kind="annotation_string",
+            reference_owner="list",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="C",
+            reference_kind="annotation_subscript",
+            reference_owner="list",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="D",
+            reference_kind="annotation_string",
+            reference_owner="Optional",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="D",
+            reference_kind="annotation_subscript",
+            reference_owner="Optional",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="E",
+            reference_kind="annotation_string",
+            reference_owner="Union",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="E",
+            reference_kind="annotation_subscript",
+            reference_owner="Union",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="F",
+            reference_kind="annotation_string",
+            reference_owner="Union",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="F",
+            reference_kind="annotation_subscript",
+            reference_owner="Union",
+        ),
+    )
+
+
+def test_annotated_metadata_strings_are_not_annotation_string_references(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    direct: Annotated[\"B\", \"label\"]",
+                "    builtin: Annotated[int, \"label\"]",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    annotation_string_references = tuple(
+        reference
+        for reference in result.parsed_modules[0].class_references
+        if reference.reference_kind == "annotation_string"
+    )
+
+    assert annotation_string_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="B",
+            reference_kind="annotation_string",
+            reference_owner="Annotated",
+        ),
+    )
+
+
+def test_quoted_annotation_references_skip_nested_bodies(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    if True:",
+                "        direct: \"B\"",
+                "        def factory(self):",
+                "            local: \"NestedFunction\"",
+                "        async def async_factory(self):",
+                "            local: \"NestedAsyncFunction\"",
+                "        class Nested:",
+                "            local: \"NestedClass\"",
+                "        factory = lambda: list[\"LambdaBody\"]",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="B",
+            reference_kind="annotation_string",
+            reference_owner="annotation",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A.Nested",
+            target_name="NestedClass",
+            reference_kind="annotation_string",
+            reference_owner="annotation",
+        ),
+    )
+
+
 def test_nested_class_references_use_nested_source_class_id(tmp_path: Path) -> None:
     project = tmp_path / "project"
     seed = write_file(
@@ -118,6 +343,7 @@ def test_nested_class_references_use_nested_source_class_id(tmp_path: Path) -> N
                 "class A:",
                 "    class Nested:",
                 "        relation: Owner[B]",
+                "        child: \"B\"",
                 "        link = link_to(\"C\")",
             ]
         ),
@@ -126,6 +352,12 @@ def test_nested_class_references_use_nested_source_class_id(tmp_path: Path) -> N
     result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
 
     assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A.Nested",
+            target_name="B",
+            reference_kind="annotation_string",
+            reference_owner="annotation",
+        ),
         ClassReference(
             source_class_id="pkg/a.py:A.Nested",
             target_name="B",
