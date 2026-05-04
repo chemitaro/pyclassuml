@@ -18,6 +18,8 @@ ID: "iss-00013"
 - 実装対象は parse 済み `ParsedModule[]` / `ModuleIndex` から `DependencyGraph` と `TraversalObservations` を作る `analyze.traversal` seam に限定し、relation / class selection / changed inventory / framework / report policy は非スコープとして維持する。
 - spec-reviewer pass 1 は fail。`TraversalResult` / diagnostics handoff と traversal safety limit の source / threshold が design に不足していたため、result wrapper と `DEFAULT_TRAVERSAL_MODULE_LIMIT = 1000`、test override、limit comparison timing を design / plan に追記した。
 - spec-reviewer pass 2 も fail。`AnalysisConfig.depth=None` の default/unbounded depth contract と reason-specific stop observations が不足していたため、requirement / design / plan に明示した。
+- `analyze.traversal` seam を追加し、parse 済み `ModuleIndex` から deterministic な `DependencyGraph`、`TraversalObservations`、diagnostics を返すようにした。
+- code-reviewer / QA reviewer の指摘を反映し、seed 初期投入時の `module_limit`、limit 到達後の即停止、cycle traversal を含む 14 件の traversal tests で AC/EC を確認した。
 
 ## 実装記録（セッションログ）
 
@@ -148,9 +150,113 @@ review_status: pass
 #### コミット
 - docs repair commit に含める。
 
+### 2026-05-04 implementation and review loop
+
+#### 対象
+- Step: S01, S02, S03, RG1, QG1
+- AC/EC: AC-001, AC-002, AC-003, AC-004, EC-001, EC-002, EC-003
+
+#### 実施内容
+- `src/pyclassuml/analyze/__init__.py` と `src/pyclassuml/analyze/traversal.py` を追加し、`traverse_dependencies(...) -> TraversalResult` を実装した。
+- `TraversalResult` / `TraversalObservations` を analyze.traversal seam-local DTO として定義した。
+- `DependencyGraph.reachable_files` / `edges` を deterministic に sort し、parse 済み `ModuleIndex.import_candidate_paths` だけを使って frontier を展開した。
+- `depth=0`、`depth=1`、`depth=None`、unreachable parsed module exclusion、package/scope/depth stop ordering、`module_limit` partial result、cyclic imports を `tests/analyze/test_traversal.py` で観測した。
+- code-reviewer pass。初回 P2 として seed 初期投入時の `module_limit` と limit failure 後の loop 停止が指摘され、実装とテストを修正した。re-review は findings なしで pass。
+- QA reviewer 初回は seed 初期投入時の `module_limit` coverage 不足で fail。修正後 re-review は pass。残 P2 の test gap は commit blocker ではないが、seed-limit overflow side effects と cyclic imports の補強テストを追加した。
+
+#### 実行コマンド / 結果
+```bash
+uv run --with pytest pytest tests/analyze/test_traversal.py -q
+
+..............                                                           [100%]
+14 passed in 0.02s
+```
+
+```bash
+uv run --with pytest pytest tests/parse/test_module_parse_and_index.py -q
+
+......                                                                   [100%]
+6 passed in 0.02s
+```
+
+```bash
+uv run --with pytest pytest -q
+
+113 passed in 1.00s
+```
+
+```bash
+code-reviewer re-review
+
+review_status: pass
+findings: []
+```
+
+```bash
+qa-reviewer re-review
+
+review_status: pass
+remaining findings: P2 test quality suggestions only;補強テスト追加済み
+```
+
+#### 変更したファイル
+- `src/pyclassuml/analyze/__init__.py` - analyze seam public export を追加。
+- `src/pyclassuml/analyze/traversal.py` - dependency traversal 実装を追加。
+- `tests/analyze/test_traversal.py` - traversal contract tests を追加。
+
+#### コミット
+- final validation と report update 後に実装コミットへ含める。
+
+### 2026-05-04 final validation
+
+#### 対象
+- Step: S90, S99
+- AC/EC: final exit contract
+
+#### 実施内容
+- issue-scoped docs のみ更新対象であり、root `AGENTS.md`、README、SpecDock workflow docs への恒久 docs 変更は不要と判断した。
+- full suite、SpecDock validate/sync、uppercase path check を実施した。
+- `uv run` が生成した未追跡 `uv.lock` は成果物ではないため削除した。
+
+#### 実行コマンド / 結果
+```bash
+./spec-dock/scripts/spec-dock validate
+
+spec-dock: ok (validate) nodes=21
+```
+
+```bash
+./spec-dock/scripts/spec-dock sync --github
+
+spec-dock: sync: active unchanged (unchanged)
+spec-dock: ok (sync) wrote=spec-dock/.agent/index-all.json,spec-dock/.agent/tree-all.json,spec-dock/.agent/index.json,spec-dock/.agent/tree.json,spec-dock/tree-all.puml,spec-dock/tree.puml,spec-dock/.agent/deps-issues.json,spec-dock/deps-issues.puml,spec-dock/dashboard.md
+```
+
+```bash
+rg --files | rg '[A-Z]'
+
+AGENTS.md
+spec-dock/templates/README.md
+spec-dock/scripts/README.md
+spec-dock/system/README.md
+spec-dock/system/active-none/initiative/README.md
+spec-dock/system/active-none/README.md
+spec-dock/docs/README.md
+spec-dock/system/active-none/epic/README.md
+spec-dock/system/active-none/issue/README.md
+```
+
+#### 変更したファイル
+- `spec-dock/active/issue/report.md` - 実装、レビュー、QA、最終検証の証跡を追記。
+
+#### コミット
+- 実装差分と report update をまとめてコミットする。
+
 ## 遭遇した問題と解決
 - 問題: `plan.md` / `report.md` がテンプレート状態で、workflow_issue の complete 条件を満たせない状態だった。
   - 解決: issue requirement / design に合わせ、実装ステップ、検証、review、docs impact、final exit contract を具体化した。
+- 問題: 初回実装では seed 初期投入時に `module_limit` が適用されず、limit 到達後に同一 module の後続 import processing が続きうる状態だった。
+  - 解決: seed 初期投入にも limit check を適用し、limit 到達後は traversal を即停止する実装と回帰テストを追加した。
 
 ## 学んだこと
 - `iss-00013` は `iss-00012` の `ModuleIndex.import_candidate_paths` を初めて消費する issue であり、package / scope stop ordering が後続 relation selection の frontier source になる。
@@ -159,4 +265,5 @@ review_status: pass
 - 実装時は parse 済み `ModuleIndex` だけを入力にし、raw filesystem の再探索や import 実行を持ち込まない。
 
 ## 省略/例外メモ
-- 現時点では未完了。spec review、実装、targeted/full tests、implementation review、QA review、`sync --github`、final report update が未実施である。
+- `uv run` により未追跡 `uv.lock` が生成されたが、この issue の成果物ではないため削除した。
+- `rg --files | rg '[A-Z]'` は既存許可 path の `AGENTS.md` / `README.md` 系のみを出力し、新規 uppercase path は追加していない。
