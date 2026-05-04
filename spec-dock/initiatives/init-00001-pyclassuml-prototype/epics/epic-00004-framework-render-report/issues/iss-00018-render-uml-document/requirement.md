@@ -68,7 +68,8 @@ ID: "iss-00018"
   - When:
     - render を実行する。
   - Then:
-    - framework 補強済み relation / decoration が diagram shape に反映される。
+    - framework 補強済み relation が diagram shape に反映される。
+    - upstream が decoration hint を返す場合は同じ render-ready contract で扱えるが、現行 SQLAlchemy / Pydantic hints は relation と diagnostics のみを返すため、この issue の実装では `class_decorations=()` を保持する。
   - 観測点:
     - render-ready handoff review。
 - AC-003:

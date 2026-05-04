@@ -75,16 +75,24 @@ failure --> downstream
        - relation order
        - alias allocation
        - group/container order
-- invariant:
+   - invariant:
    - `render` は `ParsedModule[]` / `ModuleIndex` / `SelectedClasses` / `SelectedRelations` と framework hints から authoritative な `RenderReadyModel` を合成する唯一の owner である。
-   - `RenderReadyModel.members` は `ParsedModule[].classes` に含まれる member 定義から、`RenderReadyModel.grouping_keys` は `ModuleIndex` の owning module / file metadata から引き当てる。
+   - 現行 `ParsedModule` は member 定義 DTO を持たないため、`RenderReadyModel.members` はこの issue では `()` を authoritative に保持し、member extraction / member rendering は先回り実装しない。
+   - 現行 SQLAlchemy / Pydantic hints は relation と diagnostics のみを返すため、`RenderReadyModel.class_decorations` はこの issue では `()` を authoritative に保持する。
+   - `RenderReadyModel.grouping_keys` は selected `ClassId` の module path 部分（`<module_path>:<qualname>` の `<module_path>`）を唯一の authoritative source として導出する。`ModuleIndex` は selected class existence / input consistency の補助 lookup としてだけ使い、grouping source にはしない。
    - success path の `DiagramModel` と `PlantUmlText` は同一 `RenderReadyModel` に対して決定的である。
    - `RenderOrderingPlan` は render 内部に閉じ、artifact path や summary counter を持たない。
    - framework warning は relation / decoration input としてのみ扱い、render 自身が警告を再分類しない。
    - render は success path では `DiagramModel` / `PlantUmlText` を、failure path では `RenderFailureSignal` を返し、両方を同時に authoritative output としない。
+   - `DiagramModel.containers` は grouping key の stable list であり、class-to-container association は `ClassId` の module path 部分（`<module_path>:<qualname>` の `<module_path>`）から導出する。`DiagramModel` に parallel mapping は追加しない。
+   - PlantUML serializer は `DiagramModel.rendered_classes` を class id 由来の container key で grouping し、`DiagramModel.containers` の順に package を出力する。
+   - `RenderFailureSignal.class_count` / `relation_count` は `RenderReadyModel` 合成後、diagram build 前の authoritative count とする。
+   - `RenderFailureSignal.partial_diagram_present` は `class_count > 0` のとき `true`、empty selected class failure では `false` とする。
+   - `RenderReadyModel.diagnostics` と `RenderFailureSignal.diagnostics` は `ParsedModule[].diagnostics`、`SqlalchemyEnrichmentHints.warning_diagnostics`、`PydanticEnrichmentHints.warning_diagnostics` を deterministic に carry し、render 自身が原因を検出した場合は `origin_seam=render` の diagnostic を追加する。
+   - selected `ClassId` が `ParsedModule[].classes` または `ModuleIndex.class_to_module` に存在しない場合は phantom class を描かず、`origin_seam=render` の `render_selected_class_missing` diagnostic を追加して failure path へ送る。
 
 ## 主要フロー
-1. `SelectedClasses.class_ids` を `ModuleIndex` と `ParsedModule[]` で引き当て、class 定義・member 定義・owning module/file metadata を取得する。
+1. `SelectedClasses.class_ids` を `ModuleIndex` と `ParsedModule[]` で存在確認し、class id の module path 部分を grouping key として取得する。members は現行 DTO では `()` として保持する。存在しない selected class は render failure cause として diagnostics に残す。
 2. `SelectedRelations` と framework hints を突き合わせて relation / decoration を確定し、`RenderReadyModel` を合成する。
 3. `RenderOrderingPlan` で alias、container、class、relation の順序を確定する。
 4. `RenderReadyModel` から `DiagramModel` を構築する。
@@ -92,8 +100,8 @@ failure --> downstream
 6. recoverable diagnostics を踏まえても図を構築できない場合は、`RenderFailureSignal` を返して report へ失敗経路を handoff する。
 
 ## 要件 → 設計マッピング
-- AC-001 -> `RenderReadyModel` composition + `RenderOrderingPlan` による stable order / grouping / labels / aliases。
-- AC-002 -> framework 補強済み relation / decoration の `RenderReadyModel` 反映。
+- AC-001 -> `RenderReadyModel` composition + `RenderOrderingPlan` による stable order / class id 由来 grouping / labels / aliases。
+- AC-002 -> framework 補強済み relation の `RenderReadyModel` 反映。現行 upstream に decoration hint がないため `class_decorations=()` を保持する。
 - EC-001 -> deterministic alias allocation。
 - AC-003 / EC-003 -> `RenderFailureSignal` による diagram unbuildable の failure handoff。
 - constraint -> filesystem write / summary / exit policy を持たない。
