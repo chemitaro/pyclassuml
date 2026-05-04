@@ -13,8 +13,8 @@ ID: "iss-00020"
 # iss-00020 App Generate Wiring — 実装報告（LOG）
 
 ## 実装サマリー (任意)
-- `iss-00020` は active 化済みで、現時点では app generate seam 実装はまだ存在しない。
-- この issue では `src/pyclassuml/app/` に `run_generate(...) -> ReportRunResult` を追加し、actual CLI stream emission / console script は非スコープに残す。
+- `src/pyclassuml/app/` に `run_generate(...) -> ReportRunResult` を追加し、generate の canonical pipeline を `report.write_report(...)` まで接続した。
+- actual CLI stream emission / console script / diff wiring は非スコープに残した。
 
 ## 実装記録（セッションログ） (必須)
 
@@ -65,11 +65,65 @@ git diff --check
 - `spec-dock/active/epic/design.md` - app generate/diff seam output を `ReportRunResult` boundary に補正。
 
 #### コミット
-- 未作成。P2 補正後に docs commit を作成する。
+- `6885aa3 docs(spec-dock): iss-00020の実装契約を具体化`
 
 #### メモ
 - `ReportRunResult.stdout_text` / `stderr_text` はこの issue の observation であり、actual stdout/stderr emission は downstream integration として残す。
 - `app` は stage invocation order と transport owner に限定し、summary / exit policy / render / analysis policy を再実装しない。
+
+---
+
+### 2026-05-04 - implementation and review
+
+#### 対象
+- Step: S01, S02, S03, S04, RG1, QG1, S99
+- AC/EC: AC-001, AC-002, AC-003, EC-001, EC-002, EC-003
+
+#### 実施内容
+- `src/pyclassuml/app/__init__.py` と `src/pyclassuml/app/generate.py` を追加し、`run_generate(request, *, timestamp) -> ReportRunResult` を public app seam API として export した。
+- non-generate `CommandRequest` は `ValueError` とし、app seam では usage error result を作らない guard を追加した。
+- generate happy path を `config -> targets.explicit -> parse -> traversal -> selection -> changed inventory -> sqlalchemy -> pydantic -> render -> report` の canonical order で接続した。
+- generate path の changed-file context は `()` として `build_changed_class_inventory(...)` に渡し、zero `ChangedClassInventory` を analyze owner のまま report へ transport した。
+- `TargetSet.observations`、`DependencyGraph`、`ChangedClassInventory`、`scope_stop_count`、stage diagnostics、render success/failure DTO を `ReportInputs` へ渡すようにした。
+- config failure と target normalization failure は downstream stages を呼ばず、diagnostics を `write_report(...)` に渡して report-owned non-zero `ReportRunResult` を返すようにした。
+- render failure と output write failure は app が再分類せず、`write_report(...)` の result をそのまま返すようにした。
+- app は actual process stdout/stderr へ write せず、`ReportRunResult.stdout_text` / `stderr_text` を返す境界を維持した。
+- QA fail を受け、zero inventory handoff を `build_changed_class_inventory` / `write_report` spy で直接固定した。
+- QA P2/P3 を受け、timestamp passthrough、non-clean branch の process stream no-emission、`scope_stop_count` handoff を tests で固定した。
+
+#### 実行コマンド / 結果
+```bash
+uv run --with pytest pytest tests/app/test_generate.py tests/report/test_policy.py tests/model/test_contracts.py tests/render/test_document.py tests/cli/test_bind.py -q
+# 79 passed
+
+uv run --with pytest pytest -q
+# 243 passed
+
+./spec-dock/scripts/spec-dock validate
+# spec-dock: ok (validate) nodes=21
+
+git diff --check
+# pass
+
+rg --files | rg '[A-Z]'
+# existing allowed AGENTS.md / README.md paths only
+
+find . \( -name '__pycache__' -o -name '*.pyc' -o -name 'uv.lock' \) -print
+# no output after cleanup
+```
+
+#### 変更したファイル
+- `src/pyclassuml/app/__init__.py` - app seam public API export を追加。
+- `src/pyclassuml/app/generate.py` - generate pipeline wiring を追加。
+- `tests/app/test_generate.py` - generate app seam の happy / failure / transport / no-emission coverage を追加。
+- `spec-dock/active/issue/report.md` - implementation / validation / review evidence を記録。
+
+#### レビュー結果
+- code-reviewer: pass。追加 findings なし。
+- qa-reviewer: fail -> fix -> pass。P1 zero inventory handoff coverage、P2 timestamp / scope-stop handoff、P3 non-clean stream no-emission を補強済み。
+
+#### コミット
+- 未作成。report 更新後に実装コミットを作成する。
 
 ---
 
@@ -78,6 +132,8 @@ git diff --check
   - 解決: `iss-00020` の観測点を `ReportRunResult.stdout_text` に補正し、actual process stream emission は非スコープとして残した。
 - 問題: config failure path では report に渡す `ExecutionContext` / `AnalysisConfig` が通常 seam から得られない。
   - 解決: app が fallback context/default config を最小構築し、diagnostics とともに `write_report(...)` へ渡して report-owned hard failure result を得る contract にした。
+- 問題: summary の `changed_class_count: 0` は `ChangedClassInventory` 未指定でも出せるため、AC-002 の transport 契約が summary 文字列だけでは守れない。
+  - 解決: `build_changed_class_inventory((), ...)` と `ReportInputs.changed_class_inventory` を spy test で直接固定した。
 
 ## 学んだこと (任意)
 - app seam を thin stitcher に保つには、failure path でも `CommandResult` を app が直接作らず、report invocation のための最小入力だけを準備する必要がある。
