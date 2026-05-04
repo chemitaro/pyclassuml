@@ -52,7 +52,7 @@ rectangle "targets.explicit\nTargetSet + TargetObservations" as explicit
 rectangle "vcs.diff\nChangedFileCollection" as vcs
 rectangle "targets.diff\nTargetSet + TargetObservations" as diff_targets
 rectangle "common pipeline\nparse -> analyze -> frameworks -> render -> report" as common
-rectangle "report-owned\nRunSummary + CommandResult" as result
+rectangle "ReportRunResult\n(RunSummary + CommandResult)\nowned by report" as result
 
 cli --> gen
 cli --> diff
@@ -79,8 +79,8 @@ result --> cli
 ### seam contract table
 | seam | owner | input | output | handoff type | downstream |
 | --- | --- | --- | --- | --- | --- |
-| `app.generate-wiring` | `app` | `CommandRequest(command=generate)`, `ExecutionContext`, `AnalysisConfig`, `TargetSet(seed_files, observations)` | `CommandResult` | shared DTO は既存 seam 由来のみ。`app` 独自 handoff は stage invocation order と empty changed-file context transport に留める | `cli` |
-| `app.diff-wiring` | `app` | `CommandRequest(command=diff)`, `ExecutionContext`, `AnalysisConfig`, `ChangedFileCollection`, `TargetSet(seed_files, observations)` | `CommandResult` | shared DTO は既存 seam 由来のみ。`app` 独自 handoff は changed-file context transport と stage invocation order に留める | `cli` |
+| `app.generate-wiring` | `app` | `CommandRequest(command=generate)`, `ExecutionContext`, `AnalysisConfig`, `TargetSet(seed_files, observations)` | `ReportRunResult` | `report` owner の nested result payload は `ReportRunResult.command_result` に保持され、stdout/stderr material も `report` owner。`app` は stage invocation order と empty changed-file context transport のみを担い、stream emission しない | `cli` |
+| `app.diff-wiring` | `app` | `CommandRequest(command=diff)`, `ExecutionContext`, `AnalysisConfig`, `ChangedFileCollection`, `TargetSet(seed_files, observations)` | `ReportRunResult` | `report` owner の nested result payload は `ReportRunResult.command_result` に保持され、stdout/stderr material も `report` owner。`app` は stage invocation order と changed-file context transport のみを担い、stream emission しない | `cli` |
 
 ### Data boundary
 - SoR:
@@ -88,7 +88,7 @@ result --> cli
   - `ExecutionContext` と `AnalysisConfig` の SoR は `config`。
   - `TargetSet` と `TargetObservations` の SoR は `targets`。
   - `ChangedClassInventory` の SoR は `analyze`。
-  - `PlantUmlText`, `RunSummary`, `CommandResult` の SoR は `render` / `report`。
+  - `PlantUmlText` の SoR は `render`、`RunSummary` と `CommandResult` の SoR は `report` であり、app seam output では `ReportRunResult` 配下に載る。
   - `app` の SoR は stage invocation order と app-local transport rule だけである。
 - consistency model:
   - `app` は upstream DTO を mutate せず transport する。
@@ -101,12 +101,14 @@ result --> cli
   1. `cli` が usage validation 済み `CommandRequest(command=generate)` を `app.generate-wiring` へ渡す。
   2. `app.generate-wiring` が `config.context-resolve` と `targets.explicit-target-normalize` を呼び、`TargetSet` を得る。
   3. `TargetSet` と empty changed-file context を共通 pipelineへ渡し、`parse -> analyze.traversal -> analyze.relationship-and-selection -> ChangedClassInventory -> frameworks -> render -> report` を順に実行する。
-  4. `report` が返した `CommandResult` を `app` はそのまま `cli` へ返す。
+  4. `report` が返した `ReportRunResult` を `app` はそのまま `cli` へ返す。
+     `CommandResult` は `ReportRunResult.command_result` として transport する。
 - Flow-B:
   1. `cli` が usage validation 済み `CommandRequest(command=diff)` を `app.diff-wiring` へ渡す。
   2. `app.diff-wiring` が `config.context-resolve`、`vcs.diff-file-collect`、`targets.diff-target-normalize` を呼び、actual changed-file context と `TargetSet` を得る。
   3. actual changed-file context と `TargetSet` を共通 pipelineへ渡し、`generate` と同じ後段 order を実行する。
-  4. `report` が返した `CommandResult` を `app` はそのまま `cli` へ返す。
+  4. `report` が返した `ReportRunResult` を `app` はそのまま `cli` へ返す。
+     `CommandResult` は `ReportRunResult.command_result` として transport する。
 
 ### UML（任意: sequence / flow）
 ```plantuml
@@ -132,22 +134,23 @@ frameworks --> app: FrameworkEnrichmentHints
 app -> render: compose_render_ready_and_render()
 render --> app: DiagramModel + PlantUmlText
 app -> report: emit_output_and_summary()
-report --> app: CommandResult
-app --> cli: CommandResult
+report --> app: ReportRunResult
+app --> cli: ReportRunResult
 @enduml
 ```
 
 ## 失敗設計
 - failure mode:
   - usage error は `cli` が即時終了し、この epic の flow に入らない。
-  - front-stage、parse、analyze、frameworks、render、report の failure は、それぞれの owner が diagnostics を出し、最終的な `RunSummary` / `CommandResult` は `report` が生成する。
+  - front-stage、parse、analyze、frameworks、render、report の failure は、それぞれの owner が diagnostics を出し、最終的な non-usage result は `ReportRunResult` として返る。
+    その内部の `RunSummary` / `CommandResult` は `report` が生成する。
   - `app` は failure reason を再分類せず、stage correlation を transport するだけに留める。
 - retry:
   - retry policy は持たない。再試行可否の判断は各 seam の deterministic contract に委ねる。
 - idempotency:
   - 同一 request、同一 upstream outputs では `app` の stage order と transport 内容は決定的である。
 - partial failure:
-  - warning-only success や degraded success では `app` は downstream の `CommandResult` をそのまま返す。
+  - warning-only success や degraded success では `app` は downstream の `ReportRunResult` をそのまま返し、`CommandResult` は `ReportRunResult.command_result` として保持される。
   - zero-target、invalid `--base <ref>`、output write failure などの non-zero 結果でも `app` は summary を自前生成しない。
 
 ## 観測性 / セキュリティ
@@ -164,7 +167,7 @@ app --> cli: CommandResult
 - Unit:
   - stage invocation order。
   - `TargetSet.observations` の pass-through。
-  - `CommandResult` 非改変返却。
+  - `ReportRunResult` 非再構築返却と `ReportRunResult.command_result` の非改変 transport。
   - generate の empty changed-file context transport。
   - diff の actual changed-file context transport。
 - Integration:

@@ -21,14 +21,16 @@ ID: "iss-00020"
   - `TargetSet` を `parse -> analyze.traversal -> analyze.relationship-and-selection -> ChangedClassInventory -> frameworks -> render -> report` の canonical order へ接続する。
   - generate 専用の changed-file context として empty set を analyze に渡し、`ChangedClassInventory(class_count=0, changed_files=[])` を `analyze` owner で downstream に載せる。
   - `TargetSet.observations`、upstream diagnostics、`ChangedClassInventory` を `report` へ transport する。
-  - `report` が返した `CommandResult` をそのまま `cli` へ返す。
+  - `report` が返した `ReportRunResult` を app result として返し、その中の `CommandResult` を再構築せず downstream へ transport できる形にする。
 - MUST NOT:
   - usage error summary を生成しない。
   - explicit target normalization、graph 解析、framework enrich、render、summary synthesis を再実装しない。
   - `TargetSet` 以降に generate 固有分岐を追加しない。
+  - actual stdout / stderr へ write しない。
 - OUT OF SCOPE:
   - `diff` の current-state / untracked handling。
   - console 表示の装飾。
+  - `cli.run_cli` の handler signature 変更と actual process stdout / stderr emission。
   - retry や progress report。
 
 ## 境界
@@ -36,13 +38,13 @@ ID: "iss-00020"
   - seam owner は `app`。
   - front-stage 差分は explicit target normalization に閉じ、post-`TargetSet` pipeline は command-neutral とする。
   - `ChangedClassInventory` の producer は `analyze` に保ち、generate path では empty changed-file context を渡して zero inventory を作らせる。
-  - non-usage outcome の `RunSummary` / `CommandResult` は `report` owner とする。
+  - non-usage outcome の `RunSummary` / `CommandResult` / `stdout_text` / `stderr_text` は `report` owner とする。
 - Ask:
   - generate path に post-`TargetSet` の command-specific branch を足したい場合。
   - changed class 数の `0` を `app` 自身で直接合成したい場合。
 - Never:
   - `cli` usage error をこの issue に流し込まない。
-  - `report` が作った summary / exit code を `app` で再解釈しない。
+  - `report` が作った summary / exit code / stream material を `app` で再解釈しない。
   - `TargetSet.observations` を欠落させたまま `report` に渡さない。
 
 ## 制約
@@ -59,7 +61,7 @@ ID: "iss-00020"
   - When:
     - `app.generate-wiring` を実行する。
   - Then:
-    - explicit target normalization の後は common pipeline を canonical order で通り、`.puml` artifact、stdout summary、exit code が観測できる。
+    - explicit target normalization の後は common pipeline を canonical order で通り、`.puml` artifact、`ReportRunResult.stdout_text` summary、exit code が観測できる。
   - 観測点:
     - generate transcript、filesystem observation、stdout summary review、および auto naming / `--output` path resolution が end-to-end で保たれることの review。
 - AC-002:
@@ -81,7 +83,7 @@ ID: "iss-00020"
   - When:
     - `app.generate-wiring` を実行する。
   - Then:
-    - usage error 以外の non-zero outcome は upstream / `report` owner のまま返り、`app` は summary / exit code を再分類しない。
+    - usage error 以外の non-zero outcome は upstream / `report` owner のまま返り、`app` は summary / exit code / stream material を再分類しない。
   - 観測点:
     - failure transcript review、`iss-00006` / `iss-00019` との cross-check。
 
@@ -104,7 +106,7 @@ ID: "iss-00020"
   - 条件:
     - `report` が `output_write_failure` を返す。
   - 期待:
-    - `.puml` success を偽装せず、non-zero `CommandResult` をそのまま返す。
+    - `.puml` success を偽装せず、report-owned `ReportRunResult` をそのまま返し、その nested `command_result` の non-zero outcome を保持する。
   - 観測点:
     - output write failure review。
 
