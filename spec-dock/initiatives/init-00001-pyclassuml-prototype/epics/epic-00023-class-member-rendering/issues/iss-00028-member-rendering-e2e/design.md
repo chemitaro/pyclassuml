@@ -131,11 +131,18 @@ manual --> cli
       - `build/manual-tests/pyclassuml-manual-env/tmp/iss-00028-diff-worktree/` の disposable copy に対して diff path を実行する
       - source manual env への永続書き込みは `out/iss-00028/` と disposable copy の作成/削除だけに限定する
   - acceptance observations:
-    - class body
-    - method signatures
-    - field association
-    - inherits relation
-    - warnings
+    - manual generate:
+      - class body
+      - method signatures
+      - field association via alias `-->` arrows
+      - inherits relation via alias `--|>` arrows
+      - warnings
+    - manual diff:
+      - changed class body
+      - selection-outside / unresolved warnings
+      - stdout summary counters
+    - tracked diff:
+      - relation arrows on the diff path
 
 ## Sequence Delta（必要時）
 - changed interaction:

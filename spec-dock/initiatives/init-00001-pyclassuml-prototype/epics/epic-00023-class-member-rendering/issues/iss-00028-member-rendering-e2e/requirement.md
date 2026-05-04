@@ -104,7 +104,9 @@ ID: "iss-00028"
   - When:
     - manual `generate` / `diff` を実行する。
   - Then:
-    - `domain`, `api`, `application`, `infra` をまたぐ class body / relation / warnings が観測できる。
+    - manual `generate` で `domain`, `api`, `application`, `infra` をまたぐ class body / relation / warnings が観測できる。
+    - manual `diff` で disposable copy の changed class body、selection-outside / unresolved warning、stdout summary が観測できる。
+    - diff path の relation arrow は tracked diff integration test で観測できる。
   - 観測点:
     - manual output `.puml`
 - AC-004:
@@ -115,7 +117,9 @@ ID: "iss-00028"
   - When:
     - integration / manual acceptance を行う。
   - Then:
-    - warning が summary / failure handoff / `.puml` context から確認できる。
+    - unresolved / ambiguous warning は CLI stdout summary の diagnostics で確認できる。
+    - `.puml` は warning source の class body context を補助的に確認する。
+    - failure handoff はこの issue では必須にしない。warning-only success を acceptance とする。
   - 観測点:
     - tracked tests、manual output、CLI stderr / stdout summary
 

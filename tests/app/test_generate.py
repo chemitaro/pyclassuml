@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import re
 
 import pytest
 
@@ -19,6 +20,22 @@ from pyclassuml.report import ReportInputs
 
 
 TIMESTAMP = datetime(2026, 5, 4, 12, 34, 56)
+
+
+def class_alias(plantuml_text: str, class_name: str) -> str:
+    match = re.search(rf'^\s*class "{re.escape(class_name)}" as (c\d+)', plantuml_text, re.MULTILINE)
+    assert match is not None, f"missing alias declaration for {class_name}"
+    return match.group(1)
+
+
+def class_aliases(plantuml_text: str, class_name: str) -> list[str]:
+    return re.findall(rf'^\s*class "{re.escape(class_name)}" as (c\d+)', plantuml_text, re.MULTILINE)
+
+
+def assert_relation(plantuml_text: str, source_name: str, arrow: str, target_name: str) -> None:
+    source_alias = class_alias(plantuml_text, source_name)
+    target_alias = class_alias(plantuml_text, target_name)
+    assert f"{source_alias} {arrow} {target_alias}" in plantuml_text
 
 
 def write_file(path: Path, text: str = "") -> Path:
@@ -176,6 +193,104 @@ def test_generate_renders_typed_relation_arrows_without_duplicate_pydantic_fallb
     assert "c004 ..> c005" in output
     assert " : " not in output
     assert "pydantic_forward_ref" not in output
+
+
+def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_relations(
+    tmp_path: Path,
+) -> None:
+    write_file(
+        tmp_path / "pkg" / "models.py",
+        "\n".join(
+            [
+                "from dataclasses import dataclass",
+                "from typing import Protocol",
+                "",
+                "class Exception:",
+                "    pass",
+                "",
+                "class BaseModel:",
+                "    pass",
+                "",
+                "class AddressDto:",
+                "    street: str",
+                "",
+                "class CheckoutLineDto:",
+                "    sku: str",
+                "",
+                "class CheckoutRequest(BaseModel):",
+                '    shipping_address: "AddressDto"',
+                '    lines: list["CheckoutLineDto"]',
+                '    provider_context: "GhostPaymentProviderContext"',
+                "    duplicate: Duplicate",
+                "",
+                "@dataclass",
+                "class OrderDraft:",
+                "    request: CheckoutRequest",
+                "",
+                '    def confirm(self) -> "Authorization":',
+                "        return Authorization()",
+                "",
+                "class PaymentGateway(Protocol):",
+                '    def authorize(self, request: CheckoutRequest) -> "Authorization":',
+                "        ...",
+                "",
+                "class Authorization:",
+                "    token: str",
+                "",
+                "class CheckoutError(Exception):",
+                "    code: str",
+                "",
+                "class Catalog:",
+                "    class Entry:",
+                "        sku: str",
+                '    current: "Entry"',
+            ]
+        ),
+    )
+    write_file(tmp_path / "pkg" / "alpha.py", "class Duplicate:\n    pass\n")
+    write_file(tmp_path / "pkg" / "beta.py", "class Duplicate:\n    pass\n")
+
+    result = run_generate(
+        generate_request(tmp_path, ("pkg/**/*.py",), output=Path("member-rendering.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (tmp_path / "member-rendering.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "warning_only_success"
+    assert result.command_result.exit_code == 0
+    assert 'class "CheckoutRequest" as ' in output
+    assert 'class "AddressDto" as ' in output
+    assert 'class "CheckoutLineDto" as ' in output
+    assert "+ shipping_address: 'AddressDto'" in output
+    assert "+ lines: list['CheckoutLineDto']" in output
+    assert "+ provider_context: 'GhostPaymentProviderContext'" in output
+    assert "+ request: CheckoutRequest" in output
+    assert "+ confirm(): 'Authorization'" in output
+    assert "+ authorize(request: CheckoutRequest): 'Authorization'" in output
+    assert "+ code: str" in output
+    assert "+ current: 'Entry'" in output
+    assert "+ sku: str" in output
+    assert_relation(output, "CheckoutRequest", "-->", "AddressDto")
+    assert_relation(output, "CheckoutRequest", "-->", "CheckoutLineDto")
+    assert_relation(output, "CheckoutRequest", "--|>", "BaseModel")
+    assert_relation(output, "OrderDraft", "-->", "CheckoutRequest")
+    assert_relation(output, "OrderDraft", "..>", "Authorization")
+    assert_relation(output, "PaymentGateway", "..>", "Authorization")
+    assert_relation(output, "PaymentGateway", "..>", "CheckoutRequest")
+    assert_relation(output, "CheckoutError", "--|>", "Exception")
+    assert_relation(output, "Catalog", "-->", "Entry")
+    checkout_request_alias = class_alias(output, "CheckoutRequest")
+    duplicate_aliases = class_aliases(output, "Duplicate")
+    assert len(duplicate_aliases) == 2
+    for duplicate_alias in duplicate_aliases:
+        assert f"{checkout_request_alias} --> {duplicate_alias}" not in output
+        assert f"{checkout_request_alias} ..> {duplicate_alias}" not in output
+    assert "outcome: warning_only_success" in result.stdout_text
+    assert "warning_count: 3" in result.stdout_text
+    assert "warning:typed_relation_unresolved:" in result.stdout_text
+    assert "target_name=GhostPaymentProviderContext" in result.stdout_text
+    assert "warning:typed_relation_ambiguous:" in result.stdout_text
+    assert "target_name=Duplicate" in result.stdout_text
 
 
 def test_zero_changed_inventory_is_built_from_empty_context_and_handed_to_report(

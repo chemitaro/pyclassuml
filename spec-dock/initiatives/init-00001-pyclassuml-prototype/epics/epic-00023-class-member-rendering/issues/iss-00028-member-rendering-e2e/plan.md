@@ -23,7 +23,7 @@ ID: "iss-00028"
   - EC-002 unresolved warning acceptance
   - EC-003 dataclass / Protocol / exception / nested / ambiguous coverage
 - 制約:
-  - no manual env mutation
+  - no manual source fixture / tracked mutation; ignored `out/` evidence and disposable `tmp/` worktree writes are allowed
   - deterministic tracked assertions
   - CLI surface unchanged
 
@@ -272,7 +272,14 @@ ID: "iss-00028"
     - `git -C build/manual-tests/pyclassuml-manual-env status --short --branch`
     - expected: clean except branch header
   - manual `generate` run
+    - command:
+      - `uv run pyclassuml generate --cwd /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/pyclassuml-manual-env --project-root . --package-root . --scope-root . --output /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/pyclassuml-manual-env/out/iss-00028/generate.puml retail_domain`
   - manual `diff` run
+    - command:
+      - `uv run pyclassuml diff --cwd /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/pyclassuml-manual-env/tmp/iss-00028-diff-worktree --project-root . --package-root . --scope-root . --base base --current-state working-tree --output /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/pyclassuml-manual-env/out/iss-00028/diff.puml`
+  - manual `ambiguous` run
+    - command:
+      - `uv run pyclassuml generate --cwd /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/pyclassuml-manual-env/tmp/iss-00028-diff-worktree --project-root . --package-root . --scope-root . --output /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/pyclassuml-manual-env/out/iss-00028/ambiguous.puml retail_domain`
   - manual Pydantic evidence check:
     - `retail_domain/api/schemas.py` の `CheckoutRequest(BaseModel)` が field body に現れること
     - `class "CheckoutRequest" as cNNN` / `class "AddressDto" as cNNN` / `class "CheckoutLineDto" as cNNN` の alias 宣言があること
@@ -299,9 +306,9 @@ ID: "iss-00028"
     - expected diff `.puml` evidence:
       - `CheckoutService` class body に `+ last_order: Order | None` がある
       - `CheckoutService` class body に `+ preview_total(order: Order): Decimal` がある
-      - `class "CheckoutService" as cNNN` / `class "Order" as cNNN` の alias 宣言がある
-      - 上記 alias 間に `-->` の association arrow がある
-      - `Decimal` が selected class として存在する場合のみ、`..>` uses arrow を観測結果に記録する
+      - `class "CheckoutService" as cNNN` の alias 宣言がある
+      - external `Order` / `Decimal` は diff path では selection outside / unresolved warning として観測し、manual diff では arrow を必須にしない
+      - relation arrow の diff path acceptance は S01 の tracked diff fixture で確認する
       - stdout summary に `seed_file_count` と `changed_class_count` がある
     - 実行後は disposable copy を削除してよい
     - source manual env の post-clean check で clean のまま戻ったことを確認する
@@ -311,7 +318,7 @@ ID: "iss-00028"
     - source manual env の `.gitignore` は `out/` と `tmp/` を ignore しているため、これらは post-clean check の汚れにならない
     - repo root 側の `git status --short` には manual env の生成物を出さない
 - report update:
-  - absolute command、観測結果、warning 内容、manual env pre/post cleanliness を記録する
+  - absolute command、観測結果、stdout summary diagnostics、`.puml` context、manual env pre/post cleanliness を記録する
 
 ### S90 — docs impact resolution / docs refresh
 - 対象:

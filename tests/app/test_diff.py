@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import re
 import subprocess
 
 import pytest
@@ -20,6 +21,18 @@ from pyclassuml.report import ReportInputs
 
 
 TIMESTAMP = datetime(2026, 5, 4, 12, 34, 56)
+
+
+def class_alias(plantuml_text: str, class_name: str) -> str:
+    match = re.search(rf'^\s*class "{re.escape(class_name)}" as (c\d+)', plantuml_text, re.MULTILINE)
+    assert match is not None, f"missing alias declaration for {class_name}"
+    return match.group(1)
+
+
+def assert_relation(plantuml_text: str, source_name: str, arrow: str, target_name: str) -> None:
+    source_alias = class_alias(plantuml_text, source_name)
+    target_alias = class_alias(plantuml_text, target_name)
+    assert f"{source_alias} {arrow} {target_alias}" in plantuml_text
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -320,6 +333,61 @@ def test_happy_path_writes_artifact_summary_and_does_not_emit_process_streams(
     assert result.stderr_text == ""
     assert captured.out == ""
     assert captured.err == ""
+
+
+def test_diff_member_rendering_e2e_covers_changed_class_body_and_alias_relations(
+    tmp_path: Path,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(
+        repo / "pkg" / "checkout.py",
+        "\n".join(
+            [
+                "class CheckoutSnapshot:",
+                "    request_id: str",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "checkout.py",
+        "\n".join(
+            [
+                "class CheckoutSnapshot:",
+                "    request_id: str",
+                '    order: "Order"',
+                "",
+                '    def submit(self, order: "Order") -> "Receipt":',
+                "        return Receipt()",
+                "",
+                "class Order:",
+                "    order_id: str",
+                "",
+                "class Receipt:",
+                "    receipt_id: str",
+            ]
+        ),
+    )
+
+    result = run_diff(
+        diff_request(repo, output=Path("member-diff.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "member-diff.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert 'class "CheckoutSnapshot" as ' in output
+    assert 'class "Order" as ' in output
+    assert 'class "Receipt" as ' in output
+    assert "+ request_id: str" in output
+    assert "+ order: 'Order'" in output
+    assert "+ submit(order: 'Order'): 'Receipt'" in output
+    assert_relation(output, "CheckoutSnapshot", "-->", "Order")
+    assert_relation(output, "CheckoutSnapshot", "..>", "Receipt")
+    assert "seed_file_count: 1" in result.stdout_text
+    assert "changed_class_count: 3" in result.stdout_text
 
 
 def test_working_tree_include_untracked_includes_untracked_python_in_seed_changed_and_report(
