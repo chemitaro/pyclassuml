@@ -454,6 +454,8 @@ def _relation_arrow(relation_type: RelationType) -> str:
     return {
         "inherits": "-up-|>",
         "realizes": "..up|>",
+        "composition": "*--",
+        "aggregation": "o--",
         "association": "-->",
         "uses": "..>",
     }[relation_type]

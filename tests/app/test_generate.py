@@ -189,10 +189,45 @@ def test_generate_renders_typed_relation_arrows_without_duplicate_pydantic_fallb
     assert "+ submit(receipt: Receipt): Receipt" in output
     assert "c004 -up-|> c001" in output
     assert "c004 -up-|> c002" in output
-    assert "c004 --> c003" in output
+    assert "c004 *-- c003" in output
+    assert "*-->" not in output
     assert "c004 ..> c005" in output
     assert " : " not in output
     assert "pydantic_forward_ref" not in output
+
+
+def test_generate_renders_sqlalchemy_mapped_once_without_field_ownership_relation(
+    tmp_path: Path,
+) -> None:
+    write_file(
+        tmp_path / "pkg" / "models.py",
+        "\n".join(
+            [
+                "from sqlalchemy.orm import Mapped",
+                "",
+                "class Account:",
+                "    pass",
+                "",
+                "class User:",
+                "    account: Mapped[Account]",
+            ]
+        ),
+    )
+
+    result = run_generate(
+        generate_request(tmp_path, ("pkg/models.py",), output=Path("sqlalchemy-mapped.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (tmp_path / "sqlalchemy-mapped.puml").read_text(encoding="utf-8")
+    user_alias = class_alias(output, "User")
+    account_alias = class_alias(output, "Account")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert f"{user_alias} ..> {account_alias}" in output
+    assert f"{user_alias} --> {account_alias}" not in output
+    assert f"{user_alias} *-- {account_alias}" not in output
+    assert output.count(f"{user_alias} ..> {account_alias}") == 1
 
 
 def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_relations(
@@ -273,18 +308,20 @@ def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_re
     assert "+ code: str" in output
     assert "+ current: 'Entry'" in output
     assert "+ sku: str" in output
-    assert_relation(output, "CheckoutRequest", "-->", "AddressDto")
-    assert_relation(output, "CheckoutRequest", "-->", "CheckoutLineDto")
+    assert_relation(output, "CheckoutRequest", "*--", "AddressDto")
+    assert_relation(output, "CheckoutRequest", "o--", "CheckoutLineDto")
     assert 'class "PaymentGateway" as ' in output
     assert "<<Protocol>>" in output
     assert_relation(output, "CheckoutRequest", "-up-|>", "BaseModel")
-    assert_relation(output, "OrderDraft", "-->", "CheckoutRequest")
+    assert_relation(output, "OrderDraft", "*--", "CheckoutRequest")
     assert_relation(output, "OrderDraft", "..>", "Authorization")
     assert_relation(output, "PaymentGateway", "..>", "Authorization")
     assert_relation(output, "PaymentGateway", "..>", "CheckoutRequest")
     assert_relation(output, "SqlPaymentGateway", "..up|>", "PaymentGateway")
     assert_relation(output, "CheckoutError", "-up-|>", "Exception")
-    assert_relation(output, "Catalog", "-->", "Entry")
+    assert_relation(output, "Catalog", "*--", "Entry")
+    assert "*-->" not in output
+    assert "o-->" not in output
     checkout_request_alias = class_alias(output, "CheckoutRequest")
     duplicate_aliases = class_aliases(output, "Duplicate")
     assert len(duplicate_aliases) == 2

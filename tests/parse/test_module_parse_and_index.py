@@ -205,7 +205,7 @@ def test_class_members_are_extracted_in_source_order_with_method_modifiers(tmp_p
     )
     assert semantic_references(result.parsed_modules[0].class_references) == (
         ClassReference("pkg/order.py:Order", "Base", "class_base", "base"),
-        ClassReference("pkg/order.py:Order", "Customer", "field_annotation", "customer"),
+        ClassReference("pkg/order.py:Order", "Customer", "field_annotation", "customer", "direct"),
         ClassReference("pkg/order.py:Order", "Decimal", "method_return_annotation", "total"),
         ClassReference("pkg/order.py:Order", "Key", "method_parameter_annotation", "load.key"),
         ClassReference("pkg/order.py:Order", "Order", "method_return_annotation", "load"),
@@ -385,8 +385,8 @@ def test_init_direct_self_assignments_create_instance_fields_and_semantic_refs(t
     assert semantic_references(result.parsed_modules[0].class_references) == (
         ClassReference("pkg/order.py:Order", "Customer", "method_parameter_annotation", "__init__.customer"),
         ClassReference("pkg/order.py:Order", "Item", "method_parameter_annotation", "__init__.items"),
-        ClassReference("pkg/order.py:Order", "Customer", "init_field_annotation", "customer"),
-        ClassReference("pkg/order.py:Order", "Item", "init_field_annotation", "items"),
+        ClassReference("pkg/order.py:Order", "Customer", "init_field_annotation", "customer", "direct"),
+        ClassReference("pkg/order.py:Order", "Item", "init_field_annotation", "items", "collection"),
     )
     assert "bad" not in {member.name for member in result.parsed_modules[0].members}
     assert not any(
@@ -443,8 +443,8 @@ def test_init_vararg_and_kwarg_annotations_feed_instance_fields_and_refs(tmp_pat
     assert semantic_references(result.parsed_modules[0].class_references) == (
         ClassReference("pkg/order.py:Order", "Item", "method_parameter_annotation", "__init__.items"),
         ClassReference("pkg/order.py:Order", "Metadata", "method_parameter_annotation", "__init__.metadata"),
-        ClassReference("pkg/order.py:Order", "Item", "init_field_annotation", "items"),
-        ClassReference("pkg/order.py:Order", "Metadata", "init_field_annotation", "metadata"),
+        ClassReference("pkg/order.py:Order", "Item", "init_field_annotation", "items", "direct"),
+        ClassReference("pkg/order.py:Order", "Metadata", "init_field_annotation", "metadata", "direct"),
     )
 
 
@@ -501,7 +501,7 @@ def test_init_direct_self_assignments_create_fields_for_non_name_rhs_without_par
     )
     assert semantic_references(result.parsed_modules[0].class_references) == (
         ClassReference("pkg/order.py:Order", "Id", "method_parameter_annotation", "__init__.id"),
-        ClassReference("pkg/order.py:Order", "Id", "init_field_annotation", "param_id"),
+        ClassReference("pkg/order.py:Order", "Id", "init_field_annotation", "param_id", "direct"),
     )
 
 
@@ -572,9 +572,9 @@ def test_init_direct_self_assignments_under_while_and_try_create_instance_fields
         for reference in result.parsed_modules[0].class_references
         if reference.reference_kind == "init_field_annotation"
     ) == (
-        ClassReference("pkg/order.py:Order", "RetryPolicy", "init_field_annotation", "retry"),
-        ClassReference("pkg/order.py:Order", "PrimaryItem", "init_field_annotation", "primary"),
-        ClassReference("pkg/order.py:Order", "FallbackItem", "init_field_annotation", "fallback"),
+        ClassReference("pkg/order.py:Order", "RetryPolicy", "init_field_annotation", "retry", "direct"),
+        ClassReference("pkg/order.py:Order", "PrimaryItem", "init_field_annotation", "primary", "direct"),
+        ClassReference("pkg/order.py:Order", "FallbackItem", "init_field_annotation", "fallback", "direct"),
     )
 
 
@@ -783,6 +783,7 @@ def test_raw_class_references_are_ordered_by_source_position_before_lexical_fiel
             target_name="Zed",
             reference_kind="field_annotation",
             reference_owner="zed",
+            annotation_shape="direct",
         ),
         ClassReference(
             source_class_id="pkg/a.py:A",
@@ -980,8 +981,8 @@ def test_whole_string_quoted_container_annotations_emit_member_targets(tmp_path:
         ),
     )
     assert semantic_references(result.parsed_modules[0].class_references) == (
-        ClassReference("pkg/a.py:A", "Item", "field_annotation", "many"),
-        ClassReference("pkg/a.py:A", "Item", "field_annotation", "maybe"),
+        ClassReference("pkg/a.py:A", "Item", "field_annotation", "many", "collection"),
+        ClassReference("pkg/a.py:A", "Item", "field_annotation", "maybe", "optional"),
     )
 
 
@@ -1008,12 +1009,73 @@ def test_semantic_pydantic_container_field_references_include_eligible_base_form
 
     assert semantic_references(result.parsed_modules[0].class_references) == (
         ClassReference("pkg/models.py:Direct", "BaseModel", "class_base", "base"),
-        ClassReference("pkg/models.py:Direct", "Item", "field_annotation", "items"),
-        ClassReference("pkg/models.py:Direct", "Item", "field_annotation", "maybe"),
+        ClassReference("pkg/models.py:Direct", "Item", "field_annotation", "items", "collection"),
+        ClassReference("pkg/models.py:Direct", "Item", "field_annotation", "maybe", "optional"),
         ClassReference("pkg/models.py:Qualified", "pydantic.BaseModel", "class_base", "base"),
-        ClassReference("pkg/models.py:Qualified", "A", "field_annotation", "union"),
-        ClassReference("pkg/models.py:Qualified", "B", "field_annotation", "union"),
+        ClassReference("pkg/models.py:Qualified", "A", "field_annotation", "union", "union"),
+        ClassReference("pkg/models.py:Qualified", "B", "field_annotation", "union", "union"),
     )
+
+
+def test_field_annotation_semantic_references_carry_ownership_shapes_and_skip_mapping_keys(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "models.py",
+        "\n".join(
+            [
+                "from typing import Annotated, Callable, ClassVar, Final, Iterable, Mapping, NotRequired, Optional, Required",
+                "class Order:",
+                "    customer: Customer",
+                "    coupon: Coupon | None",
+                "    source: Card | Invoice",
+                "    lines: list[OrderLine]",
+                "    iterable_lines: Iterable[OrderLine]",
+                "    tuple_lines: tuple[OrderLine, ...]",
+                "    items_by_key: Mapping[ItemKey, Item]",
+                "    annotated_customer: Annotated[Customer, 'primary']",
+                "    class_var_customer: ClassVar[Customer]",
+                "    final_customer: Final[Customer]",
+                "    required_customer: Required[Customer]",
+                "    not_required_customer: NotRequired[Customer]",
+                "    optional_lines: Optional[list[OrderLine]]",
+                "    annotated_lines: Annotated[list[OrderLine], 'primary']",
+                "    nested_mapping: dict[str, list[Item]]",
+                "    callable_customer: Callable[[], Customer]",
+                "    customer_type: type[Customer]",
+                "    boxed_customer: Box[Customer]",
+                "    boxed_optional_customer: Box[Optional[Customer]]",
+                "    boxed_customers: Box[list[Customer]]",
+                "    literal: Literal['Ignored']",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert semantic_references(result.parsed_modules[0].class_references) == (
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "customer", "direct"),
+        ClassReference("pkg/models.py:Order", "Coupon", "field_annotation", "coupon", "optional"),
+        ClassReference("pkg/models.py:Order", "Card", "field_annotation", "source", "union"),
+        ClassReference("pkg/models.py:Order", "Invoice", "field_annotation", "source", "union"),
+        ClassReference("pkg/models.py:Order", "OrderLine", "field_annotation", "lines", "collection"),
+        ClassReference("pkg/models.py:Order", "OrderLine", "field_annotation", "iterable_lines", "collection"),
+        ClassReference("pkg/models.py:Order", "OrderLine", "field_annotation", "tuple_lines", "collection"),
+        ClassReference("pkg/models.py:Order", "Item", "field_annotation", "items_by_key", "mapping_value"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "annotated_customer", "direct"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "class_var_customer", "direct"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "final_customer", "direct"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "required_customer", "direct"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "not_required_customer", "direct"),
+        ClassReference("pkg/models.py:Order", "OrderLine", "field_annotation", "optional_lines", "collection"),
+        ClassReference("pkg/models.py:Order", "OrderLine", "field_annotation", "annotated_lines", "collection"),
+        ClassReference("pkg/models.py:Order", "Item", "field_annotation", "nested_mapping", "collection"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "callable_customer"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "customer_type"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "boxed_customer"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "boxed_optional_customer"),
+        ClassReference("pkg/models.py:Order", "Customer", "field_annotation", "boxed_customers"),
+    )
+    assert not any(reference.target_name == "ItemKey" for reference in semantic_references(result.parsed_modules[0].class_references))
 
 
 def test_annotated_metadata_strings_are_not_annotation_string_references(tmp_path: Path) -> None:
@@ -1196,6 +1258,7 @@ def test_mapped_annotation_references_ignore_typing_wrappers(tmp_path: Path) -> 
         "\n".join(
             [
                 "class A:",
+                "    direct: Mapped[B]",
                 "    optional: Mapped[Optional[B]]",
                 "    union: Mapped[Union[B, C]]",
                 "    annotated: Mapped[Annotated[B, \"primary\"]]",
@@ -1210,6 +1273,7 @@ def test_mapped_annotation_references_ignore_typing_wrappers(tmp_path: Path) -> 
 
     result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
 
+    assert semantic_references(result.parsed_modules[0].class_references) == ()
     assert compatibility_references(result.parsed_modules[0].class_references) == (
         ClassReference(
             source_class_id="pkg/a.py:A",

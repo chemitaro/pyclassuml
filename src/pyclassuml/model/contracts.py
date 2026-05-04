@@ -24,7 +24,8 @@ _SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 _TARGET_PYTHON = re.compile(r"^3\.[0-9]+$")
 _MEMBER_KINDS = frozenset({"field", "method"})
 _MEMBER_VISIBILITIES = frozenset({"public", "protected", "private"})
-_RELATION_TYPES = frozenset({"inherits", "realizes", "association", "uses"})
+_RELATION_TYPES = frozenset({"inherits", "realizes", "composition", "aggregation", "association", "uses"})
+_ANNOTATION_SHAPES = frozenset({"direct", "optional", "union", "collection", "mapping_value"})
 
 
 class CommandName(str, Enum):
@@ -140,7 +141,12 @@ def _ensure_member_visibility(value: object) -> None:
 
 def _ensure_relation_type(value: object) -> None:
     if value not in _RELATION_TYPES:
-        raise ValueError("relation_type must be one of: inherits, realizes, association, uses")
+        raise ValueError("relation_type must be one of: inherits, realizes, composition, aggregation, association, uses")
+
+
+def _ensure_annotation_shape(value: object) -> None:
+    if value is not None and value not in _ANNOTATION_SHAPES:
+        raise ValueError("annotation_shape must be one of: direct, optional, union, collection, mapping_value, None")
 
 
 def _ensure_diagnostics(values: tuple[object, ...], field_name: str) -> None:
@@ -333,12 +339,14 @@ class ClassReference:
     target_name: str
     reference_kind: EvidenceKind
     reference_owner: str
+    annotation_shape: str | None = None
 
     def __post_init__(self) -> None:
         _ensure_non_empty_string(self.source_class_id, "source_class_id")
         _ensure_non_empty_string(self.target_name, "target_name")
         _ensure_non_empty_string(self.reference_kind, "reference_kind")
         _ensure_non_empty_string(self.reference_owner, "reference_owner")
+        _ensure_annotation_shape(self.annotation_shape)
 
 
 @dataclass(frozen=True)

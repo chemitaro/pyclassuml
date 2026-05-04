@@ -384,7 +384,7 @@ def test_diff_member_rendering_e2e_covers_changed_class_body_and_alias_relations
     assert "+ request_id: str" in output
     assert "+ order: 'Order'" in output
     assert "+ submit(order: 'Order'): 'Receipt'" in output
-    assert_relation(output, "CheckoutSnapshot", "-->", "Order")
+    assert_relation(output, "CheckoutSnapshot", "*--", "Order")
     assert_relation(output, "CheckoutSnapshot", "..>", "Receipt")
     assert "seed_file_count: 1" in result.stdout_text
     assert "changed_class_count: 3" in result.stdout_text

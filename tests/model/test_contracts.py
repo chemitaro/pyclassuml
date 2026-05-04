@@ -249,7 +249,7 @@ def test_selected_relation_contract_is_shared_and_restricts_relation_type() -> N
     inventory = SelectedRelations(relations=[relation])
 
     assert inventory.relations == (relation,)
-    for relation_type in ("inherits", "realizes", "association", "uses"):
+    for relation_type in ("inherits", "realizes", "composition", "aggregation", "association", "uses"):
         assert SelectedRelation("pkg/a.py:A", "pkg/b.py:B", relation_type, "evidence")
 
     with pytest.raises(ValueError):
@@ -319,6 +319,13 @@ def test_class_reference_contract_is_public_and_validated() -> None:
         reference_kind="annotation_subscript",
         reference_owner="Owner",
     )
+    field_reference = ClassReference(
+        source_class_id="pkg/a.py:A",
+        target_name="B",
+        reference_kind="field_annotation",
+        reference_owner="field",
+        annotation_shape="collection",
+    )
 
     parsed_module = ParsedModule(
         module_path=Path("pkg/a.py"),
@@ -327,6 +334,9 @@ def test_class_reference_contract_is_public_and_validated() -> None:
     )
 
     assert parsed_module.class_references == (reference,)
+    assert field_reference.annotation_shape == "collection"
+    for annotation_shape in ("direct", "optional", "union", "collection", "mapping_value", None):
+        assert ClassReference("pkg/a.py:A", "B", "field_annotation", "field", annotation_shape)
 
     for field in ("source_class_id", "target_name", "reference_kind", "reference_owner"):
         kwargs = {
@@ -345,6 +355,9 @@ def test_class_reference_contract_is_public_and_validated() -> None:
             classes=["pkg/a.py:A"],
             class_references=["not-a-reference"],
         )
+
+    with pytest.raises(ValueError):
+        ClassReference("pkg/a.py:A", "B", "field_annotation", "field", "mapped_key")
 
 
 @pytest.mark.parametrize(

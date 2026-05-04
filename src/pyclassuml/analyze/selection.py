@@ -25,8 +25,10 @@ from pyclassuml.parse import ModuleIndex
 _RELATION_TYPE_PRIORITY = {
     "inherits": 0,
     "realizes": 0,
-    "association": 1,
-    "uses": 2,
+    "composition": 1,
+    "aggregation": 2,
+    "association": 3,
+    "uses": 4,
 }
 _EVIDENCE_KIND_PRIORITY = {
     "inherits": {
@@ -34,6 +36,14 @@ _EVIDENCE_KIND_PRIORITY = {
     },
     "realizes": {
         "class_base": 0,
+    },
+    "composition": {
+        "field_annotation": 0,
+        "init_field_annotation": 1,
+    },
+    "aggregation": {
+        "field_annotation": 0,
+        "init_field_annotation": 1,
     },
     "association": {
         "field_annotation": 0,
@@ -244,6 +254,10 @@ def _relation_type_for_reference(reference: ClassReference) -> str | None:
     if reference.reference_kind == "class_base" and reference.reference_owner == "base":
         return "inherits"
     if reference.reference_kind in {"field_annotation", "init_field_annotation"}:
+        if reference.annotation_shape == "direct":
+            return "composition"
+        if reference.annotation_shape in {"optional", "union", "collection", "mapping_value"}:
+            return "aggregation"
         return "association"
     if reference.reference_kind in {"method_parameter_annotation", "method_return_annotation"}:
         return "uses"

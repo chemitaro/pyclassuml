@@ -559,7 +559,14 @@ def test_render_plantuml_text_outputs_visibility_modifiers_and_member_escaping()
 
 
 def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
-    class_ids = ("pkg/models.py:A", "pkg/models.py:B", "pkg/models.py:C", "pkg/models.py:D")
+    class_ids = (
+        "pkg/models.py:A",
+        "pkg/models.py:B",
+        "pkg/models.py:C",
+        "pkg/models.py:D",
+        "pkg/models.py:E",
+        "pkg/models.py:F",
+    )
     result = render_uml_document(
         parsed_modules=(parsed_module("pkg/models.py", *class_ids),),
         module_index=module_index(*class_ids),
@@ -568,8 +575,10 @@ def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
             relations=(
                 relation("pkg/models.py:A", "pkg/models.py:B", relation_type="inherits"),
                 relation("pkg/models.py:B", "pkg/models.py:C", relation_type="realizes"),
-                relation("pkg/models.py:C", "pkg/models.py:D", relation_type="association"),
-                relation("pkg/models.py:D", "pkg/models.py:A", relation_type="uses"),
+                relation("pkg/models.py:C", "pkg/models.py:D", relation_type="composition"),
+                relation("pkg/models.py:D", "pkg/models.py:E", relation_type="aggregation"),
+                relation("pkg/models.py:E", "pkg/models.py:F", relation_type="association"),
+                relation("pkg/models.py:F", "pkg/models.py:A", relation_type="uses"),
             )
         ),
         sqlalchemy_hints=SqlalchemyEnrichmentHints(),
@@ -582,9 +591,13 @@ def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
     assert relation_lines == (
         "c001 -up-|> c002",
         "c002 ..up|> c003",
-        "c003 --> c004",
-        "c004 ..> c001",
+        "c003 *-- c004",
+        "c004 o-- c005",
+        "c005 --> c006",
+        "c006 ..> c001",
     )
+    assert "*-->" not in result.plantuml_text.text
+    assert "o-->" not in result.plantuml_text.text
 
 
 def test_compose_and_render_protocol_class_stereotype_from_explicit_protocol_base() -> None:

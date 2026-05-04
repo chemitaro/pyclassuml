@@ -800,6 +800,11 @@ def _semantic_annotation_references(
     annotation_text, _ = annotation_text_cache.text(annotation)
     if annotation_text is None:
         return ()
+    targets = (
+        _semantic_annotation_targets(annotation)
+        if reference_kind in {"field_annotation", "init_field_annotation"}
+        else tuple((target_name, None) for target_name in _semantic_class_like_names(annotation))
+    )
     return tuple(
         _PositionedReference(
             reference=ClassReference(
@@ -807,11 +812,12 @@ def _semantic_annotation_references(
                 target_name=target_name,
                 reference_kind=reference_kind,
                 reference_owner=reference_owner,
+                annotation_shape=shape,
             ),
             lineno=lineno,
             col_offset=col_offset,
         )
-        for target_name in _semantic_class_like_names(annotation)
+        for target_name, shape in targets
     )
 
 
@@ -1100,6 +1106,86 @@ def _semantic_class_like_names(node: ast.AST) -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
+def _semantic_annotation_targets(node: ast.AST) -> tuple[tuple[str, str | None], ...]:
+    targets: set[tuple[str, str | None]] = set()
+
+    def collect(child: ast.AST, shape: str | None) -> None:
+        parsed_string = _string_annotation_expression(child)
+        if parsed_string is not None:
+            collect(parsed_string, shape)
+            return
+
+        if isinstance(child, ast.BinOp) and isinstance(child.op, ast.BitOr):
+            operands = _pep604_union_operands(child)
+            next_shape = "optional" if any(_is_none_annotation(operand) for operand in operands) else "union"
+            for operand in operands:
+                if not _is_none_annotation(operand):
+                    collect(operand, _annotation_shape(shape, next_shape))
+            return
+
+        if isinstance(child, ast.Subscript):
+            owner = _terminal_name(child.value)
+            if owner == "Literal":
+                return
+            if owner == "Annotated":
+                collect(_first_subscript_arg(child.slice), shape)
+                return
+            if owner in _TRANSPARENT_TYPING_WRAPPER_NAMES:
+                collect(_first_subscript_arg(child.slice), shape)
+                return
+            if owner in _FRAMEWORK_OWNED_ANNOTATION_WRAPPER_NAMES:
+                return
+            if owner == "Optional":
+                collect(_first_subscript_arg(child.slice), _annotation_shape(shape, "optional"))
+                return
+            if owner == "Union":
+                args = _subscript_args(child.slice)
+                next_shape = "optional" if any(_is_none_annotation(arg) for arg in args) else "union"
+                for arg in args:
+                    if not _is_none_annotation(arg):
+                        collect(arg, _annotation_shape(shape, next_shape))
+                return
+            if owner in _MAPPING_TYPING_NAMES:
+                args = _subscript_args(child.slice)
+                if len(args) >= 2:
+                    collect(args[1], _annotation_shape(shape, "mapping_value"))
+                return
+            if owner in _COLLECTION_TYPING_NAMES:
+                for arg in _subscript_args(child.slice):
+                    if not _is_ellipsis_annotation(arg):
+                        collect(arg, _annotation_shape(shape, "collection"))
+                return
+            collect(child.slice, None)
+            return
+
+        dotted_name = _dotted_name(child)
+        if dotted_name is not None:
+            if _is_class_like_target(dotted_name) and _terminal_name(child) not in _TYPING_WRAPPER_NAMES:
+                targets.add((dotted_name, shape))
+            return
+
+        for grandchild in ast.iter_child_nodes(child):
+            collect(grandchild, shape)
+
+    collect(node, "direct")
+    return tuple(sorted(targets))
+
+
+def _annotation_shape(current_shape: str | None, next_shape: str) -> str | None:
+    if current_shape is None:
+        return None
+    return next_shape
+
+
+def _string_annotation_expression(node: ast.AST) -> ast.AST | None:
+    if not isinstance(node, ast.Constant) or not isinstance(node.value, str) or not node.value:
+        return None
+    try:
+        return ast.parse(node.value, mode="eval").body
+    except SyntaxError:
+        return None
+
+
 def _semantic_class_like_names_from_string(value: str) -> tuple[str, ...]:
     try:
         expression = ast.parse(value, mode="eval").body
@@ -1112,6 +1198,56 @@ def _is_class_like_target(value: str) -> bool:
     return bool(value) and value.rsplit(".", 1)[-1][:1].isupper()
 
 
+def _subscript_args(node: ast.AST) -> tuple[ast.AST, ...]:
+    if isinstance(node, ast.Tuple):
+        return tuple(node.elts)
+    return (node,)
+
+
+def _pep604_union_operands(node: ast.AST) -> tuple[ast.AST, ...]:
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return (*_pep604_union_operands(node.left), *_pep604_union_operands(node.right))
+    return (node,)
+
+
+def _is_none_annotation(node: ast.AST) -> bool:
+    return (
+        (isinstance(node, ast.Constant) and node.value is None)
+        or (isinstance(node, ast.Name) and node.id == "None")
+        or (isinstance(node, ast.Constant) and node.value == "None")
+    )
+
+
+def _is_ellipsis_annotation(node: ast.AST) -> bool:
+    return isinstance(node, ast.Constant) and node.value is Ellipsis
+
+
+_TRANSPARENT_TYPING_WRAPPER_NAMES = frozenset({"ClassVar", "Final", "Required", "NotRequired"})
+_FRAMEWORK_OWNED_ANNOTATION_WRAPPER_NAMES = frozenset({"Mapped"})
+_COLLECTION_TYPING_NAMES = frozenset(
+    {
+        "AbstractSet",
+        "AsyncIterable",
+        "AsyncIterator",
+        "Collection",
+        "Deque",
+        "FrozenSet",
+        "Iterable",
+        "Iterator",
+        "List",
+        "MutableSequence",
+        "MutableSet",
+        "Sequence",
+        "Set",
+        "Tuple",
+        "deque",
+        "frozenset",
+        "list",
+        "set",
+        "tuple",
+    }
+)
+_MAPPING_TYPING_NAMES = frozenset({"DefaultDict", "Dict", "Mapping", "MutableMapping", "OrderedDict", "dict"})
 _TYPING_WRAPPER_NAMES = frozenset(
     {
         "Annotated",

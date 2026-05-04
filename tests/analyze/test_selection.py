@@ -28,12 +28,14 @@ def reference(
     target_name: str,
     reference_kind: str,
     reference_owner: str,
+    annotation_shape: str | None = None,
 ) -> ClassReference:
     return ClassReference(
         source_class_id=source_class_id,
         target_name=target_name,
         reference_kind=reference_kind,
         reference_owner=reference_owner,
+        annotation_shape=annotation_shape,
     )
 
 
@@ -304,7 +306,7 @@ def test_typed_relations_classify_base_field_and_method_references() -> None:
         ),
         class_references=(
             reference("pkg/models.py:Order", "Base", "class_base", "base"),
-            reference("pkg/models.py:Order", "Customer", "field_annotation", "customer"),
+            reference("pkg/models.py:Order", "Customer", "field_annotation", "customer", "direct"),
             reference(
                 "pkg/models.py:Order",
                 "Receipt",
@@ -318,8 +320,100 @@ def test_typed_relations_classify_base_field_and_method_references() -> None:
 
     assert result.selected_relations.relations == (
         SelectedRelation("pkg/models.py:Order", "pkg/models.py:Base", "inherits", "class_base"),
-        SelectedRelation("pkg/models.py:Order", "pkg/models.py:Customer", "association", "field_annotation"),
+        SelectedRelation("pkg/models.py:Order", "pkg/models.py:Customer", "composition", "field_annotation"),
         SelectedRelation("pkg/models.py:Order", "pkg/models.py:Receipt", "uses", "method_return_annotation"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_field_annotation_shapes_classify_composition_aggregation_and_method_uses() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        classes=(
+            "pkg/models.py:Customer",
+            "pkg/models.py:Coupon",
+            "pkg/models.py:Item",
+            "pkg/models.py:Order",
+            "pkg/models.py:OrderLine",
+            "pkg/models.py:Receipt",
+        ),
+        class_references=(
+            reference("pkg/models.py:Order", "Customer", "field_annotation", "customer", "direct"),
+            reference("pkg/models.py:Order", "Coupon", "field_annotation", "coupon", "optional"),
+            reference("pkg/models.py:Order", "OrderLine", "field_annotation", "lines", "collection"),
+            reference("pkg/models.py:Order", "Item", "field_annotation", "items_by_key", "mapping_value"),
+            reference("pkg/models.py:Order", "Receipt", "method_return_annotation", "submit"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Order", "pkg/models.py:Coupon", "aggregation", "field_annotation"),
+        SelectedRelation("pkg/models.py:Order", "pkg/models.py:Customer", "composition", "field_annotation"),
+        SelectedRelation("pkg/models.py:Order", "pkg/models.py:Item", "aggregation", "field_annotation"),
+        SelectedRelation("pkg/models.py:Order", "pkg/models.py:OrderLine", "aggregation", "field_annotation"),
+        SelectedRelation("pkg/models.py:Order", "pkg/models.py:Receipt", "uses", "method_return_annotation"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_unknown_generic_field_target_falls_back_to_association_not_composition() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        classes=("pkg/models.py:Source", "pkg/models.py:Target"),
+        class_references=(
+            reference("pkg/models.py:Source", "Target", "field_annotation", "boxed"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Target", "association", "field_annotation"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_pep604_non_null_union_field_creates_aggregation_for_each_selected_target() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        classes=(
+            "pkg/models.py:Card",
+            "pkg/models.py:Invoice",
+            "pkg/models.py:Payment",
+        ),
+        class_references=(
+            reference("pkg/models.py:Payment", "Card", "field_annotation", "source", "union"),
+            reference("pkg/models.py:Payment", "Invoice", "field_annotation", "source", "union"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Payment", "pkg/models.py:Card", "aggregation", "field_annotation"),
+        SelectedRelation("pkg/models.py:Payment", "pkg/models.py:Invoice", "aggregation", "field_annotation"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_relation_priority_prefers_composition_over_aggregation_association_and_uses() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        classes=("pkg/models.py:Source", "pkg/models.py:Target"),
+        class_references=(
+            reference("pkg/models.py:Source", "Target", "method_return_annotation", "make"),
+            reference("pkg/models.py:Source", "Target", "field_annotation", "legacy"),
+            reference("pkg/models.py:Source", "Target", "field_annotation", "maybe", "optional"),
+            reference("pkg/models.py:Source", "Target", "field_annotation", "target", "direct"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Target", "composition", "field_annotation"),
     )
     assert result.diagnostics == ()
 
@@ -569,9 +663,9 @@ def test_typed_relation_resolver_accepts_full_id_module_qualified_short_name_and
             "pkg/models.py:Shared",
         ),
         class_references=(
-            reference("pkg/models.py:Source", "pkg/models.py:Exact", "field_annotation", "exact"),
-            reference("pkg/models.py:Source", "pkg.models.Qualified", "field_annotation", "qualified"),
-            reference("pkg/models.py:Source", "Shared", "field_annotation", "same_module"),
+            reference("pkg/models.py:Source", "pkg/models.py:Exact", "field_annotation", "exact", "direct"),
+            reference("pkg/models.py:Source", "pkg.models.Qualified", "field_annotation", "qualified", "direct"),
+            reference("pkg/models.py:Source", "Shared", "field_annotation", "same_module", "direct"),
         ),
     )
     other_module = module("pkg/other.py", classes=("pkg/other.py:Shared",))
@@ -583,9 +677,9 @@ def test_typed_relation_resolver_accepts_full_id_module_qualified_short_name_and
     )
 
     assert result.selected_relations.relations == (
-        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Exact", "association", "field_annotation"),
-        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Qualified", "association", "field_annotation"),
-        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Shared", "association", "field_annotation"),
+        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Exact", "composition", "field_annotation"),
+        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Qualified", "composition", "field_annotation"),
+        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Shared", "composition", "field_annotation"),
     )
     assert result.diagnostics == ()
 
@@ -725,8 +819,8 @@ def test_typed_relation_dedupe_prefers_canonical_relation_and_evidence_kind() ->
         classes=("pkg/models.py:Source", "pkg/models.py:Target"),
         class_references=(
             reference("pkg/models.py:Source", "Target", "method_return_annotation", "make"),
-            reference("pkg/models.py:Source", "Target", "field_annotation", "target"),
-            reference("pkg/models.py:Source", "Target", "init_field_annotation", "target"),
+            reference("pkg/models.py:Source", "Target", "field_annotation", "target", "direct"),
+            reference("pkg/models.py:Source", "Target", "init_field_annotation", "target", "direct"),
             reference("pkg/models.py:Source", "Target", "method_parameter_annotation", "use.target"),
             reference("pkg/models.py:Source", "Target", "class_base", "base"),
         ),
