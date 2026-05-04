@@ -3,7 +3,7 @@
 ID: "iss-00032"
 タイトル: "Render Composition And Aggregation From Field Types"
 関連GitHub: ["#32"]
-状態: "draft"
+状態: "closed"
 作成者: "iwasawayuuta"
 最終更新: "2026-05-05"
 依存: ["requirement.md", "design.md", "plan.md"]
@@ -48,7 +48,7 @@ issue: iss-00032
 - `spec-dock/.../iss-00032-render-composition-aggregation-from-field-types/report.md` - 作業記録を初期化
 
 #### コミット
-- 未実施
+- `6b2740c docs(spec): ownership relation実装計画を具体化`
 
 #### メモ
 - 実装は S01 から開始する。
@@ -79,7 +79,19 @@ uv run --with pytest pytest -q tests/model/test_contracts.py tests/parse/test_mo
 ```bash
 uv run --with pytest pytest -q
 
-346 passed in 9.49s
+348 passed in 10.12s
+```
+
+```bash
+uv run --with pytest pytest -q tests/parse/test_module_parse_and_index.py::test_mixed_unknown_and_known_wrappers_sort_safely_and_keep_fallback_targets tests/analyze/test_selection.py::test_mixed_unknown_and_known_field_wrappers_keep_ownership_over_fallback
+
+2 passed in 0.02s
+```
+
+```bash
+uv run --with pytest pytest -q tests/parse/test_module_parse_and_index.py tests/analyze/test_selection.py
+
+68 passed in 0.07s
 ```
 
 ```bash
@@ -172,7 +184,8 @@ uv.lock absent
 - `tests/app/test_diff.py` - diff E2E expected relation update
 
 #### コミット
-- 未実施
+- `e01e7cf feat(render): field ownershipをdiamondで描画`
+- `23387a3 fix(parse): annotation shape混在時のsortを安定化`
 
 #### メモ
 - manual env sample source は直接変更せず、ignored `tmp/iss-00032-ownership-worktree` に disposable copy を作成して確認後に削除した。
@@ -237,6 +250,7 @@ uv.lock absent
 - Additional regression:
   - `tests/parse/test_module_parse_and_index.py` covers unknown generic fallback for `Callable[[], Target]`, `type[Target]`, `Box[Target]`, preventing false composition.
   - `tests/parse/test_module_parse_and_index.py` covers unknown generic nested fallback for `Box[Optional[Target]]` and `Box[list[Target]]`, preventing false aggregation.
+  - `tests/parse/test_module_parse_and_index.py` and `tests/analyze/test_selection.py` cover mixed unknown/known wrappers such as `Box[Target] | Target` and `Union[Box[Target], list[Target]]`, preventing `None` / `str` sort crashes while preserving ownership priority.
   - `tests/parse/test_module_parse_and_index.py`, `tests/frameworks/test_sqlalchemy.py`, and `tests/app/test_generate.py` cover SQLAlchemy `Mapped[...]` as framework-owned, avoiding duplicate ownership/framework relations.
 
 ## Review Gate Evidence
@@ -246,10 +260,16 @@ uv.lock absent
   - Final pre-close review found missing AC-004 output-layer evidence and reviewer pass evidence; both are addressed in this report.
 - code-reviewer:
   - Final code review reached `review_status: pass`.
-  - P2 findings for unknown generic fallback, SQLAlchemy `Mapped[...]` duplicate relation, and nested unknown generic fallback were addressed with regression tests.
+  - P2 findings for unknown generic fallback, SQLAlchemy `Mapped[...]` duplicate relation, nested unknown generic fallback, and mixed unknown/known wrapper sort stability were addressed with regression tests.
 - qa-reviewer:
   - Final QA review reached `review_status: pass`.
   - P2 findings for PEP 604 multi-target union, mapping_value analyzer coverage, uv.lock evidence, and sync/validate evidence were addressed.
+
+## Close Evidence
+- `./spec-dock/scripts/spec-dock validate`: `spec-dock: ok (validate) nodes=32`
+- GitHub issue `#32` (`iss-00032`) is `CLOSED`; `closedAt=2026-05-04T17:42:51Z`; URL: `https://github.com/chemitaro/pyclassuml/issues/32`
+- GitHub epic `#31` (`epic-00031`) is `CLOSED`; `closedAt=2026-05-04T17:43:01Z`; URL: `https://github.com/chemitaro/pyclassuml/issues/31`
+- Branch: `iss-00032-render-composition-aggregation-from-field-types`
 
 ## 遭遇した問題と解決
 - 問題: spec-reviewer から mapping key warning 方針と nested wrapper 境界が不明確と指摘された。
