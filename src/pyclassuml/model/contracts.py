@@ -454,6 +454,27 @@ class PlantUmlText:
 
 
 @dataclass(frozen=True)
+class RenderFailureSignal:
+    failure_reason: FailureReason
+    diagnostics: tuple[Diagnostic, ...] = ()
+    class_count: int = 0
+    relation_count: int = 0
+    partial_diagram_present: bool = False
+
+    def __post_init__(self) -> None:
+        _ensure_enum(self.failure_reason, FailureReason, "failure_reason")
+        diagnostics = _as_tuple(self.diagnostics)
+        _ensure_diagnostics(diagnostics, "diagnostics")
+        _ensure_non_negative_int(self.class_count, "class_count")
+        _ensure_non_negative_int(self.relation_count, "relation_count")
+        if not isinstance(self.partial_diagram_present, bool):
+            raise ValueError("partial_diagram_present must be bool")
+        if self.partial_diagram_present != (self.class_count > 0):
+            raise ValueError("partial_diagram_present must equal class_count > 0")
+        object.__setattr__(self, "diagnostics", diagnostics)
+
+
+@dataclass(frozen=True)
 class RunSummary:
     counters: Mapping[str, int] = field(default_factory=dict)
     failure_reason: FailureReason | None = None
@@ -515,6 +536,7 @@ __all__ = [
     "PlantUmlText",
     "Recoverability",
     "RelationType",
+    "RenderFailureSignal",
     "RenderReadyModel",
     "RunSummary",
     "SelectedClasses",

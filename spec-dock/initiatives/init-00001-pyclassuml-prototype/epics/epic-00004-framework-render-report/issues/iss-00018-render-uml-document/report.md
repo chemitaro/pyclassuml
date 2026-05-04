@@ -13,8 +13,8 @@ ID: "iss-00018"
 # iss-00018 Render UML Document — 実装報告（LOG）
 
 ## 実装サマリー (任意)
-- `iss-00016` / `iss-00017` で追加した framework hints を初めて authoritative render input に合成する issue として、実装前 contract を修復している。
-- 現行 model には requirement/design が要求する `RenderFailureSignal` が存在しないため、この issue の S01 で public DTO として追加する方針にした。
+- `RenderFailureSignal` を public DTO として追加し、render seam に `RenderReadyModel -> DiagramModel -> PlantUmlText` の pure transform を追加した。
+- SQLAlchemy / Pydantic framework hints は render composition で authoritative relation inventory へ deterministic に合成し、artifact write / summary / exit policy は downstream `iss-00019` に残した。
 
 ## 実装記録（セッションログ） (必須)
 
@@ -68,6 +68,76 @@ rg -n "RenderFailureSignal|diagram_unbuildable_after_recovery|FailureReason" src
 #### メモ
 - render は filesystem write / summary / stream routing / exit policy を持たない。
 - report artifact write と final summary / exit policy は downstream `iss-00019` の責務として残す。
+
+---
+
+### 2026-05-04 - implementation and validation
+
+#### 対象
+- Step: S01, S02, S03, S04, S90, S99
+- AC/EC: AC-001, AC-002, AC-003, EC-001, EC-002, EC-003
+
+#### 実施内容
+- `RenderFailureSignal(failure_reason, diagnostics, class_count, relation_count, partial_diagram_present)` を public model DTO として追加した。
+- `partial_diagram_present == (class_count > 0)` を DTO invariant として validation した。
+- `src/pyclassuml/render/` seam を追加し、`compose_render_ready_model`、`build_diagram_model`、`render_plantuml_text`、`render_uml_document`、seam-local `RenderDocumentResult` を実装した。
+- selected relations と SQLAlchemy / Pydantic `added_relations` を `(source, target, relation_type)` triple で dedupe し、deterministic に `RenderReadyModel.relations` へ合成した。
+- grouping key は selected `ClassId` の module path 部分を唯一の source として導出した。
+- 現行 upstream に member / decoration DTO がないため、`members=()` / `class_decorations=()` を保持した。
+- `ParsedModule[].diagnostics`、SQLAlchemy warning diagnostics、Pydantic warning diagnostics を deterministic に carry した。
+- selected class が `ParsedModule[].classes` と `ModuleIndex.class_to_module` の両方に存在する場合だけ renderable とし、欠落時は `render_selected_class_missing` diagnostic と failure path にした。
+- relation endpoint が renderable classes に存在しない場合は `render_relation_endpoint_missing` diagnostic と failure path にした。
+- PlantUML text は stable package grouping、alias `c001...`、class line、relation line を deterministic に出力するようにした。
+- code-reviewer は P2 修正後に findings なしで pass した。
+- qa-reviewer は P2 を指摘したが、framework relation order permutation まで追加検証し、全 P2 を解消した。
+
+#### 実行コマンド / 結果
+```bash
+uv run --with pytest pytest tests/render/test_document.py -q
+# 12 passed in 0.04s
+
+uv run --with pytest pytest tests/model/test_contracts.py tests/render/test_document.py tests/frameworks/test_sqlalchemy.py tests/frameworks/test_pydantic.py -q
+# 70 passed in 0.06s
+
+uv run --with pytest pytest -q
+# 195 passed in 1.04s
+
+./spec-dock/scripts/spec-dock validate
+# spec-dock: ok (validate) nodes=21
+
+git diff --check
+# pass
+
+rg --files | rg '[A-Z]'
+# 既存 uppercase path のみ:
+# AGENTS.md
+# spec-dock/templates/README.md
+# spec-dock/scripts/README.md
+# spec-dock/system/README.md
+# spec-dock/system/active-none/initiative/README.md
+# spec-dock/system/active-none/README.md
+# spec-dock/system/active-none/issue/README.md
+# spec-dock/docs/README.md
+# spec-dock/system/active-none/epic/README.md
+
+find . -name '__pycache__' -o -name '*.pyc' -o -name 'uv.lock'
+# cleanup 後は出力なし
+```
+
+#### 変更したファイル
+- `src/pyclassuml/model/contracts.py` - `RenderFailureSignal` DTO と validation を追加。
+- `src/pyclassuml/model/__init__.py` - `RenderFailureSignal` export を追加。
+- `src/pyclassuml/render/__init__.py` - render seam public surface を追加。
+- `src/pyclassuml/render/document.py` - render-ready composition、diagram build、PlantUML serialization、failure handoff を追加。
+- `tests/model/test_contracts.py` - `RenderFailureSignal` contract coverage を追加。
+- `tests/render/test_document.py` - render AC/EC coverage を追加。
+- `spec-dock/active/issue/report.md` - 実装と検証結果を記録。
+
+#### コミット
+- 未作成。最終差分確認後に implementation commit を作成する。
+
+#### メモ
+- `.puml` artifact write、summary counters、exit policy は downstream `iss-00019` の責務として未実装。
 
 ---
 

@@ -26,6 +26,7 @@ from pyclassuml.model import (
     ParsedModule,
     PlantUmlText,
     Recoverability,
+    RenderFailureSignal,
     RenderReadyModel,
     RunSummary,
     SelectedClasses,
@@ -463,3 +464,77 @@ def test_render_and_result_handoff_are_separate_shapes() -> None:
     assert diagram.rendered_classes == ("a:A",)
     assert text.text.startswith("@startuml")
     assert result.artifact_path == Path("diagram.puml")
+
+
+def test_render_failure_signal_contract_is_public_and_validated() -> None:
+    signal = RenderFailureSignal(
+        failure_reason=FailureReason.DIAGRAM_UNBUILDABLE_AFTER_RECOVERY,
+        diagnostics=[error_diagnostic()],
+        class_count=2,
+        relation_count=1,
+        partial_diagram_present=True,
+    )
+
+    assert signal.diagnostics == (error_diagnostic(),)
+    assert signal.class_count == 2
+    assert signal.relation_count == 1
+    assert signal.partial_diagram_present is True
+
+    with pytest.raises(ValueError):
+        RenderFailureSignal(
+            failure_reason="diagram_unbuildable_after_recovery",
+            diagnostics=[],
+            class_count=0,
+            relation_count=0,
+            partial_diagram_present=False,
+        )
+
+    with pytest.raises(ValueError):
+        RenderFailureSignal(
+            failure_reason=FailureReason.DIAGRAM_UNBUILDABLE_AFTER_RECOVERY,
+            diagnostics=["not-a-diagnostic"],
+            class_count=0,
+            relation_count=0,
+            partial_diagram_present=False,
+        )
+
+    for field in ("class_count", "relation_count"):
+        kwargs: dict[str, object] = {
+            "failure_reason": FailureReason.DIAGRAM_UNBUILDABLE_AFTER_RECOVERY,
+            "diagnostics": [],
+            "class_count": 0,
+            "relation_count": 0,
+            "partial_diagram_present": False,
+        }
+        with pytest.raises(ValueError):
+            RenderFailureSignal(**{**kwargs, field: -1})
+
+        with pytest.raises(ValueError):
+            RenderFailureSignal(**{**kwargs, field: True})
+
+    with pytest.raises(ValueError):
+        RenderFailureSignal(
+            failure_reason=FailureReason.DIAGRAM_UNBUILDABLE_AFTER_RECOVERY,
+            diagnostics=[],
+            class_count=0,
+            relation_count=0,
+            partial_diagram_present=1,
+        )
+
+    with pytest.raises(ValueError):
+        RenderFailureSignal(
+            failure_reason=FailureReason.DIAGRAM_UNBUILDABLE_AFTER_RECOVERY,
+            diagnostics=[],
+            class_count=0,
+            relation_count=1,
+            partial_diagram_present=True,
+        )
+
+    with pytest.raises(ValueError):
+        RenderFailureSignal(
+            failure_reason=FailureReason.DIAGRAM_UNBUILDABLE_AFTER_RECOVERY,
+            diagnostics=[],
+            class_count=1,
+            relation_count=0,
+            partial_diagram_present=False,
+        )
