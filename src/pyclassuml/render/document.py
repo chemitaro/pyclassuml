@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyclassuml.analyze.selection import SelectedRelation, SelectedRelations
 from pyclassuml.frameworks.pydantic import PydanticEnrichmentHints
 from pyclassuml.frameworks.sqlalchemy import SqlalchemyEnrichmentHints
 from pyclassuml.model import (
@@ -21,6 +20,8 @@ from pyclassuml.model import (
     RenderFailureSignal,
     RenderReadyModel,
     SelectedClasses,
+    SelectedRelation,
+    SelectedRelations,
 )
 from pyclassuml.parse import ModuleIndex
 

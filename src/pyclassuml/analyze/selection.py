@@ -11,34 +11,14 @@ from pyclassuml.model import (
     DependencyGraph,
     Diagnostic,
     DiagnosticSeverity,
-    EvidenceKind,
     OriginSeam,
     ParsedModule,
     Recoverability,
-    RelationType,
     SelectedClasses,
+    SelectedRelation,
+    SelectedRelations,
 )
 from pyclassuml.parse import ModuleIndex
-
-
-@dataclass(frozen=True)
-class SelectedRelation:
-    """A selected class-to-class relation with its core evidence kind."""
-
-    source_class_id: ClassId
-    target_class_id: ClassId
-    relation_type: RelationType
-    evidence_kind: EvidenceKind
-
-
-@dataclass(frozen=True)
-class SelectedRelations:
-    """Relation inventory produced by the analyze selection seam."""
-
-    relations: tuple[SelectedRelation, ...] = ()
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "relations", tuple(self.relations))
 
 
 @dataclass(frozen=True)

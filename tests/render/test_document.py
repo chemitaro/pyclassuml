@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from pyclassuml.analyze.selection import SelectedRelation, SelectedRelations
 from pyclassuml.frameworks.pydantic import PydanticEnrichmentHints
 from pyclassuml.frameworks.sqlalchemy import SqlalchemyEnrichmentHints
 from pyclassuml.model import (
@@ -11,6 +10,8 @@ from pyclassuml.model import (
     ParsedModule,
     Recoverability,
     SelectedClasses,
+    SelectedRelation,
+    SelectedRelations,
 )
 from pyclassuml.parse import ModuleIndex
 from pyclassuml.render import (
@@ -89,7 +90,7 @@ def render_inputs() -> dict[str, object]:
         "selected_relations": SelectedRelations(
             relations=(
                 relation("pkg/orders.py:Order", "pkg/orders.py:User"),
-                relation("pkg/orders.py:Order", "pkg/accounts.py:User", relation_type="owns"),
+                relation("pkg/orders.py:Order", "pkg/accounts.py:User", relation_type="association"),
             )
         ),
         "sqlalchemy_hints": SqlalchemyEnrichmentHints(),
@@ -103,7 +104,7 @@ def determinism_inputs() -> tuple[dict[str, object], dict[str, object]]:
         "pkg/b.py:B",
         "pkg/c.py:C",
     )
-    selected_relation_a = relation("pkg/a.py:A", "pkg/b.py:B", relation_type="owns")
+    selected_relation_a = relation("pkg/a.py:A", "pkg/b.py:B", relation_type="association")
     selected_relation_b = relation("pkg/b.py:B", "pkg/c.py:C")
     sqlalchemy_relations = (
         relation(
@@ -114,7 +115,7 @@ def determinism_inputs() -> tuple[dict[str, object], dict[str, object]]:
         relation(
             "pkg/b.py:B",
             "pkg/a.py:A",
-            relation_type="loads",
+            relation_type="inherits",
             evidence_kind="sqlalchemy_mapped",
         ),
     )
@@ -127,7 +128,7 @@ def determinism_inputs() -> tuple[dict[str, object], dict[str, object]]:
         relation(
             "pkg/c.py:C",
             "pkg/b.py:B",
-            relation_type="validates",
+            relation_type="association",
             evidence_kind="pydantic_model_field",
         ),
     )
@@ -250,7 +251,7 @@ def test_render_plantuml_text_is_deterministic_and_groups_by_class_id_module_pat
             "  class \"Order\" as c002",
             "  class \"User\" as c003",
             "}",
-            "c002 --> c001 : owns",
+            "c002 --> c001 : association",
             "c002 --> c003 : uses",
             "@enduml",
         ]

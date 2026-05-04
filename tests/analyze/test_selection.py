@@ -6,12 +6,14 @@ from pyclassuml.analyze import (
     TraversalObservations,
     select_classes_and_relations,
 )
+from pyclassuml.analyze.selection import SelectedRelation as SelectionModuleSelectedRelation
 from pyclassuml.model import (
     DependencyGraph,
     DiagnosticSeverity,
     OriginSeam,
     ParsedModule,
     Recoverability,
+    SelectedRelation as ModelSelectedRelation,
 )
 from pyclassuml.parse import ModuleIndex
 
@@ -65,6 +67,11 @@ def test_seed_full_display_keeps_seed_class_without_relation() -> None:
     assert result.selected_classes.class_ids == ("pkg.a.Primary", "pkg.a.Unrelated")
     assert result.selected_relations.relations == ()
     assert result.diagnostics == ()
+
+
+def test_selected_relation_compatibility_imports_use_shared_model_contract() -> None:
+    assert SelectedRelation is ModelSelectedRelation
+    assert SelectionModuleSelectedRelation is ModelSelectedRelation
 
 
 def test_unreachable_module_class_is_excluded() -> None:
