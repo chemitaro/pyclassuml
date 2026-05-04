@@ -23,6 +23,7 @@ ID: "iss-00026"
   - EC-002 ambiguous
   - EC-003 selection-outside
   - EC-004 dedupe / semantic priority
+  - EC-005 Pydantic duplicate suppression
 - 制約:
   - no composition
   - no traversal expansion
@@ -110,7 +111,7 @@ ID: "iss-00026"
     - `tests/analyze/test_selection.py`
     - `tests/frameworks/test_pydantic.py`
   - closes:
-    - AC-003, EC-004
+    - AC-003, EC-004, EC-005
   - review gate:
     - dedupe / fallback tests pass
 - S90:
@@ -149,6 +150,7 @@ ID: "iss-00026"
 - EC-002 -> S01
 - EC-003 -> S01
 - EC-004 -> S03
+- EC-005 -> S03
 
 ## レビュー / QA ゲート方針
 - RG1 implementation review:
@@ -189,6 +191,19 @@ ID: "iss-00026"
   - `tests/analyze/test_selection.py`
 - expected tests:
   - unresolved / ambiguous / selection-outside fixtures
+  - exact warning diagnostic payload tests:
+    - `typed_relation_unresolved`
+    - `typed_relation_ambiguous`
+    - `typed_relation_selection_outside`
+    - `severity=WARNING`, `origin_seam=ANALYZE`, `recoverability=RECOVERABLE`, `failure_reason=None`
+    - message/context assertions include `source_class_id`, `target_name`, `reference_kind`, `reference_owner`
+    - ambiguous warning assertions include candidate class ids
+  - resolver matching tests:
+    - full class id
+    - module-qualified target
+    - short name
+    - same-module preference
+    - selected source outside is ignored without warning
 - report update:
   - warning code 方針を残す
 - notes:
@@ -228,6 +243,10 @@ ID: "iss-00026"
   - inherits fixture
   - field association fixture
   - Pydantic BaseModel association fixture
+  - same endpoint relation priority fixture:
+    - `inherits > association > uses`
+  - association evidence_kind canonicalization fixture:
+    - `field_annotation > init_field_annotation > pydantic_forward_ref`
 - report update:
   - `iss-00014` supersession の中心を残す
 
@@ -249,6 +268,12 @@ ID: "iss-00026"
   - method parameter / return use fixture
   - module import fallback fixture
   - duplicate evidence fixture
+  - uses evidence_kind canonicalization fixture:
+    - `method_parameter_annotation > method_return_annotation > module_import > pydantic_forward_ref`
+  - Pydantic duplicate suppression fixture:
+    - semantic field association exists
+    - `frameworks.pydantic` adds no duplicate `pydantic_forward_ref` `uses`
+    - duplicate compatibility warning is suppressed
 - report update:
   - framework alignment note を残す
 

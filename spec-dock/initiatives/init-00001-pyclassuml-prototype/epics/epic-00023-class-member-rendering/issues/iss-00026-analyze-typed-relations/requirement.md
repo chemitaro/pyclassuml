@@ -52,6 +52,14 @@ ID: "iss-00026"
   - relation と selected class の ordering を deterministic にする。
   - unresolved / ambiguous / selection-outside warning を existing pattern に合わせて handoff する。
   - `iss-00014` の `uses` fixed contract を typed evidence の範囲で supersede する。
+  - typed reference resolver は次を固定する。
+    - `target_name` が full class id と一致する場合はそれを採用する。
+    - module-qualified name（例: `pkg.models.Item`）は `pkg/models.py:Item` 形式へ候補展開して照合する。
+    - short class name（例: `Item`）は `class_id` の最後の class segment と照合する。
+    - 同一 source module 内の一致がある場合は same-module candidate を優先する。
+    - same-module 優先後も複数候補が残る場合は ambiguous warning とする。
+    - source class が selected set 外なら typed evidence は無視し、warning も relation も出さない。
+    - target class が internal に一意解決できるが selected set 外なら selection-outside warning とし、selected set は拡張しない。
 - MUST NOT:
   - composition を断定しない。
   - traversal frontier を広げない。
@@ -156,8 +164,19 @@ ID: "iss-00026"
     - same relation_type なら dedupe する。
     - same endpoint に複数 relation_type がある場合は `inherits > association > uses` の優先順位で 1 relation に正規化する。
     - module import fallback の `uses` は semantic evidence がないときだけ残す。
+    - same relation_type の `evidence_kind` は canonical priority で 1 件にする。
+      - `inherits`: `class_base`
+      - `association`: `field_annotation > init_field_annotation > pydantic_forward_ref`
+      - `uses`: `method_parameter_annotation > method_return_annotation > module_import > pydantic_forward_ref`
   - 観測点:
     - dedupe / priority fixture
+- EC-005:
+  - 条件:
+    - Pydantic `annotation_string` forward-ref enrichment と analyze semantic field evidence が同じ source / target を指す。
+  - 期待:
+    - analyze の `association` を正本とし、frameworks.pydantic は duplicate `uses` relation と duplicate warning を追加しない。
+  - 観測点:
+    - Pydantic framework alignment test
 
 ## 入力→出力例（必要時）
 - EX-001:
