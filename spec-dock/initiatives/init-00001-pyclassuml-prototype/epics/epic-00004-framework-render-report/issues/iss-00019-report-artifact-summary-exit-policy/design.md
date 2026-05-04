@@ -30,7 +30,7 @@ ID: "iss-00019"
   - `app.diff-wiring`
   - `cli.request-bind-and-exit-contract`
 - seam responsibility:
-  - artifact write、summary synthesis、stream routing、exit policy の唯一の owner。
+  - artifact write、summary synthesis、stream material routing、exit policy の唯一の owner。
 
 ### UML（必須: module / dependency）
 ```plantuml
@@ -61,6 +61,7 @@ result --> downstream
    - `TargetSet.observations`
    - `TraversalObservations`
    - `ChangedClassInventory`
+   - deterministic timestamp for auto naming
    - framework / parse / analyze diagnostics
    - render failure handoff
 - output:
@@ -68,6 +69,11 @@ result --> downstream
      - `RunSummary(counters, failure_reason)`
      - `CommandResult(artifact_path, summary, diagnostics, exit_code)`
    - seam-local handoff:
+     - `ReportRunResult`
+       - `command_result`
+       - `outcome_kind`
+       - `stdout_text`
+       - `stderr_text`
      - `ArtifactNamingDecision`
        - base name
        - resolved output path
@@ -75,7 +81,7 @@ result --> downstream
      - `ExitPolicyDecision`
        - outcome kind
        - artifact_write
-       - stream target
+       - stream material target
        - exit code
        - strict_promoted_failure_reasons
 - invariant:
@@ -84,16 +90,22 @@ result --> downstream
    - `generate` path では upstream が zero `ChangedClassInventory(class_count=0, changed_files=[])` を supply し、`report` は DTO の optional 分岐を持たない。
    - render が `RenderFailureSignal.failure_reason=diagram_unbuildable_after_recovery` を handoff した場合、`report` は `DiagramModel` / `PlantUmlText` 不在でも summary と non-zero outcome を組み立てる。
    - strict promotion は upstream diagnostics の `failure_reason` が `strict_resolution_failure`, `strict_syntax_error`, `strict_wildcard_resolution_failure`, `strict_diff_scope_exclusion` のいずれかに一致するかで決定する。
-   - warning classifier に使う `Diagnostic.recoverability` は producer-side に固定し、`targets.*` / `vcs.diff-file-collect` / `config.context-resolve` の operational warning は `noop`、`parse.module-parse-and-index` / `analyze.relationship-and-selection` / `frameworks.*` の omitted-or-ambiguous content warning は `degraded_output` を使う。
+   - warning classifier に使う `Diagnostic.recoverability` は producer-side に固定し、artifact completeness を下げない operational warning は現行 shared enum の `recoverable`、omitted-or-ambiguous content warning は `degraded_output` を使う。
    - parse の syntax degradation は warn mode では `recoverability=degraded_output` かつ `failure_reason=null` の warning diagnostic、strict mode では `failure_reason=strict_syntax_error` を持つ failure diagnostic として解釈する。
    - render 起因の class / relation omission は success-path warning では扱わず、必ず `RenderFailureSignal` に昇格させる。
-   - `warning_only_success` は failure diagnostic なし、かつ warning diagnostics の `recoverability` がすべて `noop` のときに選ぶ。
+   - `warning_only_success` は failure diagnostic なし、かつ warning diagnostics の `recoverability` がすべて `recoverable` のときに選ぶ。
    - `degraded_success` は failure diagnostic なし、かつ warning diagnostics に `recoverability=degraded_output` が 1 件以上あるときに選ぶ。
    - success path の extracted class / relation counter は最終 `DiagramModel.rendered_classes` / `rendered_relations` を authoritative とする。
    - `RenderFailureSignal` が存在する non-success outcome では、summary の extracted class / relation counter は signal 内の `class_count` / `relation_count` を authoritative とする。
    - render / selection / changed inventory などの producer seam が未実行のまま hard failure になった場合、未供給 counter は `0` fallback で `RunSummary` を合成する。
    - `output_write_failure` のように render 成功後に起きる hard failure では、counter source は `0` fallback へ落とさず `DiagramModel.rendered_classes` / `rendered_relations` を使う。
    - `ExitPolicyDecision` は strict / warn、clean success / warning-only success / degraded success / strict promoted failure / degraded failure / hard failure を一元化し、他 seam の判断を上書きしない。
+   - `invalid_config_or_config_path`, `invalid_path_or_containment`, `generate_scope_violation`, `generate_zero_target_after_normalize`, `diff_zero_target_after_scope_filter`, `traversal_limit_reached`, `output_write_failure`, `vcs_read_failure` は hard failure として扱う。
+   - `diagram_unbuildable_after_recovery` は `RenderFailureSignal` による degraded failure として扱う。
+   - 複数の failure input が重なる場合の outcome precedence は `hard_failure` > `strict_promoted_failure` > `degraded_failure` とする。
+   - `RunSummary.failure_reason` は選ばれた outcome を決めた最優先 failure reason を使う。hard failure reason がある場合はそれを優先し、strict-promotable diagnostic が優先された場合はその diagnostic の `failure_reason`、`RenderFailureSignal` だけが優先入力の場合は signal の `failure_reason` を使う。
+   - `write_report` は artifact parent directory を作成してから write する。parent directory creation failure は `output_write_failure` diagnostic を追加して `hard_failure` にする。
+   - `report` は stdout/stderr へ直接 write せず、`ReportRunResult.stdout_text` / `stderr_text` のどちらに summary material を載せるかだけを決める。実 stream emission は downstream app / cli owner とする。
 
 ## 主要フロー
 1. `AnalysisConfig.output` と `ExecutionContext.execution_cwd` から `ArtifactNamingDecision` を作る。
@@ -101,48 +113,56 @@ result --> downstream
 3. success path と render 成功後の `output_write_failure` hard failure では `DiagramModel.rendered_classes` / `rendered_relations` を、`RenderFailureSignal` を伴う non-success outcome では signal 内の `class_count` / `relation_count` を、producer seam 未実行の hard failure では `0` fallback を `RunSummary` の authoritative counter source に選ぶ。
 4. success 系 outcome のときだけ `.puml` artifact を write する。
 5. authoritative counter source と upstream diagnostics から `RunSummary` を作る。
-6. `ExitPolicyDecision` で stream target と exit code を決め、`CommandResult` を組み立てる。
+6. `ExitPolicyDecision` で stream material target と exit code を決め、`CommandResult` を組み立てる。
 
 ## outcome decision table
-| outcome kind | artifact write | summary stream | exit code |
+| outcome kind | artifact write | summary material | exit code |
 | --- | --- | --- | --- |
-| `clean_success` | yes | stdout | `0` |
-| `warning_only_success` | yes | stdout | `0` |
-| `degraded_success` | yes | stdout | `0` |
-| `strict_promoted_failure` | no | stderr | non-zero |
-| `degraded_failure` | no | stderr | non-zero |
-| `hard_failure` | no authoritative artifact | stderr | non-zero |
+| `clean_success` | yes | `stdout_text` | `0` |
+| `warning_only_success` | yes | `stdout_text` | `0` |
+| `degraded_success` | yes | `stdout_text` | `0` |
+| `strict_promoted_failure` | no | `stderr_text` | non-zero |
+| `degraded_failure` | no | `stderr_text` | non-zero |
+| `hard_failure` | no authoritative artifact | `stderr_text` | non-zero |
 
 ## outcome classifier rule
 | classifier input | chosen outcome |
 | --- | --- |
 | failure diagnostic なし、warning diagnostic なし、`RenderFailureSignal` なし | `clean_success` |
-| failure diagnostic なし、warning diagnostics あり、全件 `recoverability=noop`、`RenderFailureSignal` なし | `warning_only_success` |
+| failure diagnostic なし、warning diagnostics あり、全件 `recoverability=recoverable`、`RenderFailureSignal` なし | `warning_only_success` |
 | failure diagnostic なし、warning diagnostics に `recoverability=degraded_output` を 1 件以上含み、`RenderFailureSignal` なし | `degraded_success` |
 | strict-promotable failure diagnostic あり | `strict_promoted_failure` |
-| `RenderFailureSignal` あり、または strict promotion ではない failure diagnostic あり | `degraded_failure` |
-| artifact write failure などで authoritative artifact を確定できない | `hard_failure` |
+| `RenderFailureSignal` あり | `degraded_failure` |
+| hard-failure reason の failure diagnostic あり、または artifact write failure などで authoritative artifact を確定できない | `hard_failure` |
+
+## failure precedence
+| inputs present | chosen outcome | `RunSummary.failure_reason` source |
+| --- | --- | --- |
+| hard-failure diagnostic or output write/create failure | `hard_failure` | hard-failure diagnostic reason or `output_write_failure` |
+| strict-promotable failure diagnostic and no hard failure | `strict_promoted_failure` | strict-promotable diagnostic reason |
+| `RenderFailureSignal` and no hard / strict-promoted failure | `degraded_failure` | `RenderFailureSignal.failure_reason` |
 
 ## warning producer mapping
-| origin seam | warning class | required `recoverability` |
-| --- | --- | --- |
-| `targets.*`, `vcs.diff-file-collect`, `config.context-resolve` | artifact completeness を下げない operational warning | `noop` |
-| `parse.module-parse-and-index` | warn mode の syntax degradation と、その他の継続可能な omitted-content warning | `degraded_output` |
-| `analyze.relationship-and-selection` | relation ambiguity / omission warning | `degraded_output` |
-| `frameworks.sqlalchemy-enrich`, `frameworks.pydantic-enrich` | unresolved / ambiguous framework enrich warning | `degraded_output` |
+| warning class | required `recoverability` |
+| --- | --- |
+| artifact completeness を下げない operational / no-op warning | `recoverable` |
+| output completeness が下がる omitted-or-ambiguous content warning | `degraded_output` |
+
+- `report` は origin seam ではなく `Diagnostic.recoverability` を authoritative classifier input とする。
+- producer seam が warning の class を決め、`report` はその分類を再解釈しない。
 
 ## 要件 → 設計マッピング
-- AC-001 -> clean success / warning-only success / degraded success の artifact write + stdout summary と `DiagramModel` 起点 counter。
+- AC-001 -> clean success / warning-only success / degraded success の artifact write + `stdout_text` summary と `DiagramModel` 起点 counter。
 - AC-002 -> `ArtifactNamingDecision` の auto naming / `--output` resolve / suffix collision。
 - AC-003 -> `ExitPolicyDecision` の strict promoted failure / degraded failure / hard failure と、`warning_only_success` / `degraded_success` の classifier rule。
 - EC-001 -> no-op warning を summary に残したまま success 維持。
-- constraint -> write owner / stream owner / exit owner の単一化。
+- constraint -> write owner / stream material owner / exit owner の単一化。
 
 ## テスト戦略
 - Unit:
   - auto naming と suffix collision。
   - summary counter synthesis。
-  - exit taxonomy と stream routing。
+  - exit taxonomy と stream material routing。
 - Integration:
   - `PlantUmlText + upstream counters/diagnostics -> RunSummary / CommandResult` handoff。
   - `RenderFailureSignal + upstream counters/diagnostics -> RunSummary / CommandResult` handoff。
@@ -150,22 +170,22 @@ result --> downstream
   - generate zero inventory / diff actual inventory review。
   - `RenderFailureSignal` + strict-promotable diagnostics review。
 - E2E / manual:
-  - command transcript と filesystem / stdout / stderr observation を canonical verification とする。
+  - command transcript と filesystem / `stdout_text` / `stderr_text` observation を canonical verification とする。
 - migration / rollback / feature flag if needed:
   - 不要。report seam は単一 owner であり migration layer を持たない。
 
 ## 要件 / 例外 -> verification mapping
-- AC-001 -> success path artifact + stdout summary review。
+- AC-001 -> success path artifact + `stdout_text` summary review。
 - AC-002 -> auto naming / suffix collision filesystem review。
 - AC-003 -> failure taxonomy review。
 - EC-001 -> warning-only success review。
 - EC-002 -> `output_write_failure` review。
 - EC-003 -> `diagram_unbuildable_after_recovery` review。
-- constraint -> write owner / stream owner / exit owner review。
+- constraint -> write owner / stream material owner / exit owner review。
 
 ## リスク / 移行 / ロールバック（必要時）
 - `report` が render や config semantics を再計算すると owner が崩れるため、入力 DTO と counter source の受け取りに徹する。
-- success / failure の stream rule を `cli` 側へ押し戻すと initiative acceptance と衝突する。
+- success / failure の stream material rule を `cli` 側へ押し戻すと initiative acceptance と衝突する。
 - artifact write failure を warning 扱いすると filesystem 正本契約が壊れる。
 - `hard_failure` 時に部分ファイルが残ることはありうるが、それを authoritative artifact として返さず、`CommandResult.artifact_path` には成功 artifact を載せない。
 
