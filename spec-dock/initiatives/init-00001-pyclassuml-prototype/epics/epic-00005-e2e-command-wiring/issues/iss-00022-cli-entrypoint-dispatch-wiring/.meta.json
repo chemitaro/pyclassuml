@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00022",
+  "title": "CLI Entrypoint Dispatch Wiring",
+  "slug": "cli-entrypoint-dispatch-wiring",
+  "created_at": "2026-05-04T15:19:10+09:00",
+  "updated_at": "2026-05-04T15:19:10+09:00",
+  "parent_id": "epic-00005",
+  "initiative_id": "init-00001",
+  "epic_id": "epic-00005",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 22,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  }
+}
