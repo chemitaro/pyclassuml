@@ -21,7 +21,7 @@ ID: "iss-00028"
 - EC:
   - EC-001 tracked/manual split
   - EC-002 unresolved warning acceptance
-  - EC-003 protocol / exception / nested coverage
+  - EC-003 dataclass / Protocol / exception / nested / ambiguous coverage
 - 制約:
   - no manual env mutation
   - deterministic tracked assertions
@@ -37,7 +37,7 @@ ID: "iss-00028"
   - 対象:
     - minimal coverage gaps fill
   - exit:
-    - protocol / exception / unresolved warning の tracked assertion が揃う
+    - dataclass / Protocol / exception / nested / ambiguous / unresolved warning の tracked assertion が揃う
 - M3:
   - 対象:
     - manual retail_domain acceptance
@@ -87,7 +87,7 @@ ID: "iss-00028"
     - app integration tests pass
 - S02:
   - 観測可能な振る舞い:
-    - unresolved warning、Protocol、exception、nested case の tracked assertion が揃う
+    - unresolved warning、dataclass、Protocol、exception、nested、ambiguous case の tracked assertion が揃う
   - depends on:
     - S01
   - unblocks:
@@ -197,9 +197,22 @@ ID: "iss-00028"
       - `class CheckoutRequest(BaseModel): shipping_address: "AddressDto"; lines: list["CheckoutLineDto"]`
     - expected `.puml` evidence:
       - `CheckoutRequest` class body に `+ shipping_address: AddressDto` と `+ lines: list[CheckoutLineDto]` 相当の field line がある
-      - `CheckoutRequest` から `AddressDto` / `CheckoutLineDto` への `association` arrow がある
+      - `class "CheckoutRequest" as cNNN` / `class "AddressDto" as cNNN` / `class "CheckoutLineDto" as cNNN` の alias 宣言がある
+      - 上記 alias 間に `-->` の association arrow がある
     - negative/warning companion:
       - unresolved quoted ref `GhostPaymentProviderContext` は warning として観測し、relation は追加しない
+  - diff path の独立 assertion を必須にする:
+    - base state:
+      - `pkg/checkout.py` に `class CheckoutSnapshot: request_id: str`
+      - commit して `base` tag を作る
+    - working tree state:
+      - 同 class に `order: "Order"` field と `def submit(self, order: "Order") -> "Receipt"` method を追加する
+      - 同 file に `class Order` と `class Receipt` を追加する
+    - expected diff `.puml` evidence:
+      - `CheckoutSnapshot` の class body に `+ order: Order` と `+ submit(order: Order): Receipt` がある
+      - `class "CheckoutSnapshot" as cNNN` / `class "Order" as cNNN` / `class "Receipt" as cNNN` の alias 宣言がある
+      - 上記 alias 間に `-->` と `..>` の typed arrow がある
+      - `changed_class_count` / `seed_file_count` が stdout summary で観測できる
 
 #### TDD iterations（必要時）
 - I1:
@@ -220,7 +233,7 @@ ID: "iss-00028"
 
 ### S02 — coverage gaps for warnings and mixed fixture shapes
 - observable behavior:
-  - unresolved warning、Protocol、exception、nested case の acceptance が tracked に入る
+  - unresolved warning、dataclass、Protocol、exception、nested、ambiguous case の acceptance が tracked に入る
 - design refs:
   - `design.md` の `acceptance observations`
 - depends on:
@@ -233,6 +246,11 @@ ID: "iss-00028"
   - `tests/render/test_document.py`
 - expected tests:
   - warning acceptance assertion
+  - dataclass field / method assertion
+  - Protocol method assertion
+  - exception inherits assertion
+  - nested class body assertion
+  - ambiguous reference warning assertion
   - mixed fixture acceptance assertion
   - Pydantic `BaseModel` quoted-forward-ref assertion
 - report update:
@@ -250,13 +268,50 @@ ID: "iss-00028"
 - target files:
   - `spec-dock/active/issue/report.md`
 - expected tests:
+  - manual env pre-clean check:
+    - `git -C build/manual-tests/pyclassuml-manual-env status --short --branch`
+    - expected: clean except branch header
   - manual `generate` run
   - manual `diff` run
   - manual Pydantic evidence check:
-    - `retail_domain/api/schemas.py` の `CheckoutRequest(BaseModel)` が field body と `association` relation の両方に現れること
+    - `retail_domain/api/schemas.py` の `CheckoutRequest(BaseModel)` が field body に現れること
+    - `class "CheckoutRequest" as cNNN` / `class "AddressDto" as cNNN` / `class "CheckoutLineDto" as cNNN` の alias 宣言があること
+    - 上記 alias 間に `-->` の association arrow があること
     - `ErrorEnvelope.provider_context: Optional["GhostPaymentProviderContext"]` が unresolved warning として残ること
+  - manual dataclass / Protocol / exception / nested / ambiguous evidence check:
+    - dataclass `Order` / `OrderLine` の field body と method signature が現れること
+    - Protocol `OrderRepository` / `InventoryRepository` / `PaymentGateway` の method body が現れること
+    - exception `InventoryOversoldError` / `PaymentMismatchError` が `DomainError` への inherits relation を持つこと
+    - nested acceptance は tracked fixture で必須、manual env では存在する場合のみ観測結果を report に記録すること
+    - ambiguous は source manual env の既存 file では強制しない。既存 `LegacyWebhookPayload.duplicate: "DuplicateName"` は same-module preference により resolved relation になるため、manual report には「ambiguous source ではない」ことを記録する。
+    - manual ambiguous warning は disposable copy 側で `retail_domain/api/ambiguous_probe.py` を追加し、`class AmbiguousProbe(BaseModel): duplicate: "DuplicateName"` を置くことで観測する。
+    - disposable copy には `retail_domain/api/ambiguous_probe.py::DuplicateName` を作らず、既存 `api/legacy_contracts.py::DuplicateName` と `domain/legacy_shadow.py::DuplicateName` の 2 候補にする。
+    - `typed_relation_ambiguous` warning があり、どちらか一方へ勝手に relation を張らないこと
+  - manual diff executable contract:
+    - source manual env は変更しない
+    - `build/manual-tests/pyclassuml-manual-env/tmp/iss-00028-diff-worktree/` に disposable copy を作る
+    - disposable copy 内で `git init` / base commit / working-tree edit を行い、`diff` の working-tree path で member-aware output を観測する
+    - deterministic edit scenario:
+      - base commit は current `retail_domain` copy 全体
+      - working-tree edit は `retail_domain/application/checkout.py` の `CheckoutService` にだけ加える
+      - 追加 field: `last_order: Order | None = None`
+      - 追加 method: `def preview_total(self, order: Order) -> Decimal: return order.total()`
+    - expected diff `.puml` evidence:
+      - `CheckoutService` class body に `+ last_order: Order | None` がある
+      - `CheckoutService` class body に `+ preview_total(order: Order): Decimal` がある
+      - `class "CheckoutService" as cNNN` / `class "Order" as cNNN` の alias 宣言がある
+      - 上記 alias 間に `-->` の association arrow がある
+      - `Decimal` が selected class として存在する場合のみ、`..>` uses arrow を観測結果に記録する
+      - stdout summary に `seed_file_count` と `changed_class_count` がある
+    - 実行後は disposable copy を削除してよい
+    - source manual env の post-clean check で clean のまま戻ったことを確認する
+  - output discipline:
+    - `.puml` と command logs は `build/manual-tests/pyclassuml-manual-env/out/iss-00028/` 以下にのみ書く
+    - source manual env に対する永続書き込みは `out/iss-00028/` と `tmp/iss-00028-diff-worktree/` の作成/削除だけに限定する
+    - source manual env の `.gitignore` は `out/` と `tmp/` を ignore しているため、これらは post-clean check の汚れにならない
+    - repo root 側の `git status --short` には manual env の生成物を出さない
 - report update:
-  - absolute command、観測結果、warning 内容を記録する
+  - absolute command、観測結果、warning 内容、manual env pre/post cleanliness を記録する
 
 ### S90 — docs impact resolution / docs refresh
 - 対象:
@@ -270,15 +325,21 @@ ID: "iss-00028"
 - required validation:
   - `uv run --with pytest pytest tests/app/test_generate.py tests/app/test_diff.py tests/render/test_document.py -q`
   - manual `generate` / `diff` evidence
+  - `git -C build/manual-tests/pyclassuml-manual-env status --short --branch` pre/post clean evidence
+  - `./spec-dock/scripts/spec-dock sync --github`
   - `./spec-dock/scripts/spec-dock validate`
   - `git diff --check`
   - `rg --files | rg '[A-Z]'`
+    - expected:
+      - existing allowed paths only, such as root `AGENTS.md` and checked-in `README.md` files
+      - no newly created uppercase path in this issue
 - reviewer approvals:
   - spec-reviewer pass
   - code-reviewer pass
   - qa-reviewer pass
 - report update:
   - final acceptance verdict を残す
+  - `spec-dock sync --github` / `spec-dock validate` / targeted tests / manual evidence / review verdict の command と結果を残す
 
 ## 未確定事項
 - なし:

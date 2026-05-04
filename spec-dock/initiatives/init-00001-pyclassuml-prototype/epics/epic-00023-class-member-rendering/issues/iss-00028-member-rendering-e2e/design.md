@@ -127,7 +127,9 @@ manual --> cli
     - `generate`:
       - `build/manual-tests/pyclassuml-manual-env/retail_domain` から `.puml` を生成する
     - `diff`:
-      - manual env Git repo に対して diff path を実行する
+      - source manual env Git repo は変更しない
+      - `build/manual-tests/pyclassuml-manual-env/tmp/iss-00028-diff-worktree/` の disposable copy に対して diff path を実行する
+      - source manual env への永続書き込みは `out/iss-00028/` と disposable copy の作成/削除だけに限定する
   - acceptance observations:
     - class body
     - method signatures
@@ -182,7 +184,7 @@ build/manual-tests/pyclassuml-manual-env/retail_domain/*  # Read-only acceptance
 - AC-004 -> tracked + manual warning observation
 - EC-001 -> tracked/manual separation policy
 - EC-002 -> unresolved warning acceptance
-- EC-003 -> protocol / exception / nested coverage
+- EC-003 -> dataclass / Protocol / exception / nested / ambiguous coverage
 - constraint -> no manual env mutation
 
 ## テスト戦略
@@ -203,8 +205,8 @@ build/manual-tests/pyclassuml-manual-env/retail_domain/*  # Read-only acceptance
 - AC-004 -> warning assertion + manual warning observation
 - EC-001 -> tracked/manual split review
 - EC-002 -> unresolved forward-ref manual evidence
-- EC-003 -> protocol / exception / nested fixtures
-- constraint -> no manual env mutation review
+- EC-003 -> dataclass / Protocol / exception / nested / ambiguous fixtures
+- constraint -> source manual env pre/post cleanliness checks, output-only writes under `out/`, disposable copy for mutation-based diff acceptance
 
 ## リスク / 移行 / ロールバック（必要時）
 - manual env はローカル state に依存するため、tracked tests だけで完了したと誤解しないよう acceptance 手順を明文化する。

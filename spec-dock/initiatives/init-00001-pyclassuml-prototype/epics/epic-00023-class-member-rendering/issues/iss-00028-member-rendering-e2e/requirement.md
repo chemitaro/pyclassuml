@@ -13,7 +13,8 @@ ID: "iss-00028"
 
 ## 目的
 - epic-00023 の outcome を CLI generate / diff と manual environment で end-to-end に検証し、member-aware output が実利用に耐えることを示す。
-- `build/manual-tests/pyclassuml-manual-env/retail_domain` を使い、Pydantic `BaseModel`、dataclass、Protocol、exception、nested / ambiguous / unresolved refs を最終 acceptance に含める。
+- `build/manual-tests/pyclassuml-manual-env/retail_domain` を使い、Pydantic `BaseModel`、dataclass、Protocol、exception、ambiguous / unresolved refs を manual acceptance に含める。
+- nested class は tracked integration fixture で必須 acceptance とし、manual env では既存 `retail_domain` に存在する場合だけ追加観測として report に残す。
 
 ## 背景・現状
 - 現状の挙動:
@@ -42,7 +43,8 @@ ID: "iss-00028"
 - MUST:
   - tracked integration test で class body / typed relation / warnings を検証する。
   - `build/manual-tests/pyclassuml-manual-env/retail_domain` を使った manual acceptance を実施する。
-  - Pydantic `BaseModel`, dataclass, Protocol, exception, nested / ambiguous / unresolved refs を acceptance に含める。
+  - Pydantic `BaseModel`, dataclass, Protocol, exception, ambiguous / unresolved refs を manual acceptance に含める。
+  - nested class は tracked integration acceptance に含める。
   - final acceptance では `.puml` に class body、method signatures、field relations、inherits relation、warnings が観測できることを要求する。
 - MUST NOT:
   - manual environment を Git 管理下の fixture として書き換えない。
