@@ -26,7 +26,7 @@ ID: "iss-00032"
   1. `customer: Customer`、`coupon: Coupon | None`、`lines: list[OrderLine]` を持つ class を含む package に対して `pyclassuml generate` を実行する。
   2. 出力された `.puml` の relation arrow を確認する。
 - 観測点:
-  - `.puml`: composition は黒塗り diamond、aggregation は白抜き diamond を持つ PlantUML relation として出る。
+  - `.puml`: composition は黒塗り diamond、aggregation は白抜き diamond を持つ PlantUML relation として出る。通常矢印頭は付けない。
   - summary: class / relation count は既存方針どおり出る。
   - diagnostics: 解決不能な外部型は warning として扱い、捏造 relation を出さない。
 - 情報源:
@@ -46,8 +46,11 @@ ID: "iss-00032"
   - Optional / nullable union `field: Target | None`、`field: Optional[Target]`、`field: Union[Target, None]` は aggregation とする。
   - 複数候補 union `field: TargetA | TargetB`、`field: Union[TargetA, TargetB]` は、解決できる各 selected internal class への aggregation とする。
   - collection generic `list[Target]` / `set[Target]` / `tuple[Target, ...]` / `Sequence[Target]` / `Iterable[Target]` など、field が container の中で selected internal class を参照する場合は aggregation とする。
+  - mapping generic `dict[str, Target]` / `Mapping[str, Target]` / `MutableMapping[str, Target]` など、field が mapping value として selected internal class を参照する場合は aggregation とする。
+  - mapping key type は ownership target とみなさず、`dict[TargetKey, TargetValue]` では value 側の selected internal class だけを aggregation 候補にする。
   - `Annotated[Target, ...]` のように metadata wrapper がある場合、内側の Target 判定を維持する。
   - PlantUML render では composition を黒塗り diamond、aggregation を白抜き diamond として、diamond 側が field owner class になる向きで出力する。
+  - composition / aggregation relation は通常矢印頭を持たない line として出力する。
   - 同一 source / target 間に field-origin ownership relation と method-origin uses relation が併存する場合、ownership relation を優先して diagram に出す。
   - 既存の inheritance `-up-|>`、Protocol realization `..up|>`、method-only uses `..>` の表現を維持する。
 - MUST NOT:
@@ -67,7 +70,7 @@ ID: "iss-00032"
   - annotation の構文上の shape を根拠に分類し、runtime 値や import 実行で判断しない。
   - 直接型は stronger ownership として composition、nullable / choice / collection は weaker ownership として aggregation に分類する。
 - Ask:
-  - `dict[str, Target]`、nested container、`Mapping[str, Target]` を MVP に含めるか判断が必要な場合。
+  - nested container / nested mapping をどこまで value extraction するか判断が必要な場合。
   - field name label や multiplicity label も同時に出したい場合。
 - Never:
   - duck typing や constructor body assignment の推測だけで composition / aggregation を作らない。
@@ -89,33 +92,45 @@ ID: "iss-00032"
   - Actor: pyclassuml user
   - Given: `class Order: customer: Customer`
   - When: `pyclassuml generate` が `.puml` を生成する
-  - Then: `Order` から `Customer` への relation は composition であり、PlantUML 上では `Order` 側に黒塗り diamond が出る。
-  - 観測点: `.puml` に `*` diamond を使う composition relation が含まれる。
+  - Then: `Order` から `Customer` への relation は composition であり、PlantUML 上では `Order` 側に黒塗り diamond が出る。通常矢印頭は出ない。
+  - 観測点: `.puml` に `*--` 相当の composition relation が含まれ、`*-->` は含まれない。
 - AC-002:
   - Actor: pyclassuml user
   - Given: `class Order: coupon: Coupon | None`
   - When: `pyclassuml generate` が `.puml` を生成する
-  - Then: `Order` から `Coupon` への relation は aggregation であり、PlantUML 上では `Order` 側に白抜き diamond が出る。
-  - 観測点: `.puml` に `o` diamond を使う aggregation relation が含まれる。
+  - Then: `Order` から `Coupon` への relation は aggregation であり、PlantUML 上では `Order` 側に白抜き diamond が出る。通常矢印頭は出ない。
+  - 観測点: `.puml` に `o--` 相当の aggregation relation が含まれ、`o-->` は含まれない。
 - AC-003:
   - Actor: pyclassuml user
   - Given: `class Order: lines: list[OrderLine]`
   - When: `pyclassuml generate` が `.puml` を生成する
   - Then: `Order` から `OrderLine` への relation は aggregation として出る。
-  - 観測点: `.puml` に `Order` owner side の aggregation relation が含まれる。
+  - 観測点: `.puml` に `Order` owner side の矢印頭なし aggregation relation が含まれる。
 - AC-004:
   - Actor: pyclassuml user
   - Given: `class Payment: source: Card | Invoice`
   - When: `pyclassuml generate` が `.puml` を生成する
   - Then: 解決できる `Card` と `Invoice` それぞれへの aggregation relation が出る。
-  - 観測点: `.puml` に複数 target への aggregation relation が含まれる。
+  - 観測点: `.puml` に複数 target への矢印頭なし aggregation relation が含まれる。
 - AC-005:
+  - Actor: pyclassuml user
+  - Given: `class Catalog: items_by_sku: dict[str, Item]` または `items_by_sku: Mapping[str, Item]`
+  - When: `pyclassuml generate` が `.puml` を生成する
+  - Then: `Catalog` から `Item` への relation は aggregation として出る。
+  - 観測点: `.puml` に `Catalog` owner side の矢印頭なし aggregation relation が含まれる。
+- AC-006:
+  - Actor: pyclassuml user
+  - Given: `class Catalog: items_by_key: dict[ItemKey, Item]`
+  - When: `pyclassuml generate` が `.puml` を生成する
+  - Then: mapping key type の `ItemKey` は aggregation target にならず、value type の `Item` だけが aggregation target になる。
+  - 観測点: `.puml` に `Catalog` から `Item` への aggregation relation が含まれ、`Catalog` から `ItemKey` への ownership relation は含まれない。
+- AC-007:
   - Actor: pyclassuml user
   - Given: method parameter / method return だけで参照される selected internal class
   - When: `pyclassuml generate` が `.puml` を生成する
   - Then: その relation は composition / aggregation ではなく既存の uses relation として出る。
   - 観測点: `.puml` の method-only relation は `..>` のまま。
-- AC-006:
+- AC-008:
   - Actor: pyclassuml maintainer
   - Given: `iss-00030` の inheritance / Protocol realization fixtures
   - When: full test suite と manual generate を実行する
@@ -139,6 +154,10 @@ ID: "iss-00032"
   - 条件: `field: list[UnknownTarget]` のように container 内 target が解決不能。
   - 期待: aggregation を捏造せず、warning-only success の範囲で継続する。
   - 観測点: diagnostics と `.puml`。
+- EC-005:
+  - 条件: `field: dict[UnknownKey, Target]` のように mapping key が解決不能で value は解決可能。
+  - 期待: key 側 warning / unresolved は所有関係を作らず、value 側の aggregation は保持する。
+  - 観測点: diagnostics と `.puml`。
 
 ## 入力→出力例
 - EX-001:
@@ -157,12 +176,13 @@ ID: "iss-00032"
         customer: Customer
         coupon: Coupon | None
         lines: list[OrderLine]
+        lines_by_sku: dict[str, OrderLine]
     ```
   - Output:
     ```plantuml
-    Order *--> Customer
-    Order o--> Coupon
-    Order o--> OrderLine
+    Order *-- Customer
+    Order o-- Coupon
+    Order o-- OrderLine
     ```
 
 ## 用語
@@ -173,15 +193,13 @@ ID: "iss-00032"
 - TERM-003:
   - owner class: field を定義している source class。diamond は owner class 側に置く。
 
+## 分析メモ
+- AM-001:
+  - `dict` / `Mapping` 対応は今回 scope に含める。
+  - 理由:
+    - 既存 parser は annotation 内の class-like target を AST-only で抽出できており、mapping value の判定も annotation shape classifier を追加すれば実装できる。
+    - `list[T]` / `set[T]` / `tuple[T]` と同じく `Subscript` 形状を読む処理なので、value 側だけを対象にする制約を置けば技術的難易度は高くない。
+    - 注意点は、`dict[Key, Value]` の key type を ownership target にしないこと。これは acceptance criteria と regression test で固定する。
+
 ## 未確定事項
-- Q-001:
-  - 質問: `dict[str, Target]` / `Mapping[str, Target]` を MVP に含めるか。
-  - 選択肢:
-    - A:
-      - MVP では対象外にし、list / set / tuple / Sequence / Iterable を優先する。
-    - B:
-      - mapping value type も aggregation として扱う。
-  - 推奨案:
-    - A。container support の初回実装を小さく保ち、後続 issue で mapping / nested container を拡張する。
-  - 影響範囲:
-    - parser/analyzer の annotation shape extraction と regression test。
+- 該当なし。`dict` / `Mapping` は今回 scope に含める。
