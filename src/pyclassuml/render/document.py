@@ -7,11 +7,13 @@ from dataclasses import dataclass
 from pyclassuml.frameworks.pydantic import PydanticEnrichmentHints
 from pyclassuml.frameworks.sqlalchemy import SqlalchemyEnrichmentHints
 from pyclassuml.model import (
+    ClassMember,
     ClassId,
     Diagnostic,
     DiagnosticSeverity,
     DiagramModel,
     FailureReason,
+    MemberParameter,
     OriginSeam,
     ParsedModule,
     PlantUmlText,
@@ -83,9 +85,22 @@ def compose_render_ready_model(
     relations = tuple(sorted(relation_by_triple))
     grouping_keys = tuple(sorted({_module_path_from_class_id(class_id) for class_id in valid_classes}))
 
+    valid_class_ids = set(valid_classes)
+    members = tuple(
+        sorted(
+            (
+                member
+                for parsed_module in parsed_modules
+                for member in parsed_module.members
+                if member.owner_class_id in valid_class_ids
+            ),
+            key=_member_sort_key,
+        )
+    )
+
     return RenderReadyModel(
         classes=tuple(valid_classes),
-        members=(),
+        members=members,
         relations=relations,
         class_decorations=(),
         grouping_keys=grouping_keys,
@@ -109,10 +124,14 @@ def build_diagram_model(render_ready_model: RenderReadyModel) -> DiagramModel:
     )
 
 
-def render_plantuml_text(diagram_model: DiagramModel) -> PlantUmlText:
+def render_plantuml_text(
+    render_ready_model: RenderReadyModel,
+    diagram_model: DiagramModel,
+) -> PlantUmlText:
     """Serialize a diagram model into deterministic PlantUML text."""
 
     alias_by_class_id = dict(diagram_model.aliases)
+    members_by_class_id = _members_by_class_id(render_ready_model.members)
     lines = ["@startuml"]
     for container in diagram_model.containers:
         lines.append(f'package "{_escape_plantuml(container)}" {{')
@@ -121,13 +140,19 @@ def render_plantuml_text(diagram_model: DiagramModel) -> PlantUmlText:
                 continue
             label = _class_label(class_id)
             alias = alias_by_class_id[class_id]
-            lines.append(f'  class "{_escape_plantuml(label)}" as {alias}')
+            member_lines = members_by_class_id.get(class_id, ())
+            if not member_lines:
+                lines.append(f'  class "{_escape_plantuml(label)}" as {alias}')
+                continue
+            lines.append(f'  class "{_escape_plantuml(label)}" as {alias} {{')
+            lines.extend(f"    {line}" for line in member_lines)
+            lines.append("  }")
         lines.append("}")
 
     for source_class_id, target_class_id, relation_type in diagram_model.rendered_relations:
         source_alias = alias_by_class_id[source_class_id]
         target_alias = alias_by_class_id[target_class_id]
-        lines.append(f"{source_alias} --> {target_alias} : {_escape_plantuml(relation_type)}")
+        lines.append(f"{source_alias} {_relation_arrow(relation_type)} {target_alias}")
 
     lines.append("@enduml")
     return PlantUmlText("\n".join(lines))
@@ -159,7 +184,7 @@ def render_uml_document(
         return RenderDocumentResult(failure_signal=failure)
 
     diagram_model = build_diagram_model(render_ready_model)
-    plantuml_text = render_plantuml_text(diagram_model)
+    plantuml_text = render_plantuml_text(render_ready_model, diagram_model)
     return RenderDocumentResult(diagram_model=diagram_model, plantuml_text=plantuml_text)
 
 
@@ -177,6 +202,10 @@ def _all_relations(
 
 def _relation_triple(relation: SelectedRelation) -> tuple[ClassId, ClassId, RelationType]:
     return (relation.source_class_id, relation.target_class_id, relation.relation_type)
+
+
+def _member_sort_key(member: ClassMember) -> tuple[ClassId, int, str, str]:
+    return (member.owner_class_id, member.source_order, member.kind, member.name)
 
 
 def _diagnostic_sort_key(diagnostic: Diagnostic) -> tuple[str, str, str, str]:
@@ -263,6 +292,83 @@ def _module_path_from_class_id(class_id: ClassId) -> str:
 
 def _class_label(class_id: ClassId) -> str:
     return class_id.rsplit(":", 1)[-1].rsplit(".", 1)[-1]
+
+
+def _members_by_class_id(members: tuple[ClassMember, ...]) -> dict[ClassId, tuple[str, ...]]:
+    grouped: dict[ClassId, list[str]] = {}
+    for member in sorted(members, key=_member_sort_key):
+        grouped.setdefault(member.owner_class_id, []).append(_member_line(member))
+    return {class_id: tuple(lines) for class_id, lines in grouped.items()}
+
+
+def _member_line(member: ClassMember) -> str:
+    if member.kind == "method":
+        return _method_line(member)
+    return _field_line(member)
+
+
+def _field_line(member: ClassMember) -> str:
+    prefix = _member_prefix(member)
+    name = _escape_plantuml(_normalize_member_text(member.name))
+    if member.annotation_text is None:
+        return f"{prefix}{name}"
+    annotation = _escape_plantuml(_normalize_member_text(member.annotation_text))
+    return f"{prefix}{name}: {annotation}"
+
+
+def _method_line(member: ClassMember) -> str:
+    prefix = _member_prefix(member)
+    name = _escape_plantuml(_normalize_member_text(member.name))
+    parameters = ", ".join(_parameter_text(parameter) for parameter in member.parameters)
+    signature = f"{prefix}{name}({parameters})"
+    if member.return_annotation_text is None:
+        return signature
+    return_annotation = _escape_plantuml(_normalize_member_text(member.return_annotation_text))
+    return f"{signature}: {return_annotation}"
+
+
+def _parameter_text(parameter: MemberParameter) -> str:
+    name = _escape_plantuml(_normalize_member_text(parameter.name))
+    if parameter.annotation_text is None:
+        return name
+    annotation = _escape_plantuml(_normalize_member_text(parameter.annotation_text))
+    return f"{name}: {annotation}"
+
+
+def _member_prefix(member: ClassMember) -> str:
+    visibility = {
+        "public": "+",
+        "protected": "#",
+        "private": "-",
+    }[member.visibility]
+    modifiers = tuple(_modifier_prefixes(member.modifiers))
+    if not modifiers:
+        return f"{visibility} "
+    return f"{visibility} {' '.join(modifiers)} "
+
+
+def _modifier_prefixes(modifiers: tuple[str, ...]) -> tuple[str, ...]:
+    supported = {
+        "staticmethod": "{static}",
+        "classmethod": "{class}",
+        "property": "{property}",
+        "async": "{async}",
+    }
+    order = ("staticmethod", "classmethod", "property", "async")
+    seen = set(modifiers)
+    return tuple(supported[modifier] for modifier in order if modifier in seen)
+
+
+def _relation_arrow(relation_type: RelationType) -> str:
+    return {
+        "inherits": "--|>",
+        "association": "-->",
+        "uses": "..>",
+    }[relation_type]
+
+
+def _normalize_member_text(value: str) -> str:
+    return value.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
 
 
 def _escape_plantuml(value: str) -> str:

@@ -137,7 +137,7 @@ def test_happy_path_writes_artifact_summary_and_does_not_emit_streams(
     assert captured.err == ""
 
 
-def test_generate_renders_typed_relation_labels_without_duplicate_pydantic_fallback(
+def test_generate_renders_typed_relation_arrows_without_duplicate_pydantic_fallback(
     tmp_path: Path,
 ) -> None:
     write_file(
@@ -168,12 +168,13 @@ def test_generate_renders_typed_relation_labels_without_duplicate_pydantic_fallb
     output = (tmp_path / "typed-relations.puml").read_text(encoding="utf-8")
     assert result.outcome_kind == "clean_success"
     assert result.command_result.exit_code == 0
-    assert " --> " in output
-    assert " : inherits" in output
-    assert " : association" in output
-    assert " : uses" in output
-    assert output.count(" : association") == 1
-    assert output.count(" : uses") == 1
+    assert "+ customer: 'Customer'" in output
+    assert "+ submit(receipt: Receipt): Receipt" in output
+    assert "c004 --|> c001" in output
+    assert "c004 --|> c002" in output
+    assert "c004 --> c003" in output
+    assert "c004 ..> c005" in output
+    assert " : " not in output
     assert "pydantic_forward_ref" not in output
 
 
