@@ -86,6 +86,11 @@ def compose_render_ready_model(
     grouping_keys = tuple(sorted({_module_path_from_class_id(class_id) for class_id in valid_classes}))
 
     valid_class_ids = set(valid_classes)
+    class_decorations = tuple(
+        (class_id, "Protocol")
+        for class_id in valid_classes
+        if _is_protocol_class(class_id, parsed_modules, module_index)
+    )
     members = tuple(
         sorted(
             (
@@ -102,7 +107,7 @@ def compose_render_ready_model(
         classes=tuple(valid_classes),
         members=members,
         relations=relations,
-        class_decorations=(),
+        class_decorations=class_decorations,
         grouping_keys=grouping_keys,
         diagnostics=tuple(diagnostics),
     )
@@ -132,6 +137,7 @@ def render_plantuml_text(
 
     alias_by_class_id = dict(diagram_model.aliases)
     members_by_class_id = _members_by_class_id(render_ready_model.members)
+    decorations_by_class_id = _decorations_by_class_id(render_ready_model.class_decorations)
     lines = ["@startuml"]
     for container in diagram_model.containers:
         lines.append(f'package "{_escape_plantuml(container)}" {{')
@@ -139,12 +145,13 @@ def render_plantuml_text(
             if _module_path_from_class_id(class_id) != container:
                 continue
             label = _class_label(class_id)
+            stereotype = _class_stereotype(decorations_by_class_id.get(class_id, ()))
             alias = alias_by_class_id[class_id]
             member_lines = members_by_class_id.get(class_id, ())
             if not member_lines:
-                lines.append(f'  class "{_escape_plantuml(label)}" as {alias}')
+                lines.append(f'  class "{_escape_plantuml(label)}" as {alias}{stereotype}')
                 continue
-            lines.append(f'  class "{_escape_plantuml(label)}" as {alias} {{')
+            lines.append(f'  class "{_escape_plantuml(label)}" as {alias}{stereotype} {{')
             lines.extend(f"    {line}" for line in member_lines)
             lines.append("  }")
         lines.append("}")
@@ -215,6 +222,77 @@ def _diagnostic_sort_key(diagnostic: Diagnostic) -> tuple[str, str, str, str]:
         diagnostic.severity.value,
         diagnostic.recoverability.value,
     )
+
+
+def _is_protocol_class(class_id: ClassId, parsed_modules: tuple[ParsedModule, ...], module_index: ModuleIndex) -> bool:
+    module_by_path = {parsed_module.module_path: parsed_module for parsed_module in parsed_modules}
+    return any(
+        reference.source_class_id == class_id
+        and reference.reference_kind == "class_base"
+        and reference.reference_owner == "base"
+        and _is_protocol_marker_base_reference(
+            reference=reference,
+            module_index=module_index,
+            module_by_path=module_by_path,
+        )
+        for parsed_module in parsed_modules
+        for reference in parsed_module.class_references
+    )
+
+
+def _is_protocol_marker_base_reference(
+    *,
+    reference: ClassReference,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> bool:
+    if reference.target_name in {"typing.Protocol", "typing_extensions.Protocol"}:
+        return True
+    if reference.target_name != "Protocol":
+        return False
+    if _source_module_imports_protocol_marker(reference, module_index, module_by_path):
+        return True
+    return False
+
+
+def _source_module_imports_protocol_marker(
+    reference: ClassReference,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> bool:
+    source_module_path = module_index.class_to_module.get(reference.source_class_id)
+    if source_module_path is None:
+        return False
+    source_module = module_by_path.get(source_module_path)
+    if source_module is None:
+        return False
+    return _imports_protocol_marker(source_module.imports)
+
+
+def _imports_protocol_marker(imports: tuple[str, ...]) -> bool:
+    return any(
+        _imports_name_from(import_text, module_name="typing", imported_name="Protocol")
+        or _imports_name_from(import_text, module_name="typing_extensions", imported_name="Protocol")
+        for import_text in imports
+    )
+
+
+def _imports_name_from(import_text: str, *, module_name: str, imported_name: str) -> bool:
+    prefix = f"from {module_name} import "
+    if not import_text.startswith(prefix):
+        return False
+    return any(
+        _imports_name_as_local_name(name, imported_name)
+        for name in import_text.removeprefix(prefix).split(",")
+    )
+
+
+def _imports_name_as_local_name(imported_text: str, expected_name: str) -> bool:
+    parts = tuple(part.strip() for part in imported_text.split(" as ", maxsplit=1))
+    if len(parts) == 2:
+        imported_name, local_name = parts
+        return imported_name == expected_name and local_name == expected_name
+    return parts[0] == expected_name
 
 
 def _failure_signal_if_unbuildable(
@@ -301,6 +379,19 @@ def _members_by_class_id(members: tuple[ClassMember, ...]) -> dict[ClassId, tupl
     return {class_id: tuple(lines) for class_id, lines in grouped.items()}
 
 
+def _decorations_by_class_id(class_decorations: tuple[tuple[ClassId, str], ...]) -> dict[ClassId, tuple[str, ...]]:
+    grouped: dict[ClassId, list[str]] = {}
+    for class_id, decoration in sorted(class_decorations):
+        grouped.setdefault(class_id, []).append(decoration)
+    return {class_id: tuple(decorations) for class_id, decorations in grouped.items()}
+
+
+def _class_stereotype(decorations: tuple[str, ...]) -> str:
+    if not decorations:
+        return ""
+    return " " + " ".join(f"<<{_escape_plantuml(decoration)}>>" for decoration in decorations)
+
+
 def _member_line(member: ClassMember) -> str:
     if member.kind == "method":
         return _method_line(member)
@@ -361,7 +452,8 @@ def _modifier_prefixes(modifiers: tuple[str, ...]) -> tuple[str, ...]:
 
 def _relation_arrow(relation_type: RelationType) -> str:
     return {
-        "inherits": "--|>",
+        "inherits": "-up-|>",
+        "realizes": "..up|>",
         "association": "-->",
         "uses": "..>",
     }[relation_type]

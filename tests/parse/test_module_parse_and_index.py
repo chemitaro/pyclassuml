@@ -111,6 +111,28 @@ def test_seed_file_parse_builds_parsed_module_and_index(tmp_path: Path) -> None:
     }
 
 
+def test_from_imports_preserve_aliases_in_parsed_module_imports(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "contracts.py",
+        "\n".join(
+            [
+                "from typing import Any, Protocol",
+                "from typing import Protocol as TypingProtocol",
+                "class Foo:",
+                "    pass",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].imports == (
+        "from typing import Any, Protocol",
+        "from typing import Protocol as TypingProtocol",
+    )
+
+
 def test_class_members_are_extracted_in_source_order_with_method_modifiers(tmp_path: Path) -> None:
     project = tmp_path / "project"
     seed = write_file(

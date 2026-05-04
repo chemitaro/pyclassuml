@@ -24,7 +24,7 @@ _SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 _TARGET_PYTHON = re.compile(r"^3\.[0-9]+$")
 _MEMBER_KINDS = frozenset({"field", "method"})
 _MEMBER_VISIBILITIES = frozenset({"public", "protected", "private"})
-_RELATION_TYPES = frozenset({"inherits", "association", "uses"})
+_RELATION_TYPES = frozenset({"inherits", "realizes", "association", "uses"})
 
 
 class CommandName(str, Enum):
@@ -140,7 +140,7 @@ def _ensure_member_visibility(value: object) -> None:
 
 def _ensure_relation_type(value: object) -> None:
     if value not in _RELATION_TYPES:
-        raise ValueError("relation_type must be one of: inherits, association, uses")
+        raise ValueError("relation_type must be one of: inherits, realizes, association, uses")
 
 
 def _ensure_diagnostics(values: tuple[object, ...], field_name: str) -> None:

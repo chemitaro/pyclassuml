@@ -234,12 +234,19 @@ def _extract_import_refs(tree: ast.AST) -> tuple[_ImportRef, ...]:
         elif isinstance(node, ast.ImportFrom):
             module = node.module
             names = tuple(alias.name for alias in node.names if alias.name != "*")
+            rendered_names = tuple(_format_import_from_alias(alias) for alias in node.names if alias.name != "*")
             import_from = f"{'.' * node.level}{module or ''}"
             text = f"from {import_from}"
-            if names:
-                text = f"{text} import {', '.join(names)}"
+            if rendered_names:
+                text = f"{text} import {', '.join(rendered_names)}"
             refs.append(_ImportRef(text=text, module=module, names=names, level=node.level))
     return tuple(sorted(refs, key=lambda ref: ref.text))
+
+
+def _format_import_from_alias(alias: ast.alias) -> str:
+    if alias.asname is None:
+        return alias.name
+    return f"{alias.name} as {alias.asname}"
 
 
 def _extract_classes(tree: ast.AST, module_path: Path) -> tuple[str, ...]:

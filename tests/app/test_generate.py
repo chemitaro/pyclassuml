@@ -187,8 +187,8 @@ def test_generate_renders_typed_relation_arrows_without_duplicate_pydantic_fallb
     assert result.command_result.exit_code == 0
     assert "+ customer: 'Customer'" in output
     assert "+ submit(receipt: Receipt): Receipt" in output
-    assert "c004 --|> c001" in output
-    assert "c004 --|> c002" in output
+    assert "c004 -up-|> c001" in output
+    assert "c004 -up-|> c002" in output
     assert "c004 --> c003" in output
     assert "c004 ..> c005" in output
     assert " : " not in output
@@ -234,6 +234,9 @@ def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_re
                 '    def authorize(self, request: CheckoutRequest) -> "Authorization":',
                 "        ...",
                 "",
+                "class SqlPaymentGateway(PaymentGateway):",
+                "    pass",
+                "",
                 "class Authorization:",
                 "    token: str",
                 "",
@@ -272,12 +275,15 @@ def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_re
     assert "+ sku: str" in output
     assert_relation(output, "CheckoutRequest", "-->", "AddressDto")
     assert_relation(output, "CheckoutRequest", "-->", "CheckoutLineDto")
-    assert_relation(output, "CheckoutRequest", "--|>", "BaseModel")
+    assert 'class "PaymentGateway" as ' in output
+    assert "<<Protocol>>" in output
+    assert_relation(output, "CheckoutRequest", "-up-|>", "BaseModel")
     assert_relation(output, "OrderDraft", "-->", "CheckoutRequest")
     assert_relation(output, "OrderDraft", "..>", "Authorization")
     assert_relation(output, "PaymentGateway", "..>", "Authorization")
     assert_relation(output, "PaymentGateway", "..>", "CheckoutRequest")
-    assert_relation(output, "CheckoutError", "--|>", "Exception")
+    assert_relation(output, "SqlPaymentGateway", "..up|>", "PaymentGateway")
+    assert_relation(output, "CheckoutError", "-up-|>", "Exception")
     assert_relation(output, "Catalog", "-->", "Entry")
     checkout_request_alias = class_alias(output, "CheckoutRequest")
     duplicate_aliases = class_aliases(output, "Duplicate")
@@ -286,7 +292,7 @@ def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_re
         assert f"{checkout_request_alias} --> {duplicate_alias}" not in output
         assert f"{checkout_request_alias} ..> {duplicate_alias}" not in output
     assert "outcome: warning_only_success" in result.stdout_text
-    assert "warning_count: 3" in result.stdout_text
+    assert "warning_count: 2" in result.stdout_text
     assert "warning:typed_relation_unresolved:" in result.stdout_text
     assert "target_name=GhostPaymentProviderContext" in result.stdout_text
     assert "warning:typed_relation_ambiguous:" in result.stdout_text

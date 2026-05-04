@@ -324,6 +324,241 @@ def test_typed_relations_classify_base_field_and_method_references() -> None:
     assert result.diagnostics == ()
 
 
+def test_protocol_marker_base_classifies_selected_protocol_target_as_realizes_without_external_warning() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        imports=("from typing import Any, Protocol",),
+        classes=(
+            "pkg/models.py:Repository",
+            "pkg/models.py:SqlRepository",
+            "pkg/models.py:AuditEvent",
+        ),
+        class_references=(
+            reference("pkg/models.py:Repository", "Protocol", "class_base", "base"),
+            reference("pkg/models.py:Repository", "AuditEvent", "method_return_annotation", "record"),
+            reference("pkg/models.py:SqlRepository", "Repository", "class_base", "base"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Repository", "pkg/models.py:AuditEvent", "uses", "method_return_annotation"),
+        SelectedRelation("pkg/models.py:SqlRepository", "pkg/models.py:Repository", "realizes", "class_base"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_imported_bare_protocol_marker_wins_over_internal_protocol_class_in_other_module() -> None:
+    contracts = ParsedModule(
+        module_path=Path("pkg/contracts.py"),
+        imports=("from typing import Protocol",),
+        classes=(
+            "pkg/contracts.py:Repository",
+            "pkg/contracts.py:Impl",
+        ),
+        class_references=(
+            reference("pkg/contracts.py:Repository", "Protocol", "class_base", "base"),
+            reference("pkg/contracts.py:Impl", "Repository", "class_base", "base"),
+        ),
+    )
+    names = ParsedModule(
+        module_path=Path("pkg/names.py"),
+        classes=("pkg/names.py:Protocol",),
+    )
+
+    result = select(
+        (contracts, names),
+        seeds=("pkg/contracts.py", "pkg/names.py"),
+        reachable=("pkg/contracts.py", "pkg/names.py"),
+    )
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/contracts.py:Impl", "pkg/contracts.py:Repository", "realizes", "class_base"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_internal_normal_protocol_class_is_inherited_not_treated_as_marker() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        classes=(
+            "pkg/models.py:Protocol",
+            "pkg/models.py:Foo",
+        ),
+        class_references=(
+            reference("pkg/models.py:Foo", "Protocol", "class_base", "base"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Foo", "pkg/models.py:Protocol", "inherits", "class_base"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_aliased_typing_protocol_does_not_make_bare_protocol_base_a_marker() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        imports=("from typing import Protocol as TypingProtocol",),
+        classes=(
+            "pkg/models.py:Protocol",
+            "pkg/models.py:Foo",
+        ),
+        class_references=(
+            reference("pkg/models.py:Foo", "Protocol", "class_base", "base"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Foo", "pkg/models.py:Protocol", "inherits", "class_base"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_method_only_like_base_is_inherited_not_realized_without_protocol_marker() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        classes=(
+            "pkg/models.py:MethodOnly",
+            "pkg/models.py:Impl",
+        ),
+        class_references=(
+            reference("pkg/models.py:Impl", "MethodOnly", "class_base", "base"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Impl", "pkg/models.py:MethodOnly", "inherits", "class_base"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_qualified_protocol_marker_bases_are_supported_without_abc_or_method_only_heuristics() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        classes=(
+            "pkg/models.py:AbstractBase",
+            "pkg/models.py:Concrete",
+            "pkg/models.py:QualifiedProtocol",
+            "pkg/models.py:QualifiedImpl",
+            "pkg/models.py:ExtensionProtocol",
+            "pkg/models.py:ExtensionImpl",
+            "pkg/models.py:MethodOnly",
+        ),
+        class_references=(
+            reference("pkg/models.py:AbstractBase", "ABC", "class_base", "base"),
+            reference("pkg/models.py:Concrete", "AbstractBase", "class_base", "base"),
+            reference("pkg/models.py:QualifiedProtocol", "typing.Protocol", "class_base", "base"),
+            reference("pkg/models.py:QualifiedImpl", "QualifiedProtocol", "class_base", "base"),
+            reference("pkg/models.py:ExtensionProtocol", "typing_extensions.Protocol", "class_base", "base"),
+            reference("pkg/models.py:ExtensionImpl", "ExtensionProtocol", "class_base", "base"),
+            reference("pkg/models.py:Concrete", "QualifiedProtocol", "method_parameter_annotation", "protocol"),
+            reference("pkg/models.py:MethodOnly", "Concrete", "method_return_annotation", "make"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Concrete", "pkg/models.py:AbstractBase", "inherits", "class_base"),
+        SelectedRelation(
+            "pkg/models.py:Concrete",
+            "pkg/models.py:QualifiedProtocol",
+            "uses",
+            "method_parameter_annotation",
+        ),
+        SelectedRelation("pkg/models.py:ExtensionImpl", "pkg/models.py:ExtensionProtocol", "realizes", "class_base"),
+        SelectedRelation("pkg/models.py:MethodOnly", "pkg/models.py:Concrete", "uses", "method_return_annotation"),
+        SelectedRelation("pkg/models.py:QualifiedImpl", "pkg/models.py:QualifiedProtocol", "realizes", "class_base"),
+    )
+    assert [diagnostic.code for diagnostic in result.diagnostics] == ["typed_relation_unresolved"]
+    assert_typed_warning_payload(
+        result.diagnostics[0],
+        code="typed_relation_unresolved",
+        source_class_id="pkg/models.py:AbstractBase",
+        target_name="ABC",
+        reference_kind="class_base",
+        reference_owner="base",
+    )
+
+
+def test_class_base_unresolved_and_selection_outside_warn_without_invented_relation() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/source.py"),
+        classes=("pkg/source.py:Source",),
+        class_references=(
+            reference("pkg/source.py:Source", "MissingBase", "class_base", "base"),
+            reference("pkg/source.py:Source", "OutsideBase", "class_base", "base"),
+        ),
+    )
+    outside = module("pkg/outside.py", classes=("pkg/outside.py:OutsideBase",))
+
+    result = select(
+        (outside, seed),
+        seeds=("pkg/source.py",),
+        reachable=("pkg/source.py", "pkg/outside.py"),
+    )
+
+    assert result.selected_relations.relations == ()
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "typed_relation_selection_outside",
+        "typed_relation_unresolved",
+    ]
+    assert_typed_warning_payload(
+        result.diagnostics[0],
+        code="typed_relation_selection_outside",
+        source_class_id="pkg/source.py:Source",
+        target_name="OutsideBase",
+        reference_kind="class_base",
+        reference_owner="base",
+        candidates=("pkg/outside.py:OutsideBase",),
+    )
+    assert_typed_warning_payload(
+        result.diagnostics[1],
+        code="typed_relation_unresolved",
+        source_class_id="pkg/source.py:Source",
+        target_name="MissingBase",
+        reference_kind="class_base",
+        reference_owner="base",
+    )
+
+
+def test_unselected_internal_protocol_base_warns_without_marker_or_relation() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/source.py"),
+        classes=("pkg/source.py:Foo",),
+        class_references=(
+            reference("pkg/source.py:Foo", "Protocol", "class_base", "base"),
+        ),
+    )
+    outside = module("pkg/outside.py", classes=("pkg/outside.py:Protocol",))
+
+    result = select(
+        (outside, seed),
+        seeds=("pkg/source.py",),
+        reachable=("pkg/source.py", "pkg/outside.py"),
+    )
+
+    assert result.selected_relations.relations == ()
+    assert [diagnostic.code for diagnostic in result.diagnostics] == ["typed_relation_selection_outside"]
+    assert_typed_warning_payload(
+        result.diagnostics[0],
+        code="typed_relation_selection_outside",
+        source_class_id="pkg/source.py:Foo",
+        target_name="Protocol",
+        reference_kind="class_base",
+        reference_owner="base",
+        candidates=("pkg/outside.py:Protocol",),
+    )
+
+
 def test_typed_relation_resolver_accepts_full_id_module_qualified_short_name_and_same_module() -> None:
     same_module = ParsedModule(
         module_path=Path("pkg/models.py"),

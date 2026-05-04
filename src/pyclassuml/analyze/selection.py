@@ -24,11 +24,15 @@ from pyclassuml.parse import ModuleIndex
 
 _RELATION_TYPE_PRIORITY = {
     "inherits": 0,
+    "realizes": 0,
     "association": 1,
     "uses": 2,
 }
 _EVIDENCE_KIND_PRIORITY = {
     "inherits": {
+        "class_base": 0,
+    },
+    "realizes": {
         "class_base": 0,
     },
     "association": {
@@ -123,11 +127,26 @@ def select_classes_and_relations(
         selected_class_ids.add(source_class_id)
         selected_class_ids.add(target_class_id)
 
+    protocol_class_ids = _selected_protocol_class_ids(
+        parsed_modules=parsed_modules,
+        module_index=module_index,
+        selected_class_ids=selected_class_ids,
+    )
+    module_by_path = {module.module_path: module for module in parsed_modules}
+
     for reference in _typed_relation_references(parsed_modules):
         relation_type = _relation_type_for_reference(reference)
         if relation_type is None:
             continue
         if reference.source_class_id not in selected_class_ids:
+            continue
+        if _is_qualified_protocol_marker_base_reference(reference):
+            continue
+        if _is_imported_bare_protocol_marker_base_reference(
+            reference=reference,
+            module_index=module_index,
+            module_by_path=module_by_path,
+        ):
             continue
         resolved = _resolve_typed_relation_target(
             reference=reference,
@@ -141,7 +160,7 @@ def select_classes_and_relations(
             SelectedRelation(
                 source_class_id=reference.source_class_id,
                 target_class_id=resolved,
-                relation_type=relation_type,
+                relation_type=_realized_relation_type(relation_type, resolved, protocol_class_ids),
                 evidence_kind=reference.reference_kind,
             )
         )
@@ -195,6 +214,32 @@ def _typed_relation_references(parsed_modules: tuple[ParsedModule, ...]) -> tupl
     return tuple(reference for module in parsed_modules for reference in module.class_references)
 
 
+def _selected_protocol_class_ids(
+    *,
+    parsed_modules: tuple[ParsedModule, ...],
+    module_index: ModuleIndex,
+    selected_class_ids: set[ClassId],
+) -> frozenset[ClassId]:
+    protocol_class_ids: set[ClassId] = set()
+    module_by_path = {module.module_path: module for module in parsed_modules}
+    for reference in _typed_relation_references(parsed_modules):
+        if reference.source_class_id not in selected_class_ids:
+            continue
+        if _is_qualified_protocol_marker_base_reference(reference):
+            protocol_class_ids.add(reference.source_class_id)
+            continue
+        if not _is_bare_protocol_marker_base_reference(reference):
+            continue
+        if _is_imported_bare_protocol_marker_base_reference(
+            reference=reference,
+            module_index=module_index,
+            module_by_path=module_by_path,
+        ):
+            protocol_class_ids.add(reference.source_class_id)
+            continue
+    return frozenset(protocol_class_ids)
+
+
 def _relation_type_for_reference(reference: ClassReference) -> str | None:
     if reference.reference_kind == "class_base" and reference.reference_owner == "base":
         return "inherits"
@@ -203,6 +248,75 @@ def _relation_type_for_reference(reference: ClassReference) -> str | None:
     if reference.reference_kind in {"method_parameter_annotation", "method_return_annotation"}:
         return "uses"
     return None
+
+
+def _realized_relation_type(
+    relation_type: str,
+    target_class_id: ClassId,
+    protocol_class_ids: frozenset[ClassId],
+) -> str:
+    if relation_type == "inherits" and target_class_id in protocol_class_ids:
+        return "realizes"
+    return relation_type
+
+
+def _is_qualified_protocol_marker_base_reference(reference: ClassReference) -> bool:
+    return (
+        reference.reference_kind == "class_base"
+        and reference.reference_owner == "base"
+        and reference.target_name in {"typing.Protocol", "typing_extensions.Protocol"}
+    )
+
+
+def _is_bare_protocol_marker_base_reference(reference: ClassReference) -> bool:
+    return (
+        reference.reference_kind == "class_base"
+        and reference.reference_owner == "base"
+        and reference.target_name == "Protocol"
+    )
+
+
+def _is_imported_bare_protocol_marker_base_reference(
+    *,
+    reference: ClassReference,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> bool:
+    if not _is_bare_protocol_marker_base_reference(reference):
+        return False
+    source_module_path = module_index.class_to_module.get(reference.source_class_id)
+    if source_module_path is None:
+        return False
+    source_module = module_by_path.get(source_module_path)
+    if source_module is None:
+        return False
+    return _imports_protocol_marker(source_module.imports)
+
+
+def _imports_protocol_marker(imports: tuple[str, ...]) -> bool:
+    return any(
+        _imports_name_from(import_text, module_name="typing", imported_name="Protocol")
+        or _imports_name_from(import_text, module_name="typing_extensions", imported_name="Protocol")
+        for import_text in imports
+    )
+
+
+def _imports_name_from(import_text: str, *, module_name: str, imported_name: str) -> bool:
+    prefix = f"from {module_name} import "
+    if not import_text.startswith(prefix):
+        return False
+    return any(
+        _imports_name_as_local_name(name, imported_name)
+        for name in import_text.removeprefix(prefix).split(",")
+    )
+
+
+def _imports_name_as_local_name(imported_text: str, expected_name: str) -> bool:
+    parts = tuple(part.strip() for part in imported_text.split(" as ", maxsplit=1))
+    if len(parts) == 2:
+        imported_name, local_name = parts
+        return imported_name == expected_name and local_name == expected_name
+    return parts[0] == expected_name
 
 
 def _resolve_typed_relation_target(

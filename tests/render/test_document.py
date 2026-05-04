@@ -3,6 +3,7 @@ from pathlib import Path
 from pyclassuml.frameworks.pydantic import PydanticEnrichmentHints
 from pyclassuml.frameworks.sqlalchemy import SqlalchemyEnrichmentHints
 from pyclassuml.model import (
+    ClassReference,
     ClassMember,
     Diagnostic,
     DiagnosticSeverity,
@@ -558,7 +559,7 @@ def test_render_plantuml_text_outputs_visibility_modifiers_and_member_escaping()
 
 
 def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
-    class_ids = ("pkg/models.py:A", "pkg/models.py:B", "pkg/models.py:C")
+    class_ids = ("pkg/models.py:A", "pkg/models.py:B", "pkg/models.py:C", "pkg/models.py:D")
     result = render_uml_document(
         parsed_modules=(parsed_module("pkg/models.py", *class_ids),),
         module_index=module_index(*class_ids),
@@ -566,8 +567,9 @@ def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
         selected_relations=SelectedRelations(
             relations=(
                 relation("pkg/models.py:A", "pkg/models.py:B", relation_type="inherits"),
-                relation("pkg/models.py:B", "pkg/models.py:C", relation_type="association"),
-                relation("pkg/models.py:C", "pkg/models.py:A", relation_type="uses"),
+                relation("pkg/models.py:B", "pkg/models.py:C", relation_type="realizes"),
+                relation("pkg/models.py:C", "pkg/models.py:D", relation_type="association"),
+                relation("pkg/models.py:D", "pkg/models.py:A", relation_type="uses"),
             )
         ),
         sqlalchemy_hints=SqlalchemyEnrichmentHints(),
@@ -578,10 +580,190 @@ def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
     assert result.plantuml_text is not None
     relation_lines = tuple(line for line in result.plantuml_text.text.splitlines() if line.startswith("c"))
     assert relation_lines == (
-        "c001 --|> c002",
-        "c002 --> c003",
-        "c003 ..> c001",
+        "c001 -up-|> c002",
+        "c002 ..up|> c003",
+        "c003 --> c004",
+        "c004 ..> c001",
     )
+
+
+def test_compose_and_render_protocol_class_stereotype_from_explicit_protocol_base() -> None:
+    protocol_id = "pkg/models.py:Repository"
+    impl_id = "pkg/models.py:SqlRepository"
+    render_ready = compose_render_ready_model(
+        parsed_modules=(
+            ParsedModule(
+                module_path=Path("pkg/models.py"),
+                imports=("from typing import Protocol",),
+                classes=(protocol_id, impl_id),
+                class_references=(
+                    ClassReference(
+                        protocol_id,
+                        "Protocol",
+                        "class_base",
+                        "base",
+                    ),
+                ),
+            ),
+        ),
+        module_index=module_index(protocol_id, impl_id),
+        selected_classes=SelectedClasses(class_ids=(protocol_id, impl_id)),
+        selected_relations=SelectedRelations(relations=(relation(impl_id, protocol_id, relation_type="realizes"),)),
+        sqlalchemy_hints=SqlalchemyEnrichmentHints(),
+        pydantic_hints=PydanticEnrichmentHints(),
+    )
+
+    text = render_plantuml_text(render_ready, build_diagram_model(render_ready))
+
+    assert render_ready.class_decorations == ((protocol_id, "Protocol"),)
+    assert 'class "Repository" as c001 <<Protocol>>' in text.text
+    assert "c002 ..up|> c001" in text.text
+
+
+def test_compose_and_render_imported_bare_protocol_marker_with_internal_protocol_elsewhere() -> None:
+    protocol_id = "pkg/contracts.py:Repository"
+    impl_id = "pkg/contracts.py:SqlRepository"
+    internal_protocol_id = "pkg/names.py:Protocol"
+    render_ready = compose_render_ready_model(
+        parsed_modules=(
+            ParsedModule(
+                module_path=Path("pkg/contracts.py"),
+                imports=("from typing import Protocol",),
+                classes=(protocol_id, impl_id),
+                class_references=(
+                    ClassReference(
+                        protocol_id,
+                        "Protocol",
+                        "class_base",
+                        "base",
+                    ),
+                ),
+            ),
+            ParsedModule(
+                module_path=Path("pkg/names.py"),
+                classes=(internal_protocol_id,),
+            ),
+        ),
+        module_index=module_index(protocol_id, impl_id, internal_protocol_id),
+        selected_classes=SelectedClasses(class_ids=(protocol_id, impl_id, internal_protocol_id)),
+        selected_relations=SelectedRelations(relations=(relation(impl_id, protocol_id, relation_type="realizes"),)),
+        sqlalchemy_hints=SqlalchemyEnrichmentHints(),
+        pydantic_hints=PydanticEnrichmentHints(),
+    )
+
+    text = render_plantuml_text(render_ready, build_diagram_model(render_ready))
+
+    assert render_ready.class_decorations == ((protocol_id, "Protocol"),)
+    assert 'class "Repository" as c001 <<Protocol>>' in text.text
+    assert 'class "Protocol" as c003 <<Protocol>>' not in text.text
+    assert "c002 ..up|> c001" in text.text
+
+
+def test_compose_render_ready_model_does_not_decorate_aliased_bare_protocol_base() -> None:
+    protocol_id = "pkg/models.py:Protocol"
+    foo_id = "pkg/models.py:Foo"
+    render_ready = compose_render_ready_model(
+        parsed_modules=(
+            ParsedModule(
+                module_path=Path("pkg/models.py"),
+                imports=("from typing import Protocol as TypingProtocol",),
+                classes=(protocol_id, foo_id),
+                class_references=(
+                    ClassReference(
+                        foo_id,
+                        "Protocol",
+                        "class_base",
+                        "base",
+                    ),
+                ),
+            ),
+        ),
+        module_index=module_index(protocol_id, foo_id),
+        selected_classes=SelectedClasses(class_ids=(protocol_id, foo_id)),
+        selected_relations=SelectedRelations(relations=(relation(foo_id, protocol_id, relation_type="inherits"),)),
+        sqlalchemy_hints=SqlalchemyEnrichmentHints(),
+        pydantic_hints=PydanticEnrichmentHints(),
+    )
+
+    text = render_plantuml_text(render_ready, build_diagram_model(render_ready))
+
+    assert render_ready.class_decorations == ()
+    assert 'class "Foo" as c001 <<Protocol>>' not in text.text
+    assert "<<Protocol>>" not in text.text
+    assert "c001 -up-|> c002" in text.text
+
+
+def test_compose_render_ready_model_decorates_qualified_protocol_bases() -> None:
+    typing_protocol_id = "pkg/models.py:TypingRepository"
+    extensions_protocol_id = "pkg/models.py:ExtensionsRepository"
+    render_ready = compose_render_ready_model(
+        parsed_modules=(
+            ParsedModule(
+                module_path=Path("pkg/models.py"),
+                classes=(typing_protocol_id, extensions_protocol_id),
+                class_references=(
+                    ClassReference(
+                        typing_protocol_id,
+                        "typing.Protocol",
+                        "class_base",
+                        "base",
+                    ),
+                    ClassReference(
+                        extensions_protocol_id,
+                        "typing_extensions.Protocol",
+                        "class_base",
+                        "base",
+                    ),
+                ),
+            ),
+        ),
+        module_index=module_index(typing_protocol_id, extensions_protocol_id),
+        selected_classes=SelectedClasses(class_ids=(typing_protocol_id, extensions_protocol_id)),
+        selected_relations=SelectedRelations(),
+        sqlalchemy_hints=SqlalchemyEnrichmentHints(),
+        pydantic_hints=PydanticEnrichmentHints(),
+    )
+
+    text = render_plantuml_text(render_ready, build_diagram_model(render_ready))
+
+    assert render_ready.class_decorations == (
+        (extensions_protocol_id, "Protocol"),
+        (typing_protocol_id, "Protocol"),
+    )
+    assert 'class "ExtensionsRepository" as c001 <<Protocol>>' in text.text
+    assert 'class "TypingRepository" as c002 <<Protocol>>' in text.text
+
+
+def test_internal_normal_protocol_base_does_not_render_protocol_stereotype() -> None:
+    protocol_id = "pkg/models.py:Protocol"
+    foo_id = "pkg/models.py:Foo"
+    render_ready = compose_render_ready_model(
+        parsed_modules=(
+            ParsedModule(
+                module_path=Path("pkg/models.py"),
+                classes=(protocol_id, foo_id),
+                class_references=(
+                    ClassReference(
+                        foo_id,
+                        "Protocol",
+                        "class_base",
+                        "base",
+                    ),
+                ),
+            ),
+        ),
+        module_index=module_index(protocol_id, foo_id),
+        selected_classes=SelectedClasses(class_ids=(protocol_id, foo_id)),
+        selected_relations=SelectedRelations(relations=(relation(foo_id, protocol_id, relation_type="inherits"),)),
+        sqlalchemy_hints=SqlalchemyEnrichmentHints(),
+        pydantic_hints=PydanticEnrichmentHints(),
+    )
+
+    text = render_plantuml_text(render_ready, build_diagram_model(render_ready))
+
+    assert render_ready.class_decorations == ()
+    assert "<<Protocol>>" not in text.text
+    assert "c001 -up-|> c002" in text.text
 
 
 def test_render_uml_document_returns_failure_for_empty_selected_classes() -> None:
