@@ -93,7 +93,7 @@ result --> cli
 4. `ExecutionContext` / `AnalysisConfig` を受け、`vcs.diff-file-collect` を呼ぶ。
 5. `VcsDiffCollection.collection is None` の場合は VCS diagnostics を `write_report` へ渡し、target/common pipeline へ進まない。
 6. `ChangedFileCollection` を `targets.diff-target-normalize` に渡し、`TargetSet` を得る。
-7. target failure の場合は upstream diagnostics と target diagnostics を `write_report` へ渡し、common pipeline へ進まない。
+7. target failure の場合は upstream diagnostics、target diagnostics、`DiffTargetNormalization.observations` を `write_report` へ渡し、common pipeline へ進まない。
 8. `TargetSet` と actual changed-file context を app-local に保持する。
 9. `parse.module-parse-and-index` を呼び、`ParsedModule[]` と `ModuleIndex` を得る。
 10. `analyze.traversal`、`analyze.relationship-and-selection`、`ChangedClassInventory` を順に呼び、actual changed-file context に基づく inventory を得る。
@@ -112,7 +112,8 @@ result --> cli
 - from `targets.diff-target-normalize`:
   - `TargetSet.seed_files` は parse の唯一入力。
   - `TargetSet.observations.diff_scope_excluded_count` と ignore count は summary source として `report` まで transport する。
-  - zero-target failure は fallback seed を作らず `write_report` へ渡す。
+  - zero-target failure は fallback seed を作らず、empty `TargetSet(seed_files=(), observations=DiffTargetNormalization.observations)` を report counter transport のためだけに `write_report` へ渡す。
+  - `DiffTargetNormalization.target_set is None` の failure contract は維持し、app は scope filtering / ignore count を再実装しない。
 - to `ChangedClassInventory`:
   - `ChangedFileCollection.entries[].current_project_relative_path` を project-root-relative `Path` として `build_changed_class_inventory` へ渡し、`ModuleIndex.project_relative_file_to_module` と同じ key space で user-visible changed class 数を生成させる。
   - absolute path resolution は `vcs` / `targets.diff` の Git 読み取り・scope filtering・seed normalization までに閉じ、`ChangedClassInventory` handoff では使わない。

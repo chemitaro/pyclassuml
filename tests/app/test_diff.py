@@ -1,0 +1,653 @@
+from datetime import datetime
+from pathlib import Path
+import subprocess
+
+import pytest
+
+import pyclassuml.app.diff as diff_app
+from pyclassuml.app import run_diff
+from pyclassuml.model import (
+    ChangedClassInventory,
+    CommandName,
+    CommandOptions,
+    CommandRequest,
+    DiffCurrentState,
+    DiffOptions,
+    FailureReason,
+    GenerateOptions,
+)
+from pyclassuml.report import ReportInputs
+
+
+TIMESTAMP = datetime(2026, 5, 4, 12, 34, 56)
+
+
+def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ("git", "-C", str(repo), *args),
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def write_file(path: Path, text: str = "") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def init_repo(path: Path) -> Path:
+    path.mkdir()
+    subprocess.run(("git", "init", str(path)), check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    git(path, "config", "user.name", "pyclassuml test")
+    git(path, "config", "user.email", "pyclassuml@example.test")
+    return path
+
+
+def commit_all(repo: Path, message: str) -> None:
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", message)
+
+
+def tag_base(repo: Path) -> str:
+    git(repo, "tag", "base")
+    return "base"
+
+
+def diff_request(
+    process_cwd: Path,
+    *,
+    base_ref: str = "base",
+    current_state: DiffCurrentState = DiffCurrentState.WORKING_TREE,
+    include_untracked: bool = False,
+    **overrides: object,
+) -> CommandRequest:
+    kwargs: dict[str, object] = {
+        "command": CommandName.DIFF,
+        "diff": DiffOptions(
+            base_ref=base_ref,
+            current_state=current_state,
+            include_untracked=include_untracked,
+        ),
+    }
+    kwargs.update(overrides)
+    return CommandRequest(
+        process_cwd=process_cwd,
+        cli_options=CommandOptions(**kwargs),
+    )
+
+
+def generate_request(process_cwd: Path) -> CommandRequest:
+    return CommandRequest(
+        process_cwd=process_cwd,
+        cli_options=CommandOptions(
+            command=CommandName.GENERATE,
+            generate=GenerateOptions(targets=("pkg/a.py",)),
+        ),
+    )
+
+
+def fail_if_called(stage_name: str):
+    def fail(*args: object, **kwargs: object) -> object:
+        raise AssertionError(f"{stage_name} should not be called")
+
+    return fail
+
+
+def test_non_diff_request_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="diff command request"):
+        run_diff(generate_request(Path("/repo")), timestamp=TIMESTAMP)
+
+
+def test_config_failure_returns_report_nonzero_without_downstream_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(diff_app, "collect_diff_files", fail_if_called("vcs"))
+    monkeypatch.setattr(diff_app, "normalize_diff_targets", fail_if_called("targets"))
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+
+    result = run_diff(
+        diff_request(tmp_path, config=Path("missing.toml")),
+        timestamp=TIMESTAMP,
+    )
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.INVALID_CONFIG_OR_CONFIG_PATH
+    assert result.stdout_text == ""
+    assert "failure_reason: invalid_config_or_config_path" in result.stderr_text
+    assert "error:invalid_config_path:" in result.stderr_text
+    assert captured.out == ""
+    assert captured.err == ""
+    assert not list(tmp_path.glob("*.puml"))
+
+
+def test_vcs_failure_returns_report_nonzero_without_target_or_common_pipeline_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setattr(diff_app, "normalize_diff_targets", fail_if_called("targets"))
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+    monkeypatch.setattr(diff_app, "render_uml_document", fail_if_called("render"))
+
+    result = run_diff(diff_request(project), timestamp=TIMESTAMP)
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.VCS_READ_FAILURE
+    assert result.stdout_text == ""
+    assert "failure_reason: vcs_read_failure" in result.stderr_text
+    assert "error:git_diff_read_failure:" in result.stderr_text
+    assert captured.out == ""
+    assert captured.err == ""
+    assert not list(project.glob("*.puml"))
+
+
+def test_invalid_base_ref_returns_report_nonzero_without_target_or_common_pipeline_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(repo, "base")
+    monkeypatch.setattr(diff_app, "normalize_diff_targets", fail_if_called("targets"))
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+    monkeypatch.setattr(diff_app, "traverse_dependencies", fail_if_called("traversal"))
+    monkeypatch.setattr(diff_app, "render_uml_document", fail_if_called("render"))
+
+    result = run_diff(
+        diff_request(repo, base_ref="missing-ref"),
+        timestamp=TIMESTAMP,
+    )
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.VCS_READ_FAILURE
+    assert result.stdout_text == ""
+    assert "failure_reason: vcs_read_failure" in result.stderr_text
+    assert "error:invalid_base_ref:" in result.stderr_text
+    assert result.command_result.diagnostics[0].code == "invalid_base_ref"
+    assert result.command_result.diagnostics[0].failure_reason is FailureReason.VCS_READ_FAILURE
+    assert captured.out == ""
+    assert captured.err == ""
+    assert not list(repo.glob("*.puml"))
+
+
+def test_zero_target_failure_returns_report_nonzero_without_common_pipeline_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "README.md", "base\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "README.md", "changed\n")
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+    monkeypatch.setattr(diff_app, "traverse_dependencies", fail_if_called("traversal"))
+    monkeypatch.setattr(diff_app, "render_uml_document", fail_if_called("render"))
+
+    result = run_diff(diff_request(repo), timestamp=TIMESTAMP)
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER
+    assert result.stdout_text == ""
+    assert "failure_reason: diff_zero_target_after_scope_filter" in result.stderr_text
+    assert "error:diff_zero_target_after_scope_filter:" in result.stderr_text
+    assert captured.out == ""
+    assert captured.err == ""
+    assert not list(repo.glob("*.puml"))
+
+
+def test_diff_post_target_stage_invocation_order_is_canonical(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "model.py", "class User:\n    value = 1\n")
+    calls: list[str] = []
+    original_parse = diff_app.parse_target_set
+    original_traversal = diff_app.traverse_dependencies
+    original_selection = diff_app.select_classes_and_relations
+    original_inventory = diff_app.build_changed_class_inventory
+    original_sqlalchemy = diff_app.extract_sqlalchemy_enrichment_hints
+    original_pydantic = diff_app.extract_pydantic_enrichment_hints
+    original_render = diff_app.render_uml_document
+    original_report = diff_app.write_report
+
+    def parse_spy(*args: object, **kwargs: object):
+        calls.append("parse")
+        return original_parse(*args, **kwargs)
+
+    def traversal_spy(*args: object, **kwargs: object):
+        calls.append("traversal")
+        return original_traversal(*args, **kwargs)
+
+    def selection_spy(*args: object, **kwargs: object):
+        calls.append("selection")
+        return original_selection(*args, **kwargs)
+
+    def inventory_spy(*args: object, **kwargs: object):
+        calls.append("changed_inventory")
+        return original_inventory(*args, **kwargs)
+
+    def sqlalchemy_spy(*args: object, **kwargs: object):
+        calls.append("sqlalchemy")
+        return original_sqlalchemy(*args, **kwargs)
+
+    def pydantic_spy(*args: object, **kwargs: object):
+        calls.append("pydantic")
+        return original_pydantic(*args, **kwargs)
+
+    def render_spy(*args: object, **kwargs: object):
+        calls.append("render")
+        return original_render(*args, **kwargs)
+
+    def report_spy(*args: object, **kwargs: object):
+        calls.append("report")
+        return original_report(*args, **kwargs)
+
+    monkeypatch.setattr(diff_app, "parse_target_set", parse_spy)
+    monkeypatch.setattr(diff_app, "traverse_dependencies", traversal_spy)
+    monkeypatch.setattr(diff_app, "select_classes_and_relations", selection_spy)
+    monkeypatch.setattr(diff_app, "build_changed_class_inventory", inventory_spy)
+    monkeypatch.setattr(diff_app, "extract_sqlalchemy_enrichment_hints", sqlalchemy_spy)
+    monkeypatch.setattr(diff_app, "extract_pydantic_enrichment_hints", pydantic_spy)
+    monkeypatch.setattr(diff_app, "render_uml_document", render_spy)
+    monkeypatch.setattr(diff_app, "write_report", report_spy)
+
+    result = run_diff(
+        diff_request(repo, output=Path("order.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "clean_success"
+    assert calls == [
+        "parse",
+        "traversal",
+        "selection",
+        "changed_inventory",
+        "sqlalchemy",
+        "pydantic",
+        "render",
+        "report",
+    ]
+
+
+def test_happy_path_writes_artifact_summary_and_does_not_emit_process_streams(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "model.py", "class User:\n    value = 1\n")
+
+    result = run_diff(
+        diff_request(repo, output=Path("diagram.puml")),
+        timestamp=TIMESTAMP,
+    )
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.artifact_path == repo / "diagram.puml"
+    assert (repo / "diagram.puml").read_text(encoding="utf-8").startswith("@startuml\n")
+    assert "outcome: clean_success" in result.stdout_text
+    assert "seed_file_count: 1" in result.stdout_text
+    assert "changed_class_count: 1" in result.stdout_text
+    assert result.stderr_text == ""
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_working_tree_include_untracked_includes_untracked_python_in_seed_changed_and_report(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "tracked.py", "class Tracked:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "tracked.py", "class Tracked:\n    value = 1\n")
+    write_file(repo / "pkg" / "untracked.py", "class Untracked:\n    pass\n")
+
+    result = run_diff(
+        diff_request(
+            repo,
+            include_untracked=True,
+            output=Path("untracked.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+    captured = capsys.readouterr()
+
+    artifact_text = (repo / "untracked.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["seed_file_count"] == 2
+    assert result.command_result.summary.counters["changed_class_count"] == 2
+    assert "seed_file_count: 2" in result.stdout_text
+    assert "changed_class_count: 2" in result.stdout_text
+    assert 'class "Tracked"' in artifact_text
+    assert 'class "Untracked"' in artifact_text
+    assert result.stderr_text == ""
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_working_tree_default_excludes_untracked_python_from_seed_changed_and_report(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "tracked.py", "class Tracked:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "tracked.py", "class Tracked:\n    value = 1\n")
+    write_file(repo / "pkg" / "untracked.py", "class Untracked:\n    pass\n")
+
+    result = run_diff(
+        diff_request(
+            repo,
+            output=Path("tracked-only.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+    captured = capsys.readouterr()
+
+    artifact_text = (repo / "tracked-only.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["seed_file_count"] == 1
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "seed_file_count: 1" in result.stdout_text
+    assert "changed_class_count: 1" in result.stdout_text
+    assert 'class "Tracked"' in artifact_text
+    assert 'class "Untracked"' not in artifact_text
+    assert result.stderr_text == ""
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_output_unspecified_uses_diff_prefix_and_caller_timestamp(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "model.py", "class User:\n    value = 1\n")
+
+    result = run_diff(diff_request(repo), timestamp=TIMESTAMP)
+
+    artifact_path = repo / "pyclassuml_diff_20260504_123456.puml"
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.artifact_path == artifact_path
+    assert artifact_path.read_text(encoding="utf-8").startswith("@startuml\n")
+
+
+def test_project_root_relative_changed_files_are_used_for_inventory_and_handed_to_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "model.py", "class User:\n    value = 1\n")
+    sentinel_inventory = ChangedClassInventory(class_count=1, changed_files=(Path("pkg/model.py"),))
+    calls: dict[str, object] = {}
+    original_write_report = diff_app.write_report
+
+    def build_changed_class_inventory_spy(
+        changed_files: object,
+        parsed_modules: object,
+        module_index: object,
+    ) -> ChangedClassInventory:
+        calls["changed_files"] = changed_files
+        calls["parsed_modules"] = parsed_modules
+        calls["module_index"] = module_index
+        return sentinel_inventory
+
+    def write_report_spy(inputs: ReportInputs):
+        calls["report_inputs"] = inputs
+        return original_write_report(inputs)
+
+    monkeypatch.setattr(diff_app, "build_changed_class_inventory", build_changed_class_inventory_spy)
+    monkeypatch.setattr(diff_app, "write_report", write_report_spy)
+
+    result = run_diff(
+        diff_request(repo, output=Path("diagram.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    report_inputs = calls["report_inputs"]
+    assert result.outcome_kind == "clean_success"
+    assert calls["changed_files"] == (Path("pkg/model.py"),)
+    assert tuple(calls["parsed_modules"])
+    assert calls["module_index"] is not None
+    assert isinstance(report_inputs, ReportInputs)
+    assert report_inputs.changed_class_inventory is sentinel_inventory
+
+
+def test_scope_stop_count_from_traversal_observations_is_handed_to_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(
+        repo / "pkg" / "app" / "model.py",
+        "from pkg import shared\n\nclass User:\n    pass\n",
+    )
+    write_file(repo / "pkg" / "shared.py", "class Shared:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "app" / "model.py",
+        "from pkg import shared\n\nclass User:\n    value = 1\n",
+    )
+    calls: dict[str, object] = {}
+    original_write_report = diff_app.write_report
+
+    def write_report_spy(inputs: ReportInputs):
+        calls["report_inputs"] = inputs
+        return original_write_report(inputs)
+
+    monkeypatch.setattr(diff_app, "write_report", write_report_spy)
+
+    result = run_diff(
+        diff_request(
+            repo,
+            package_root=Path("pkg"),
+            scope_root=Path("pkg/app"),
+            output=Path("scope-stop.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+
+    report_inputs = calls["report_inputs"]
+    assert result.outcome_kind == "clean_success"
+    assert isinstance(report_inputs, ReportInputs)
+    assert report_inputs.scope_stop_count == 1
+
+
+def test_head_include_untracked_noop_warning_is_preserved(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "base.py", "class Base:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "head_only.py", "class HeadOnly:\n    pass\n")
+    commit_all(repo, "head")
+    write_file(repo / "untracked.py", "class Untracked:\n    pass\n")
+
+    result = run_diff(
+        diff_request(
+            repo,
+            current_state=DiffCurrentState.HEAD,
+            include_untracked=True,
+            output=Path("head.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "warning_only_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["warning_count"] == 1
+    assert "warning:head_untracked_noop:" in result.stdout_text
+    assert "untracked.py" not in (repo / "head.puml").read_text(encoding="utf-8")
+
+
+def test_diff_scope_excluded_count_is_preserved(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "inside.py", "class Inside:\n    pass\n")
+    write_file(repo / "outside.py", "class Outside:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "inside.py", "class Inside:\n    value = 1\n")
+    write_file(repo / "outside.py", "class Outside:\n    value = 1\n")
+
+    result = run_diff(
+        diff_request(
+            repo,
+            package_root=Path("pkg"),
+            scope_root=Path("pkg"),
+            output=Path("scope.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "warning_only_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["diff_scope_excluded_count"] == 1
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "diff_scope_excluded_count: 1" in result.stdout_text
+    assert "warning:diff_scope_exclusion:" in result.stdout_text
+
+
+def test_zero_target_all_scope_outside_preserves_diff_scope_excluded_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    (repo / "pkg").mkdir()
+    write_file(repo / "outside.py", "class Outside:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "outside.py", "class Outside:\n    value = 1\n")
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+    monkeypatch.setattr(diff_app, "traverse_dependencies", fail_if_called("traversal"))
+    monkeypatch.setattr(diff_app, "render_uml_document", fail_if_called("render"))
+
+    result = run_diff(
+        diff_request(
+            repo,
+            package_root=Path("."),
+            scope_root=Path("pkg"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.summary.failure_reason is FailureReason.DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER
+    assert result.command_result.summary.counters["seed_file_count"] == 0
+    assert result.command_result.summary.counters["diff_scope_excluded_count"] == 1
+    assert "diff_scope_excluded_count: 1" in result.stderr_text
+    assert "warning:diff_scope_exclusion:" in result.stderr_text
+    assert "error:diff_zero_target_after_scope_filter:" in result.stderr_text
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_output_write_failure_preserves_report_owned_nonzero_result(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "model.py", "class User:\n    value = 1\n")
+    write_file(repo / "blocked", "not a directory\n")
+
+    result = run_diff(
+        diff_request(repo, output=Path("blocked/diagram.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.OUTPUT_WRITE_FAILURE
+    assert result.stdout_text == ""
+    assert "failure_reason: output_write_failure" in result.stderr_text
+    assert "error:output_write_failure:" in result.stderr_text
+
+
+def test_output_write_failure_does_not_emit_process_streams(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "model.py", "class User:\n    value = 1\n")
+    write_file(repo / "blocked", "not a directory\n")
+
+    result = run_diff(
+        diff_request(repo, output=Path("blocked/diagram.puml")),
+        timestamp=TIMESTAMP,
+    )
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.stdout_text == ""
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_render_failure_is_report_owned_nonzero_result_without_process_streams(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "empty.py", "VALUE = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "empty.py", "VALUE = 2\n")
+
+    result = run_diff(
+        diff_request(repo, output=Path("empty.puml")),
+        timestamp=TIMESTAMP,
+    )
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "degraded_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.DIAGRAM_UNBUILDABLE_AFTER_RECOVERY
+    assert result.stdout_text == ""
+    assert "failure_reason: diagram_unbuildable_after_recovery" in result.stderr_text
+    assert not (repo / "empty.puml").exists()
+    assert captured.out == ""
+    assert captured.err == ""

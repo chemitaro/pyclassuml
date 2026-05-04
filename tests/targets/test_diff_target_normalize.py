@@ -8,6 +8,8 @@ from pyclassuml.model import (
     FailureReason,
     OriginSeam,
     Recoverability,
+    TargetObservations,
+    TargetSet,
 )
 from pyclassuml.targets import DiffTargetNormalization, normalize_diff_targets
 from pyclassuml.vcs import ChangedFileCollection, ChangedFileEntry
@@ -50,6 +52,35 @@ def assert_zero_target_failure(result: DiffTargetNormalization) -> None:
     assert diagnostic.failure_reason is FailureReason.DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER
 
 
+def test_diff_target_normalization_constructor_preserves_exported_positional_shapes(tmp_path: Path) -> None:
+    seed = write_file(tmp_path / "project" / "pkg" / "model.py")
+    target_set = TargetSet(
+        seed_files=(seed.resolve(),),
+        observations=TargetObservations(diff_scope_excluded_count=2),
+    )
+    diagnostic = Diagnostic(
+        severity=DiagnosticSeverity.WARNING,
+        code="head_untracked_noop",
+        message="include_untracked has no effect when diff current_state is head",
+        origin_seam=OriginSeam.VCS,
+        recoverability=Recoverability.RECOVERABLE,
+    )
+
+    default_observations = DiffTargetNormalization(target_set)
+    positional_diagnostics = DiffTargetNormalization(target_set, (diagnostic,))
+    keyword_diagnostics = DiffTargetNormalization(target_set, diagnostics=(diagnostic,))
+
+    assert default_observations.target_set is target_set
+    assert default_observations.diagnostics == ()
+    assert default_observations.observations == TargetObservations()
+    assert positional_diagnostics.target_set is target_set
+    assert positional_diagnostics.diagnostics == (diagnostic,)
+    assert positional_diagnostics.observations == TargetObservations()
+    assert keyword_diagnostics.target_set is target_set
+    assert keyword_diagnostics.diagnostics == (diagnostic,)
+    assert keyword_diagnostics.observations == TargetObservations()
+
+
 def test_scope_inside_python_seed_and_scope_outside_exclusion_are_carried(tmp_path: Path) -> None:
     project = tmp_path / "project"
     scope = project / "pkg"
@@ -64,6 +95,7 @@ def test_scope_inside_python_seed_and_scope_outside_exclusion_are_carried(tmp_pa
 
     assert assert_success(result) == (inside.resolve(),)
     assert result.target_set is not None
+    assert result.observations == result.target_set.observations
     assert result.target_set.observations.diff_scope_excluded_count == 1
     assert result.target_set.observations.ignored_seed_candidate_count == 0
     assert len(result.diagnostics) == 1
@@ -98,6 +130,7 @@ def test_project_root_relative_ignore_non_python_and_dedupe_are_deterministic(tm
 
     assert assert_success(result) == tuple(sorted((keep_a.resolve(), keep_z.resolve())))
     assert result.target_set is not None
+    assert result.observations == result.target_set.observations
     assert result.target_set.observations.ignored_seed_candidate_count == 2
     assert result.target_set.observations.diff_scope_excluded_count == 0
     assert result.diagnostics == ()
@@ -140,6 +173,8 @@ def test_zero_target_after_scope_filter_returns_failure_without_empty_target_set
     )
 
     assert_zero_target_failure(result)
+    assert result.observations.ignored_seed_candidate_count == 1
+    assert result.observations.diff_scope_excluded_count == 0
     assert len(result.diagnostics) == 1
 
 
@@ -155,6 +190,8 @@ def test_all_scope_outside_records_exclusion_then_zero_target_failure(tmp_path: 
     )
 
     assert_zero_target_failure(result)
+    assert result.observations.ignored_seed_candidate_count == 0
+    assert result.observations.diff_scope_excluded_count == 1
     assert [diagnostic.code for diagnostic in result.diagnostics] == [
         "diff_scope_exclusion",
         "diff_zero_target_after_scope_filter",

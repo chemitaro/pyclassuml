@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from pyclassuml.model import (
@@ -26,6 +26,7 @@ class DiffTargetNormalization:
 
     target_set: TargetSet | None
     diagnostics: tuple[Diagnostic, ...] = ()
+    observations: TargetObservations = field(default_factory=TargetObservations)
 
 
 def normalize_diff_targets(
@@ -50,22 +51,28 @@ def normalize_diff_targets(
 
     seed_files, ignored_count = apply_ignore(candidates, context.project_root, config.ignore)
     seed_files = sorted(set(seed_files))
+    observations = TargetObservations(
+        ignored_seed_candidate_count=ignored_count,
+        diff_scope_excluded_count=excluded_count,
+    )
 
     if excluded_count:
         diagnostics.append(_scope_exclusion_warning(excluded_count))
 
     if not seed_files:
         diagnostics.append(_zero_target_error())
-        return DiffTargetNormalization(target_set=None, diagnostics=tuple(diagnostics))
+        return DiffTargetNormalization(
+            target_set=None,
+            observations=observations,
+            diagnostics=tuple(diagnostics),
+        )
 
     return DiffTargetNormalization(
         target_set=TargetSet(
             seed_files=tuple(seed_files),
-            observations=TargetObservations(
-                ignored_seed_candidate_count=ignored_count,
-                diff_scope_excluded_count=excluded_count,
-            ),
+            observations=observations,
         ),
+        observations=observations,
         diagnostics=tuple(diagnostics),
     )
 

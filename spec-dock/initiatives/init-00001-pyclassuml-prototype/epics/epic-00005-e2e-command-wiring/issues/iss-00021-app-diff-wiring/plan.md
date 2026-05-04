@@ -67,7 +67,7 @@ ID: "iss-00021"
     - non-diff guard と app export の test。
 - S02 front-stage failure handoff:
   - 観測可能な振る舞い:
-    - config failure、VCS failure、zero-target failure が downstream stage へ進まず `write_report` に集約される。
+    - config failure、VCS failure、zero-target failure が downstream stage へ進まず `write_report` に集約され、zero-target の `DiffTargetNormalization.observations` は summary counter に保持される。
   - closes:
     - AC-004, EC-003。
   - review gate:
@@ -146,12 +146,13 @@ ID: "iss-00021"
 - target:
   - config failure
   - VCS failure
-  - target zero failure
+  - target zero failure with observations transport
 - design refs:
   - major flow 2-7
   - data / handoff
 - step boundary:
   - downstream parse/analyze/render stages を呼ばず `write_report` を呼ぶ。
+  - scope filtering / ignore count は `targets.diff` owner の observations を使い、app では再計算しない。
 
 ### S03 — canonical diff happy path
 - target:
