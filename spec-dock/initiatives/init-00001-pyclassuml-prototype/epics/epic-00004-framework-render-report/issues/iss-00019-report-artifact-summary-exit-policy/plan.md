@@ -203,6 +203,7 @@ ID: "iss-00019"
     - `RenderFailureSignal`。
   - hard failure:
     - hard-failure reason diagnostic or output write failure。
+    - uncategorized error diagnostic must not become success; it becomes `hard_failure` with that diagnostic's `failure_reason`。
   - failure precedence:
     - hard failure > strict promoted failure > degraded failure。
     - summary failure reason は chosen outcome の最優先 input reason を使う。
@@ -224,6 +225,7 @@ ID: "iss-00019"
   - strict-promotable diagnostic、RenderFailureSignal、vcs/config/output hard failure。
   - RenderFailureSignal と strict-promotable diagnostic が重なる場合は `strict_promoted_failure`。
   - RenderFailureSignal / strict-promotable diagnostic と hard-failure diagnostic が重なる場合は `hard_failure`。
+  - uncategorized error diagnostic returns non-zero `hard_failure`, `stderr_text`, and no artifact。
 - Green:
   - failure classifier。
 

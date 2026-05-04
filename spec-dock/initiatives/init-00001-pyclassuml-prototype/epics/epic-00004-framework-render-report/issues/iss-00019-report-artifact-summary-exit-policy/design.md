@@ -101,6 +101,7 @@ result --> downstream
    - `output_write_failure` のように render 成功後に起きる hard failure では、counter source は `0` fallback へ落とさず `DiagramModel.rendered_classes` / `rendered_relations` を使う。
    - `ExitPolicyDecision` は strict / warn、clean success / warning-only success / degraded success / strict promoted failure / degraded failure / hard failure を一元化し、他 seam の判断を上書きしない。
    - `invalid_config_or_config_path`, `invalid_path_or_containment`, `generate_scope_violation`, `generate_zero_target_after_normalize`, `diff_zero_target_after_scope_filter`, `traversal_limit_reached`, `output_write_failure`, `vcs_read_failure` は hard failure として扱う。
+   - 上記 hard-failure reason / strict-promotable reason に分類されない error diagnostic が渡された場合も、success outcome にはせず `hard_failure` として扱い、その diagnostic の `failure_reason` を `RunSummary.failure_reason` に使う。
    - `diagram_unbuildable_after_recovery` は `RenderFailureSignal` による degraded failure として扱う。
    - 複数の failure input が重なる場合の outcome precedence は `hard_failure` > `strict_promoted_failure` > `degraded_failure` とする。
    - `RunSummary.failure_reason` は選ばれた outcome を決めた最優先 failure reason を使う。hard failure reason がある場合はそれを優先し、strict-promotable diagnostic が優先された場合はその diagnostic の `failure_reason`、`RenderFailureSignal` だけが優先入力の場合は signal の `failure_reason` を使う。
@@ -139,6 +140,7 @@ result --> downstream
 | inputs present | chosen outcome | `RunSummary.failure_reason` source |
 | --- | --- | --- |
 | hard-failure diagnostic or output write/create failure | `hard_failure` | hard-failure diagnostic reason or `output_write_failure` |
+| uncategorized error diagnostic and no hard / strict-promoted failure | `hard_failure` | uncategorized diagnostic reason |
 | strict-promotable failure diagnostic and no hard failure | `strict_promoted_failure` | strict-promotable diagnostic reason |
 | `RenderFailureSignal` and no hard / strict-promoted failure | `degraded_failure` | `RenderFailureSignal.failure_reason` |
 
