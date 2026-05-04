@@ -62,7 +62,7 @@ dto --> downstream
   - `AnalysisConfig.mode` は `warn | strict` のみを取り、`cli_options.strict=true` なら `strict`、それ以外は config `mode` があればそれを採用し、未指定時は `warn` に写像する。
   - `AnalysisConfig.target_python` は `null | 3.<minor>` で CLI / config / default から確定する。CLI 起点の scalar shape は `CommandOptions` DTO の構築時 validation が守り、config 起点の値は `config` seam が semantic validation する。未指定時は `null`、config 起点の不正値は `invalid_config_or_config_path` とする。
   - 後段 `parse` / `analyze` は `target_python` が非 `null` の場合だけ version-sensitive な syntax / typing interpretation に参照する。
-  - `diff.current_state` と `diff.include_untracked` は `cli_options.command=diff` のときだけ意味を持ち、default / validation 済み。
+  - `diff.current_state` と `diff.include_untracked` は `cli_options.command=diff` のときだけ意味を持つ。CLI 由来の値は validation 済みで、CLI 未指定時は config value > default で解決する。
   - config file 不在は default 継続、config invalidity は `invalid_config_or_config_path`、containment violation は `invalid_path_or_containment` を使う。
 
 ### config file schema
@@ -95,7 +95,7 @@ dto --> downstream
   - `mode = "warn"`
   - `target_python = None`
   - `diff.current_state = "working-tree"`
-  - `diff.include_untracked = false`
+  - `diff.include_untracked = true`
 
 ### path resolution rules
 - `execution_cwd`:
@@ -129,8 +129,11 @@ dto --> downstream
   - それ以外は config `mode` if present > `AnalysisMode.WARN`。
   - `CommandOptions.strict` は bool のため、明示的な `--no-strict` と未指定は MVP では区別しない。したがって `strict=False` は config `mode` を override しない。
 - `diff_current_state` / `diff_include_untracked`:
-  - `cli_options.command=diff` かつ nested `diff` がある場合は CLI diff options を採用。
-  - それ以外は config value if present > defaults。
+  - `cli_options.command=diff` かつ nested `diff` があり、CLI で `--current-state` が明示されている場合は CLI current state を採用。
+  - CLI で `--current-state` が未指定の場合は config value if present > default `working-tree`。
+  - CLI で `--include-untracked` / `--no-include-untracked` が明示されている場合は CLI include-untracked value を採用。
+  - CLI で include-untracked option が未指定の場合は config value if present > default `true`。
+  - `cli_options.command=diff` 以外では config value if present > defaults。
 
 ## 主要フロー
 1. `CommandRequest` から raw `--cwd` を読み、`process_cwd` 基準で `execution_cwd` を解決する。

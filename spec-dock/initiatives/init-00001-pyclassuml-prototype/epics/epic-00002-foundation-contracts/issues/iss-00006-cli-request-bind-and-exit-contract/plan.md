@@ -41,7 +41,7 @@ ID: "iss-00006"
 - `config.context-resolve` は `CommandRequest` を入力にするため、CLI は path resolve ではなく raw option bind だけを担う。
 - `app.generate-wiring` / `app.diff-wiring` は未実装なので、CLI seam behavior は injectable handler で固定する。
 - console script 登録は packaging + app wiring の最終接続点なので、この issue では追加しない。
-- `DiffOptions.current_state` / `include_untracked` は model DTO で required なので、CLI parser は concrete parse defaults `working-tree` / `False` を materialize する。これは VCS no-op 判定や config merge ではなく、CLI option schema を DTO に束縛するための syntactic default として扱う。
+- `DiffOptions.current_state` / `include_untracked` は model DTO で required なので、CLI parser は concrete parse defaults `working-tree` / `True` を materialize する。`--no-include-untracked` は opt-out として `False` を materialize する。これは VCS no-op 判定ではなく、CLI option schema を DTO に束縛するための syntactic default として扱う。
 - `run_cli` は process を直接終了せず、seam-local `CliRunResult(command_result, exit_code, stderr_text)` を返す。console script が追加される後続 issue で `exit_code` を process status に変換する。
 
 ## ステップ一覧
@@ -121,7 +121,8 @@ ID: "iss-00006"
   - `diff`:
     - required `--base`
     - optional `--current-state working-tree|head` with parse default `working-tree`
-    - optional `--include-untracked` with parse default `False`
+    - optional `--include-untracked` with parse default `True`
+    - optional `--no-include-untracked` with explicit `False`
   - all path-like CLI values are stored as raw `Path(...)` values and are not resolved.
   - `process_cwd` is stored exactly as given.
 

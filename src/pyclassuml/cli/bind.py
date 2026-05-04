@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
@@ -25,6 +25,7 @@ from pyclassuml.model import (
     Recoverability,
     RunSummary,
 )
+from pyclassuml.report import ReportRunResult
 
 _TARGET_PYTHON = re.compile(r"^3\.[0-9]+$")
 
@@ -33,7 +34,8 @@ _TARGET_PYTHON = re.compile(r"^3\.[0-9]+$")
 class CliRunResult:
     command_result: CommandResult
     exit_code: int
-    stderr_text: str
+    stderr_text: str = ""
+    stdout_text: str = ""
 
 
 def bind_command_request(argv: Sequence[str], process_cwd: Path) -> CommandRequest:
@@ -62,8 +64,14 @@ def bind_command_request(argv: Sequence[str], process_cwd: Path) -> CommandReque
             command=CommandName.DIFF,
             diff=DiffOptions(
                 base_ref=namespace.base_ref,
-                current_state=DiffCurrentState(namespace.current_state),
-                include_untracked=namespace.include_untracked,
+                current_state=(
+                    DiffCurrentState.WORKING_TREE
+                    if namespace.current_state is None
+                    else DiffCurrentState(namespace.current_state)
+                ),
+                include_untracked=True if namespace.include_untracked is None else namespace.include_untracked,
+                current_state_cli_provided=namespace.current_state is not None,
+                include_untracked_cli_provided=namespace.include_untracked is not None,
             ),
             **common_options,
         )
@@ -74,20 +82,28 @@ def bind_command_request(argv: Sequence[str], process_cwd: Path) -> CommandReque
 def run_cli(
     argv: Sequence[str],
     process_cwd: Path,
-    handler: Callable[[CommandRequest], CommandResult],
+    handler: Callable[[CommandRequest], CommandResult | ReportRunResult],
 ) -> CliRunResult:
+    stdout = StringIO()
     stderr = StringIO()
     try:
-        with redirect_stderr(stderr):
+        with redirect_stdout(stdout), redirect_stderr(stderr):
             request = bind_command_request(argv, process_cwd)
     except SystemExit as exc:
         exit_code = exc.code if isinstance(exc.code, int) else 2
         if exit_code == 0:
-            exit_code = 2
+            return _help_result(stdout.getvalue())
         return _usage_error_result(stderr.getvalue(), exit_code=exit_code)
 
-    command_result = handler(request)
-    return CliRunResult(command_result=command_result, exit_code=command_result.exit_code, stderr_text="")
+    result = handler(request)
+    if isinstance(result, ReportRunResult):
+        return CliRunResult(
+            command_result=result.command_result,
+            exit_code=result.command_result.exit_code,
+            stderr_text=result.stderr_text,
+            stdout_text=result.stdout_text,
+        )
+    return CliRunResult(command_result=result, exit_code=result.exit_code)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -104,9 +120,14 @@ def _build_parser() -> argparse.ArgumentParser:
     diff_parser.add_argument(
         "--current-state",
         choices=[state.value for state in DiffCurrentState],
-        default=DiffCurrentState.WORKING_TREE.value,
+        default=None,
     )
-    diff_parser.add_argument("--include-untracked", action="store_true", default=False)
+    diff_parser.add_argument(
+        "--include-untracked",
+        dest="include_untracked",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
 
     return parser
 
@@ -144,6 +165,16 @@ def _target_python(value: str) -> str:
     if not _TARGET_PYTHON.fullmatch(value):
         raise argparse.ArgumentTypeError("must be a 3.<minor> string")
     return value
+
+
+def _help_result(stdout_text: str) -> CliRunResult:
+    command_result = CommandResult(
+        artifact_path=None,
+        summary=RunSummary(),
+        diagnostics=(),
+        exit_code=0,
+    )
+    return CliRunResult(command_result=command_result, exit_code=0, stdout_text=stdout_text)
 
 
 def _usage_error_result(stderr_text: str, *, exit_code: int) -> CliRunResult:

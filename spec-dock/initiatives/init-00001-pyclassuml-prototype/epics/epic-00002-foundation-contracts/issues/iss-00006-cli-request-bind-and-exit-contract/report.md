@@ -28,7 +28,7 @@ ID: "iss-00006"
 - `src/pyclassuml/cli/` を追加し、`bind_command_request` / `run_cli` / `CliRunResult` を public API として export した。
 - `argparse` で `generate` / `diff` を parse し、common options と subcommand-specific options を `CommandOptions` に bind するようにした。
 - path-like option は raw `Path(...)` として保持し、`process_cwd` は渡された `Path` object をそのまま `CommandRequest` に保持するようにした。
-- `diff --base` を required とし、`--current-state` 未指定時は `working-tree`、`--include-untracked` 未指定時は `False` を syntactic parse default として materialize するようにした。
+- `diff --base` を required とし、`--current-state` 未指定時は `working-tree`、`--include-untracked` 未指定時は `True` を syntactic parse default として materialize し、`--no-include-untracked` で `False` を明示できるようにした。
 - usage error では handler を呼ばず、`FailureReason.CLI_USAGE_ERROR` / `OriginSeam.CLI` / `Recoverability.FATAL` diagnostic を持つ `CommandResult(exit_code=2)` を `CliRunResult` に包んで返すようにした。
 - valid invocation では handler を 1 回だけ呼び、handler が返した `CommandResult` と `exit_code` を再解釈せず `CliRunResult` に保持するようにした。
 - QA reviewer の P2 指摘を受け、`diff` 側 common options と typed parser validation usage error の test coverage を追加した。
@@ -84,7 +84,7 @@ find . -name uv.lock -o -name '*.pyc' -o -type d -name __pycache__
 - `pyproject.toml` に console script がまだ定義されていないことを確認した。
 - `app.generate-wiring` / `app.diff-wiring` は未実装であるため、この issue では `pyclassuml.cli` package の bind/run API と injectable handler で exit propagation を固定し、packaging entrypoint は downstream に残す方針にした。
 - `plan.md` を S01-S03 / SG1 / RG1 / QG1 / S90 / S99 まで具体化し、実装開始可能な execution contract に修復した。
-- spec-reviewer fail を受け、required `DiffOptions.current_state` / `include_untracked` を満たすための CLI parse defaults を `working-tree` / `False` と明文化した。
+- `iss-00022` の completion-audit repair により、required `DiffOptions.current_state` / `include_untracked` を満たすための CLI parse defaults は `working-tree` / `True` に supersede され、`--no-include-untracked` が opt-out として追加された。
 - spec-reviewer fail を受け、`run_cli` の返り値を seam-local `CliRunResult(command_result, exit_code, stderr_text)` と定義し、console script の process exit は downstream に残す形へ明確化した。
 - 再レビュー fail を受け、requirement の AC-003 / EC-002 も seam-local `CliRunResult` と syntactic parse defaults へ揃え、diff option consumer を `vcs.diff-file-collect` に明記した。
 - final spec-reviewer は findings なしで pass し、実装開始可能と判定した。

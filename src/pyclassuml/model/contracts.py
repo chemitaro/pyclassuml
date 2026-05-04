@@ -154,12 +154,18 @@ class DiffOptions:
     base_ref: str
     current_state: DiffCurrentState
     include_untracked: bool
+    current_state_cli_provided: bool = True
+    include_untracked_cli_provided: bool = True
 
     def __post_init__(self) -> None:
         _ensure_non_empty_string(self.base_ref, "base_ref")
         _ensure_enum(self.current_state, DiffCurrentState, "current_state")
         if not isinstance(self.include_untracked, bool):
             raise ValueError("include_untracked must be bool")
+        if not isinstance(self.current_state_cli_provided, bool):
+            raise ValueError("current_state_cli_provided must be bool")
+        if not isinstance(self.include_untracked_cli_provided, bool):
+            raise ValueError("include_untracked_cli_provided must be bool")
 
 
 @dataclass(frozen=True)
@@ -232,7 +238,7 @@ class AnalysisConfig:
     mode: AnalysisMode = AnalysisMode.WARN
     target_python: str | None = None
     diff_current_state: DiffCurrentState = DiffCurrentState.WORKING_TREE
-    diff_include_untracked: bool = False
+    diff_include_untracked: bool = True
 
     def __post_init__(self) -> None:
         ignore = _as_tuple(self.ignore)

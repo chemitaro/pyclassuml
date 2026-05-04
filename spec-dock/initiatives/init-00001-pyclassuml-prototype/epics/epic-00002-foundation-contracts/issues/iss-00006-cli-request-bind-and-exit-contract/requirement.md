@@ -82,7 +82,8 @@ ID: "iss-00006"
   - 条件:
     - `diff.current_state` や `include_untracked` が指定される、または指定されない。
   - 期待:
-    - CLI は指定値を bind し、未指定時は required `DiffOptions` DTO を満たす syntactic parse defaults として `current_state=working-tree` / `include_untracked=false` を materialize する。
+    - CLI は指定値を bind し、未指定時は required `DiffOptions` DTO を満たす syntactic parse defaults として `current_state=working-tree` / `include_untracked=true` を materialize する。
+    - `--no-include-untracked` は明示的な opt-out として `include_untracked=false` を bind する。
     - CLI は VCS no-op 判定、config merge、project 状態に基づく default 補完を行わない。
   - 観測点:
     - `cli_options` handoff review。

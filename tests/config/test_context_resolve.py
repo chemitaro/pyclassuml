@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from pyclassuml.cli import bind_command_request
 from pyclassuml.config import ConfigResolution, resolve_context
 from pyclassuml.model import (
     AnalysisConfig,
@@ -289,6 +290,82 @@ include_untracked = false
     assert config.target_python == "3.12"
     assert config.diff_current_state is DiffCurrentState.WORKING_TREE
     assert config.diff_include_untracked is True
+
+
+def test_cli_diff_unset_include_untracked_uses_config_before_default(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    write_config(
+        project / ".pyclassuml.toml",
+        """
+[diff]
+include_untracked = false
+""",
+    )
+
+    _, config = assert_success(resolve_context(bind_command_request(("diff", "--base", "main"), project)))
+
+    assert config.diff_include_untracked is False
+
+
+def test_cli_diff_unset_current_state_uses_config_before_default(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    write_config(
+        project / ".pyclassuml.toml",
+        """
+[diff]
+current_state = "head"
+""",
+    )
+
+    _, config = assert_success(resolve_context(bind_command_request(("diff", "--base", "main"), project)))
+
+    assert config.diff_current_state is DiffCurrentState.HEAD
+
+
+def test_cli_diff_unset_current_state_defaults_working_tree_without_config(tmp_path: Path) -> None:
+    _, config = assert_success(resolve_context(bind_command_request(("diff", "--base", "main"), tmp_path)))
+
+    assert config.diff_current_state is DiffCurrentState.WORKING_TREE
+
+
+def test_cli_current_state_overrides_config_head(tmp_path: Path) -> None:
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+[diff]
+current_state = "head"
+""",
+    )
+
+    _, config = assert_success(
+        resolve_context(bind_command_request(("diff", "--base", "main", "--current-state", "working-tree"), tmp_path))
+    )
+
+    assert config.diff_current_state is DiffCurrentState.WORKING_TREE
+
+
+def test_cli_diff_unset_include_untracked_defaults_true_without_config(tmp_path: Path) -> None:
+    _, config = assert_success(resolve_context(bind_command_request(("diff", "--base", "main"), tmp_path)))
+
+    assert config.diff_include_untracked is True
+
+
+def test_cli_no_include_untracked_overrides_config_true(tmp_path: Path) -> None:
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+[diff]
+include_untracked = true
+""",
+    )
+
+    _, config = assert_success(
+        resolve_context(bind_command_request(("diff", "--base", "main", "--no-include-untracked"), tmp_path))
+    )
+
+    assert config.diff_include_untracked is False
 
 
 def test_strict_false_does_not_override_config_mode_but_strict_true_does(tmp_path: Path) -> None:

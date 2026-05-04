@@ -360,6 +360,22 @@ def test_command_option_absence_rules() -> None:
     with pytest.raises(ValueError):
         DiffOptions(base_ref="main", current_state="working-tree", include_untracked=False)
 
+    with pytest.raises(ValueError):
+        DiffOptions(
+            base_ref="main",
+            current_state=DiffCurrentState.WORKING_TREE,
+            include_untracked=False,
+            current_state_cli_provided="yes",
+        )
+
+    with pytest.raises(ValueError):
+        DiffOptions(
+            base_ref="main",
+            current_state=DiffCurrentState.WORKING_TREE,
+            include_untracked=False,
+            include_untracked_cli_provided="yes",
+        )
+
 
 def test_command_options_rejects_bare_string_collections_and_non_path_options() -> None:
     with pytest.raises(ValueError):

@@ -314,11 +314,17 @@ def _build_analysis_config(
     )
 
     if options.command is CommandName.DIFF and options.diff is not None:
-        diff_current_state = options.diff.current_state
-        diff_include_untracked = options.diff.include_untracked
+        if options.diff.current_state_cli_provided:
+            diff_current_state = options.diff.current_state
+        else:
+            diff_current_state = DiffCurrentState(diff_config.get("current_state", DiffCurrentState.WORKING_TREE.value))
+        if options.diff.include_untracked_cli_provided:
+            diff_include_untracked = options.diff.include_untracked
+        else:
+            diff_include_untracked = diff_config.get("include_untracked", True)
     else:
         diff_current_state = DiffCurrentState(diff_config.get("current_state", DiffCurrentState.WORKING_TREE.value))
-        diff_include_untracked = diff_config.get("include_untracked", False)
+        diff_include_untracked = diff_config.get("include_untracked", True)
 
     return AnalysisConfig(
         ignore=options.ignore if options.ignore else tuple(config.get("ignore", ())),
