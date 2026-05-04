@@ -22,8 +22,8 @@ ID: "iss-00006"
 - seam responsibility:
   - argv parse と validation
   - `CommandRequest` への bind
-  - usage error の即時終了
-  - `CommandResult.exit_code` の process exit 反映
+  - usage error の seam-local failure result 生成
+  - `CommandResult.exit_code` の `CliRunResult.exit_code` 反映
 
 ### UML（module / dependency）
 ```plantuml
@@ -59,11 +59,14 @@ cli --> downstream : invoke with CommandRequest
   - input:
     - `CommandResult(artifact_path, summary, diagnostics, exit_code)`
   - output:
-    - process exit status
+    - this issue: seam-local `CliRunResult(command_result, exit_code, stderr_text)`
+    - downstream console script issue: process exit status
   - invariant:
     - `exit_code` を CLI で再分類しない。
     - summary / diagnostics の内容は再構成しない。
     - usage error だけは `cli` 自身が `cli_usage_error` を持つ failure summary を生成して stderr に出す。
+    - `CliRunResult.exit_code` は `CommandResult.exit_code` と一致する。
+    - `CliRunResult.stderr_text` は usage error transcript evidence のために使い、raw argv を downstream handoff しない。
 
 ## data / DTO handoff
 - producer:
@@ -71,16 +74,17 @@ cli --> downstream : invoke with CommandRequest
 - consumer:
   - `config.context-resolve` が `process_cwd` と `cli_options.cwd/config/project_root/package_root/scope_root/output/ignore/depth/strict/target_python` を消費する。
   - `targets.explicit-target-normalize` が `cli_options.generate.targets[]` を消費する。
-  - `vcs.diff-file-collect` が `cli_options.diff.base_ref` を消費する。
+  - `vcs.diff-file-collect` が `cli_options.diff.base_ref/current_state/include_untracked` を消費する。
   - `app.*-wiring` と `report` の downstream 合流結果として返る `CommandResult` を `cli` が消費する。
 - non-goal:
   - `ExecutionContext` や `AnalysisConfig` を `cli` が組み立てない。
+  - console script registration と process termination。
 
 ## テスト戦略
 - Unit:
   - 有効な `generate` / `diff` invocation が `CommandRequest` に束縛されること。
-  - usage error が non-zero を返すこと。
-  - `CommandResult.exit_code` が process exit へそのまま反映されること。
+  - usage error が seam-local `CliRunResult.exit_code` に non-zero を返すこと。
+  - `CommandResult.exit_code` が `CliRunResult.exit_code` へそのまま反映されること。
 - Integration:
   - `cli -> config` handoff で `process_cwd` と raw `--cwd` が保持されること。
 - Verification:
@@ -93,4 +97,4 @@ cli --> downstream : invoke with CommandRequest
 
 ## リスク / 注意点
 - CLI で path 解決や config merge を始めると `config` owner を侵食する。
-- exit code を CLI 側で言い換えると `report` / `app` が返した failure taxonomy が壊れる。
+- exit code を CLI 側で言い換えると `report` / `app` が返した failure taxonomy が downstream へそのまま渡らなくなる。
