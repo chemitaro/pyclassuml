@@ -85,7 +85,7 @@ changed --> downstream
 - Flow-B: relation, selection, changed inventory
   1. `analyze.relationship-and-selection` は reachable module 群から class relation を抽出する。
   2. `TraversalObservations.seed_project_relative_paths` に属する起点ファイル内 class を原則すべて選び、依存先ファイルは relation が検出された class を中心に `SelectedClasses` と `SelectedRelations` を作る。
-  3. `ChangedClassInventory` は changed file 集合と `ModuleIndex.project_relative_file_path -> module_path` lookup を使って parsed class 定義を突き合わせ、relation / selection 結果とは独立に changed class 数を確定する。
+  3. `ChangedClassInventory` は changed file 集合と `ModuleIndex.project_relative_file_to_module` lookup を使って parsed class 定義を突き合わせ、relation / selection 結果とは独立に changed class 数を確定する。
 
 ## dependency order
 - completion order:
@@ -104,7 +104,7 @@ changed --> downstream
 - recoverable / degradable owner:
   - `parse`: 構文エラー、解決不能 import candidate
   - `analyze.relationship-and-selection`: wildcard import 解決不能、関係推定不能
-  - `ChangedClassInventory`: changed file から class 定義を抽出できない場合の warning
+  - `ChangedClassInventory`: upstream handed-off changed file の join miss は追加 diagnostics を作らず parse-origin diagnostics を再利用し、class count には加算しない。inventory 固有 warning が必要な failure class は issue docs で明示された場合だけ扱う。
 - rule:
   - strict/warn の最終 exit code 決定は `report` owner とし、この epic は diagnostics origin / recoverability / counter を保持するまでに留める。
 

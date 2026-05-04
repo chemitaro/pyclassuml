@@ -5,7 +5,7 @@ ID: "iss-00015"
 関連GitHub: ["#15"]
 状態: "draft"
 作成者: "iwasawayuuta"
-最終更新: "2026-04-17"
+最終更新: "2026-05-04"
 依存: ["requirement.md"]
 親: ["epic-00003", "init-00001"]
 ---
@@ -50,13 +50,13 @@ dto --> downstream
     - `ChangedClassInventory(class_count, changed_files)`
 - invariant:
   - count は changed file 内 class 定義数を表す。
-  - changed file 集合と `ParsedModule` の join key は `project_root` relative の normalized file path とし、`ModuleIndex.project_relative_file_path -> module_path` を authoritative lookup に使う。
+  - changed file 集合と `ParsedModule` の join key は `project_root` relative の normalized file path とし、`ModuleIndex.project_relative_file_to_module` を authoritative lookup に使う。
   - changed file が class を持たない場合は `changed_files` には含めても `class_count` は増えない。
   - changed file が syntax error のため `ParsedModule` join 不成立でも `changed_files` には残し、`class_count` は増やさず、追加の inventory diagnostics は作らない。
 
 ## 主要フロー
 1. upstream から渡された changed file 集合を deterministic order で巡回する。
-2. `ModuleIndex.project_relative_file_path -> module_path` lookup を使って、changed file と対応する `ParsedModule` を引き当てる。
+2. `ModuleIndex.project_relative_file_to_module` lookup を使って、changed file と対応する `ParsedModule` を引き当てる。
 3. join 成立時だけ `ParsedModule.classes` を数え上げて `class_count` に加算し、join 不成立時は parse-origin diagnostics を再利用して `changed_files` のみ保持する。
 4. selection 結果とは独立に inventory を確定し、`ChangedClassInventory` を downstream に渡す。
 
