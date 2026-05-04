@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00030",
+  "title": "Render Upward Inheritance And Protocol Realization",
+  "slug": "render-upward-inheritance-protocol-realization",
+  "created_at": "2026-05-05T00:47:05+09:00",
+  "updated_at": "2026-05-05T00:47:05+09:00",
+  "parent_id": "epic-00029",
+  "initiative_id": "init-00001",
+  "epic_id": "epic-00029",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 30,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  }
+}
