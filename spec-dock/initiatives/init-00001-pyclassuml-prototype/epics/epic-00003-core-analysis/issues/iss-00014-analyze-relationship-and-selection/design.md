@@ -5,7 +5,7 @@ ID: "iss-00014"
 関連GitHub: ["#14"]
 状態: "draft"
 作成者: "iwasawayuuta"
-最終更新: "2026-04-17"
+最終更新: "2026-05-04"
 依存: ["requirement.md"]
 親: ["epic-00003", "init-00001"]
 ---
@@ -54,30 +54,38 @@ selobs --> downstream
   - `DependencyGraph(reachable_files, edges)`
   - `TraversalObservations(seed_project_relative_paths, ...)`
 - output:
+  - seam-local result:
+    - `SelectionResult(selected_classes, selected_relations, observations, diagnostics)`
   - shared DTO:
     - `SelectedClasses(class_ids)`
   - seam-local handoff:
-    - `SelectedRelations`
+    - `SelectedRelation`
       - `source_class_id`
       - `target_class_id`
       - `relation_type`
       - `evidence_kind`
+    - `SelectedRelations(relations)`
     - `SelectionObservations`
       - `extracted_class_count`
       - `extracted_relation_count`
       - `warning_diagnostics`
 - invariant:
   - `TraversalObservations.seed_project_relative_paths` に属する起点 file class は relation の有無に関わらず選択対象に残る。
-  - dependency file class は accepted relation の source または target になった class だけを選択し、relation を持たない sibling class は追加しない。
+  - dependency file class は accepted relation の source または target になった class だけを選択する。current DTO で target class を一意解決できない multi-class dependency file は ambiguity として扱い、dependency class selection を追加しない。
+  - MVP の accepted relation は `DependencyGraph.edges` の source module / target module 間で、source module class と target module class がそれぞれ 1 件に一意解決できる場合だけ作る。
+  - source module または target module の class が 0 件または複数件で一意解決できない場合は warning diagnostic を保持し、relation と dependency class selection は追加しない。
+  - `ParsedModule.imports` と `ModuleIndex.import_candidate_paths` だけでは annotation / base class / member type / wildcard token / re-export の詳細は保持されないため、この issue では deep symbol relation や wildcard-specific warning を推測しない。
+  - `SelectedRelation.relation_type` は MVP では `uses` に固定し、`evidence_kind` は `module_import` に固定する。
   - `SelectedRelations` は downstream `frameworks` が best-effort 補強できる最小情報だけを持つ。
-  - `SelectionObservations` は `report` が class / relation 数を再集計せずに summary へ載せ、かつこの seam 由来 warning diagnostics を受け取るための authoritative handoff である。
+  - `SelectionObservations` の counters は core-analysis pre-enrich count であり、framework / render 後の final diagram count ではない。final diagram summary へ載せる count は downstream `render` / `report` owner が必要に応じて置き換える。
+  - `SelectionObservations` は `report` が core-analysis count を再集計せずに参照し、かつこの seam 由来 warning diagnostics を受け取るための authoritative handoff である。
 
 ## 主要フロー
 1. `DependencyGraph.reachable_files` を順に読み、module ごとの class 定義を取得する。
-2. import、annotation、base class、member type など parse 済み情報から relation 候補を抽出する。
+2. `DependencyGraph.edges` と `ModuleIndex.import_candidate_paths` の parse 済み情報から module import relation 候補を抽出する。
 3. `TraversalObservations.seed_project_relative_paths` に対応する起点 file class を `SelectedClasses` に追加する。
-4. accepted relation の endpoint になった dependency class だけを `SelectedClasses` に追加し、その relation を `SelectedRelations` に追加する。
-5. ambiguity がある relation は diagnostics を残し、確証のない relation は handoff しない。
+4. edge の source module class と target module class がそれぞれ 1 件に一意解決できる場合だけ、accepted relation の endpoint class を `SelectedClasses` に追加し、その relation を `SelectedRelations` に追加する。
+5. endpoint ambiguity がある relation は `OriginSeam.ANALYZE` の warning diagnostics を残し、確証のない relation は handoff しない。
 
 ## data / handoff
 - shared DTO:
@@ -88,13 +96,13 @@ selobs --> downstream
 - downstream consumption:
   - `frameworks.*` は `SelectedClasses` と `SelectedRelations` を補強入力に使う。
   - `render` は `frameworks` 非依存でも relation inventory を基礎入力として消費できる。
-  - `report` は `SelectionObservations.warning_diagnostics` と counter を user-visible summary / warning count へ反映する。
+  - `report` は `SelectionObservations.warning_diagnostics` と core-analysis pre-enrich counter を user-visible summary / warning count の素材として参照する。final diagram counter は render/report 側の handoff を優先する。
 
 ## テスト戦略
 - Unit:
   - seed file full-display。
   - relation-only dependency selection。
-  - ambiguity 時の diagnostic。
+  - module import endpoint ambiguity 時の diagnostic。
   - `SelectionObservations` への extracted class / relation counter 記録。
 - Integration:
   - `DependencyGraph -> SelectedClasses / SelectedRelations` handoff。

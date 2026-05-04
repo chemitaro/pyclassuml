@@ -5,7 +5,7 @@ ID: "iss-00014"
 関連GitHub: ["#14"]
 状態: "draft"
 作成者: "iwasawayuuta"
-最終更新: "2026-04-17"
+最終更新: "2026-05-04"
 親: ["epic-00003", "init-00001"]
 ---
 
@@ -21,7 +21,7 @@ ID: "iss-00014"
   - 起点 file 内 class を原則すべて表示対象に含める。
   - 依存先 file では、accepted relation の source または target になった class だけを表示対象へ含める。
   - class selection と relation extraction の結果を downstream へ handoff する。
-  - relation 抽出不能や wildcard import 解決不能は diagnostics として保持する。
+  - current DTO で観測できる relation endpoint ambiguity は diagnostics として保持する。
   - downstream `report` が再集計なしで使える extracted class / relation counter を handoff する。
 - MUST NOT:
   - traversal frontier を拡張しない。
@@ -58,18 +58,18 @@ ID: "iss-00014"
   - Actor:
     - CLI 利用者
   - Given:
-    - dependency-only class が relation を通じて到達する fixture がある。
+    - source/target module がそれぞれ 1 class だけを持つ dependency-only relation fixture がある。
   - When:
     - class selection を行う。
   - Then:
-    - relation-only dependency class が表示対象へ含まれる。
+    - 一意解決できた relation endpoint の dependency class が表示対象へ含まれる。
   - 観測点:
     - `fx-analyze-relation-only-dependency` scenario。
 - AC-004:
   - Actor:
     - CLI 利用者
   - Given:
-    - wildcard import ambiguity などで relation warning が発生する fixture がある。
+    - source/target module class が 0 件または複数件で relation endpoint を一意に決められない reachable module edge がある。
   - When:
     - relation extraction と class selection を行う。
   - Then:
@@ -80,7 +80,7 @@ ID: "iss-00014"
 ## 例外・エッジケース
 - EC-001:
   - 条件:
-    - wildcard import や再エクスポートのため relation を一意に決められない。
+    - source/target module class が 0 件または複数件で relation endpoint を一意に決められない。
   - 期待:
     - diagnostics を保持し、決め打ちの relation は追加しない。
   - 観測点:
@@ -94,9 +94,10 @@ ID: "iss-00014"
     - `fx-analyze-seed-full-display` scenario。
 - EC-003:
   - 条件:
-    - dependency file に class は複数あるが relation が検出されたのは一部だけである。
+    - dependency file に複数 class があり、current DTO では特定の relation endpoint class を一意に決められない。
   - 期待:
-    - accepted relation の endpoint になった class だけを選別し、dependency file 全 class や relation を持たない sibling class を追加しない。
+    - warning diagnostics を保持し、relation と dependency class selection は追加しない。
+    - dependency file 全 class や relation を持たない sibling class を推測で追加しない。
   - 観測点:
     - dependency-only selection boundary review。
 
@@ -108,3 +109,4 @@ ID: "iss-00014"
 ## 未確定事項
 - なし:
   - relation extraction / class selection の baseline row は initiative canonical docs で確定済みである。
+  - wildcard import / re-export の詳細な warning は、現行 `ParsedModule` が import token evidence を保持しないため、この issue では扱わない。将来 parse DTO に structured import reference を追加する issue で扱う。
