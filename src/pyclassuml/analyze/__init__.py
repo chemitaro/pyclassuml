@@ -1,5 +1,6 @@
 """Analyze seam public surface."""
 
+from pyclassuml.analyze.changed import build_changed_class_inventory
 from pyclassuml.analyze.traversal import (
     DEFAULT_TRAVERSAL_MODULE_LIMIT,
     TraversalObservations,
@@ -22,6 +23,7 @@ __all__ = [
     "SelectionResult",
     "TraversalObservations",
     "TraversalResult",
+    "build_changed_class_inventory",
     "select_classes_and_relations",
     "traverse_dependencies",
 ]
