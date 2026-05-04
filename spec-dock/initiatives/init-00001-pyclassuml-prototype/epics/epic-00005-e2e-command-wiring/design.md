@@ -80,7 +80,7 @@ result --> cli
 | seam | owner | input | output | handoff type | downstream |
 | --- | --- | --- | --- | --- | --- |
 | `app.generate-wiring` | `app` | `CommandRequest(command=generate)`, `ExecutionContext`, `AnalysisConfig`, `TargetSet(seed_files, observations)` | `ReportRunResult` | `report` owner の nested result payload は `ReportRunResult.command_result` に保持され、stdout/stderr material も `report` owner。`app` は stage invocation order と empty changed-file context transport のみを担い、stream emission しない | `cli` |
-| `app.diff-wiring` | `app` | `CommandRequest(command=diff)`, `ExecutionContext`, `AnalysisConfig`, `ChangedFileCollection`, `TargetSet(seed_files, observations)` | `ReportRunResult` | `report` owner の nested result payload は `ReportRunResult.command_result` に保持され、stdout/stderr material も `report` owner。`app` は stage invocation order と changed-file context transport のみを担い、stream emission しない | `cli` |
+| `app.diff-wiring` | `app` | `CommandRequest(command=diff)`, `ExecutionContext`, `AnalysisConfig`, `ChangedFileCollection`, `TargetSet(seed_files, observations)` | `ReportRunResult` | raw `ChangedFileCollection` / original context は `analyze` に渡されて `ChangedClassInventory` を生成し、`report` には `TargetSet`、`ChangedClassInventory`、diagnostics、graph/model/render material、timestamp を handoff する。nested `CommandResult` と stdout/stderr material は `ReportRunResult` 配下の `report` owner で、`app` は stage invocation order と transport だけを担い、stream emission しない | `cli` |
 
 ### Data boundary
 - SoR:
@@ -94,7 +94,7 @@ result --> cli
   - `app` は upstream DTO を mutate せず transport する。
   - `app` は `TargetSet.observations` を保持したまま `report` へ handoff し、summary counter source を再計算しない。
   - `generate` の changed-file context は empty set を analyze に渡し、zero inventory の producer を `analyze` に保つ。
-  - `diff` の changed-file context は `vcs` / `targets` 起点の original context を analyze と report に運ぶ。
+  - `diff` の raw changed-file context は `vcs` / `targets` 起点の original context として `analyze` に渡され、`ChangedClassInventory` の生成に使う。`report` には `TargetSet`、`ChangedClassInventory`、diagnostics、graph/model/render material、timestamp を handoff し、nested `CommandResult` と stdout/stderr material は `ReportRunResult` 配下で保持される。
 
 ## 主要フロー
 - Flow-A:

@@ -3,31 +3,34 @@
 ID: "iss-00021"
 タイトル: "App Diff Wiring"
 関連GitHub: ["#21"]
-状態: "draft"
+状態: "approved"
 作成者: "iwasawayuuta"
-最終更新: "2026-04-17"
+最終更新: "2026-05-04"
 親: ["epic-00005", "init-00001"]
 ---
 
 # iss-00021 App Diff Wiring — 要件定義（WHAT / WHY）
 
 ## 目的
-- diff front-stage で生成した `TargetSet` と changed-file context を common pipeline に接続し、`diff` を end-to-end で成立させる。
-- `working-tree|head` と `include_untracked` の user-visible 差を前段 seed / warning 差に閉じ、post-`TargetSet` pipeline を `generate` と共通に保つ。
+- diff front-stage で生成した actual changed-file context と `TargetSet` を common pipeline に接続し、`diff` を end-to-end で成立させる。
+- `working-tree|head` と `include_untracked` の user-visible 差を `vcs` / `targets.diff` の seed・warning・counter 差に閉じ、post-`TargetSet` pipeline を `generate` と共通に保つ。
+- app seam の戻り値を `ReportRunResult` に統一し、nested `CommandResult` と stdout/stderr material の producer を `report` に固定する。
 
 ## スコープ
 - MUST:
   - `CommandRequest(command=diff)` を受け、`config.context-resolve`、`vcs.diff-file-collect`、`targets.diff-target-normalize` を呼ぶ。
   - actual changed-file context と `TargetSet` を `parse -> analyze.traversal -> analyze.relationship-and-selection -> ChangedClassInventory -> frameworks -> render -> report` の canonical order へ接続する。
-  - `TargetSet.observations`、`ChangedClassInventory`、actual changed-file context から派生した upstream diagnostics を `report` へ transport する。
+  - `TargetSet.observations`、`ChangedClassInventory`、upstream diagnostics を `report` へ transport する。
   - `current_state` / `include_untracked` 差を front-stage warning / counter 差として保持し、post-`TargetSet` pipeline に diff-specific branch を追加しない。
-  - `report` が返した `CommandResult` をそのまま `cli` へ返す。
+  - `report` が返した `ReportRunResult` を app seam の結果としてそのまま返す。
 - MUST NOT:
   - usage error summary を生成しない。
-  - Git diff 読み取り、scope filtering、summary synthesis を `app` で再実装しない。
+  - Git diff 読み取り、scope filtering、summary synthesis、exit policy、stream material synthesis を `app` で再実装しない。
   - `TargetSet` 以降で `diff` 専用の relation / render / report logic を増やさない。
+  - `app` から実プロセスの stdout/stderr へ直接 emit しない。
 - OUT OF SCOPE:
   - `generate` 専用 wiring。
+  - `cli.run_cli` の handler signature 変更や console script 接続。
   - diff hunk 粒度 changed class 判定。
   - progress 表示や retry。
 
@@ -36,19 +39,21 @@ ID: "iss-00021"
   - seam owner は `app`。
   - current-state / untracked の意味論は `config` / `vcs` / `targets.diff` owner のまま使い、`app` では transport だけを行う。
   - actual changed-file context から `ChangedClassInventory` を生成する authoritative owner は `analyze` とする。
-  - non-usage outcome の `RunSummary` / `CommandResult` は `report` owner とする。
+  - non-usage outcome の `RunSummary` / `CommandResult` / stdout_text / stderr_text は `report` owner とし、`ReportRunResult` に保持する。
 - Ask:
   - diff path に post-`TargetSet` の command-specific branch を足したい場合。
   - `current_state=head` と `include_untracked=true` の no-op warning を `app` で消したい場合。
+  - `cli` の process stream emission までこの issue に含めたい場合。
 - Never:
   - `cli` usage error をこの issue に流し込まない。
   - diff scope exclusion や warning を `app` で握りつぶさない。
-  - `report` が作った summary / exit code を `app` で再解釈しない。
+  - `report` が作った summary / exit code / stdout_text / stderr_text を `app` で再解釈しない。
 
 ## 制約
 - `generate` と `diff` の差は前段 seed / changed-file context 生成に閉じる。
 - `TargetSet.observations.diff_scope_excluded_count` と no-op warning は summary source として保持する。
 - 同一 diff 基準、同一 upstream outputs では stage invocation order が決定的である。
+- config resolution failure でも `report` owner の result を返すため、`app` は fallback `ExecutionContext` と default `AnalysisConfig()` で `write_report` を呼ぶ。
 
 ## 受け入れ条件
 - AC-001:
@@ -59,7 +64,7 @@ ID: "iss-00021"
   - When:
     - `app.diff-wiring` を実行する。
   - Then:
-    - diff front-stage の後は common pipeline を canonical order で通り、`.puml` artifact、summary、exit code が観測できる。
+    - diff front-stage の後は common pipeline を canonical order で通り、`.puml` artifact、summary、exit code、stdout_text が `ReportRunResult` として観測できる。
   - 観測点:
     - diff transcript、filesystem observation、summary review、および auto naming / `--output` path resolution が end-to-end で保たれることの review。
 - AC-002:
@@ -88,13 +93,13 @@ ID: "iss-00021"
   - Actor:
     - CLI 利用者
   - Given:
-    - invalid `--base <ref>`、diff zero-target、output write failure の scenario がある。
+    - config failure、invalid `--base <ref>`、diff zero-target、render failure、output write failure の scenario がある。
   - When:
     - `app.diff-wiring` を実行する。
   - Then:
-    - usage error 以外の non-zero outcome は upstream / `report` owner のまま返り、`app` は summary / exit code を再分類しない。
+    - usage error 以外の non-zero outcome は upstream / `report` owner のまま `ReportRunResult` で返り、`app` は summary / exit code / stream material を再分類しない。
   - 観測点:
-    - failure transcript review、`iss-00006` / `iss-00010` / `iss-00011` / `iss-00019` との cross-check。
+    - failure transcript review、`iss-00006` / `iss-00010` / `iss-00011` / `iss-00019` / `iss-00020` との cross-check。
 
 ## 例外・エッジケース
 - EC-001:
@@ -115,10 +120,10 @@ ID: "iss-00021"
   - 条件:
     - scope filtering 後に `TargetSet.seed_files` が 0 件になる。
   - 期待:
-    - fallback seed を作らず、zero-target failure をそのまま返す。
+    - fallback seed を作らず、`ReportRunResult.command_result.exit_code != 0` の zero-target failure を返す。
   - 観測点:
     - diff zero-target failure review。
 
 ## 未確定事項
 - なし:
-  - diff path の owner split と common pipeline guardrail は initiative canonical docs で確定済みである。
+  - diff path の owner split、common pipeline guardrail、`ReportRunResult` 境界は epic / upstream issue docs で確定済みである。
