@@ -12,6 +12,7 @@ from pyclassuml.model import (
     CommandOptions,
     CommandRequest,
     CommandResult,
+    ClassReference,
     DependencyGraph,
     Diagnostic,
     DiagnosticSeverity,
@@ -152,10 +153,53 @@ def test_public_import_surface_and_valid_construction() -> None:
         module_path=Path("src/pyclassuml/model/contracts.py"),
         imports=["pathlib.Path"],
         classes=[class_id],
+        class_references=[
+            ClassReference(
+                source_class_id=class_id,
+                target_name="Diagnostic",
+                reference_kind="annotation_subscript",
+                reference_owner="Mapped",
+            )
+        ],
         diagnostics=[warning_diagnostic()],
     )
     assert DependencyGraph(reachable_files=[Path("a.py")], edges=[(Path("a.py"), Path("b.py"))])
     assert SelectedClasses(class_ids=["a:A"])
+
+
+def test_class_reference_contract_is_public_and_validated() -> None:
+    reference = ClassReference(
+        source_class_id="pkg/a.py:A",
+        target_name="B",
+        reference_kind="annotation_subscript",
+        reference_owner="Owner",
+    )
+
+    parsed_module = ParsedModule(
+        module_path=Path("pkg/a.py"),
+        classes=["pkg/a.py:A"],
+        class_references=[reference],
+    )
+
+    assert parsed_module.class_references == (reference,)
+
+    for field in ("source_class_id", "target_name", "reference_kind", "reference_owner"):
+        kwargs = {
+            "source_class_id": "pkg/a.py:A",
+            "target_name": "B",
+            "reference_kind": "annotation_subscript",
+            "reference_owner": "Owner",
+            field: "",
+        }
+        with pytest.raises(ValueError):
+            ClassReference(**kwargs)
+
+    with pytest.raises(ValueError):
+        ParsedModule(
+            module_path=Path("pkg/a.py"),
+            classes=["pkg/a.py:A"],
+            class_references=["not-a-reference"],
+        )
 
 
 @pytest.mark.parametrize(

@@ -297,10 +297,25 @@ class Diagnostic:
 
 
 @dataclass(frozen=True)
+class ClassReference:
+    source_class_id: ClassId
+    target_name: str
+    reference_kind: EvidenceKind
+    reference_owner: str
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty_string(self.source_class_id, "source_class_id")
+        _ensure_non_empty_string(self.target_name, "target_name")
+        _ensure_non_empty_string(self.reference_kind, "reference_kind")
+        _ensure_non_empty_string(self.reference_owner, "reference_owner")
+
+
+@dataclass(frozen=True)
 class ParsedModule:
     module_path: ModulePath
     imports: tuple[str, ...] = ()
     classes: tuple[ClassId, ...] = ()
+    class_references: tuple[ClassReference, ...] = ()
     diagnostics: tuple[Diagnostic, ...] = ()
 
     def __post_init__(self) -> None:
@@ -308,12 +323,17 @@ class ParsedModule:
             raise ValueError("module_path must be Path")
         imports = _as_tuple(self.imports)
         classes = _as_tuple(self.classes)
+        class_references = _as_tuple(self.class_references)
         diagnostics = _as_tuple(self.diagnostics)
         _ensure_non_empty_strings(imports, "imports")
         _ensure_non_empty_strings(classes, "classes")
+        for class_reference in class_references:
+            if not isinstance(class_reference, ClassReference):
+                raise ValueError("class_references must contain ClassReference values")
         _ensure_diagnostics(diagnostics, "diagnostics")
         object.__setattr__(self, "imports", imports)
         object.__setattr__(self, "classes", classes)
+        object.__setattr__(self, "class_references", class_references)
         object.__setattr__(self, "diagnostics", diagnostics)
 
 
@@ -471,6 +491,7 @@ __all__ = [
     "AnalysisConfig",
     "AnalysisMode",
     "ChangedClassInventory",
+    "ClassReference",
     "ClassId",
     "CommandName",
     "CommandOptions",

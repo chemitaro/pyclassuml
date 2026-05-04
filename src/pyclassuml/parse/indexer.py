@@ -11,6 +11,7 @@ from typing import Iterable, Mapping
 
 from pyclassuml.model import (
     AnalysisConfig,
+    ClassReference,
     Diagnostic,
     DiagnosticSeverity,
     ExecutionContext,
@@ -121,7 +122,14 @@ def parse_target_set(
         module_path = _project_relative(source_path, project_root)
         imports = _extract_imports(tree)
         classes = _extract_classes(tree, module_path)
-        parsed_module = ParsedModule(module_path=module_path, imports=imports, classes=classes, diagnostics=())
+        class_references = _extract_class_references(tree, module_path)
+        parsed_module = ParsedModule(
+            module_path=module_path,
+            imports=imports,
+            classes=classes,
+            class_references=class_references,
+            diagnostics=(),
+        )
         parsed_by_path[source_path] = parsed_module
 
         for import_ref in _extract_import_refs(tree):
@@ -217,6 +225,159 @@ def _extract_classes(tree: ast.AST, module_path: Path) -> tuple[str, ...]:
 
     visit(tree, ())
     return tuple(sorted(classes))
+
+
+def _extract_class_references(tree: ast.AST, module_path: Path) -> tuple[ClassReference, ...]:
+    references: set[ClassReference] = set()
+
+    def visit(node: ast.AST, parents: tuple[str, ...]) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ClassDef):
+                qualname = (*parents, child.name)
+                source_class_id = f"{module_path.as_posix()}:{'.'.join(qualname)}"
+                references.update(_class_body_references(child, source_class_id))
+                visit(child, qualname)
+            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            else:
+                visit(child, parents)
+
+    visit(tree, ())
+    return tuple(sorted(references, key=_class_reference_sort_key))
+
+
+def _class_body_references(class_def: ast.ClassDef, source_class_id: str) -> tuple[ClassReference, ...]:
+    references: set[ClassReference] = set()
+    for statement in class_def.body:
+        if isinstance(statement, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        references.update(_annotation_subscript_references_in_statement(statement, source_class_id))
+        references.update(_call_string_arg_references(statement, source_class_id))
+    return tuple(sorted(references, key=_class_reference_sort_key))
+
+
+def _annotation_subscript_references_in_statement(
+    statement: ast.AST,
+    source_class_id: str,
+) -> tuple[ClassReference, ...]:
+    references: set[ClassReference] = set()
+    for node in _walk_without_nested_definition_bodies(statement):
+        if isinstance(node, ast.AnnAssign):
+            references.update(_annotation_subscript_references(node.annotation, source_class_id))
+    return tuple(sorted(references, key=_class_reference_sort_key))
+
+
+def _annotation_subscript_references(annotation: ast.AST, source_class_id: str) -> tuple[ClassReference, ...]:
+    references: set[ClassReference] = set()
+    if not isinstance(annotation, ast.Subscript):
+        return ()
+    owner = _terminal_name(annotation.value)
+    if owner is None:
+        return ()
+    for target_name in _class_like_names(annotation.slice):
+        references.add(
+            ClassReference(
+                source_class_id=source_class_id,
+                target_name=target_name,
+                reference_kind="annotation_subscript",
+                reference_owner=owner,
+            )
+        )
+    return tuple(sorted(references, key=_class_reference_sort_key))
+
+
+def _call_string_arg_references(statement: ast.AST, source_class_id: str) -> tuple[ClassReference, ...]:
+    references: set[ClassReference] = set()
+    for node in _walk_without_nested_definition_bodies(statement):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        owner = _terminal_name(node.func)
+        first_arg = node.args[0]
+        if owner is None or not isinstance(first_arg, ast.Constant) or not isinstance(first_arg.value, str):
+            continue
+        if first_arg.value == "":
+            continue
+        references.add(
+            ClassReference(
+                source_class_id=source_class_id,
+                target_name=first_arg.value,
+                reference_kind="call_string_arg",
+                reference_owner=owner,
+            )
+        )
+    return tuple(sorted(references, key=_class_reference_sort_key))
+
+
+def _walk_without_nested_definition_bodies(node: ast.AST) -> Iterable[ast.AST]:
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        if isinstance(current, ast.Lambda):
+            continue
+        children = tuple(
+            child
+            for child in ast.iter_child_nodes(current)
+            if not isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        )
+        stack.extend(reversed(children))
+
+
+def _terminal_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _class_like_names(node: ast.AST) -> tuple[str, ...]:
+    names: set[str] = set()
+
+    def collect(child: ast.AST, *, in_literal: bool = False) -> None:
+        if isinstance(child, ast.Subscript):
+            owner = _terminal_name(child.value)
+            if owner == "Literal":
+                return
+            collect(child.slice, in_literal=in_literal or owner == "Literal")
+            return
+        if isinstance(child, ast.Constant):
+            if not in_literal and isinstance(child.value, str) and child.value[:1].isupper():
+                names.add(child.value)
+            return
+        name = _terminal_name(child)
+        if name is not None:
+            if name[:1].isupper() and name not in _TYPING_WRAPPER_NAMES:
+                names.add(name)
+            return
+        for grandchild in ast.iter_child_nodes(child):
+            collect(grandchild, in_literal=in_literal)
+
+    collect(node)
+    return tuple(sorted(names))
+
+
+_TYPING_WRAPPER_NAMES = frozenset(
+    {
+        "Annotated",
+        "ClassVar",
+        "Final",
+        "Literal",
+        "NotRequired",
+        "Optional",
+        "Required",
+        "Union",
+    }
+)
+
+
+def _class_reference_sort_key(reference: ClassReference) -> tuple[str, str, str, str]:
+    return (
+        reference.source_class_id,
+        reference.target_name,
+        reference.reference_kind,
+        reference.reference_owner,
+    )
 
 
 def _candidate_paths(

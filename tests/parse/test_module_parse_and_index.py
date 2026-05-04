@@ -2,6 +2,7 @@ from pathlib import Path
 
 from pyclassuml.model import (
     AnalysisConfig,
+    ClassReference,
     DiagnosticSeverity,
     ExecutionContext,
     FailureReason,
@@ -65,6 +66,181 @@ def test_seed_file_parse_builds_parsed_module_and_index(tmp_path: Path) -> None:
         "pkg/a.py:A": Path("pkg/a.py"),
         "pkg/a.py:A.Nested": Path("pkg/a.py"),
     }
+
+
+def test_class_body_references_are_generic_and_deterministic(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    one: Owner[B]",
+                "    many: Owner[list[C]]",
+                "    link = link_to(\"D\")",
+                "    def factory(self):",
+                "        local: Owner[Local]",
+                "        other = link_to(\"Local\")",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="B",
+            reference_kind="annotation_subscript",
+            reference_owner="Owner",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="C",
+            reference_kind="annotation_subscript",
+            reference_owner="Owner",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="D",
+            reference_kind="call_string_arg",
+            reference_owner="link_to",
+        ),
+    )
+
+
+def test_nested_class_references_use_nested_source_class_id(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    class Nested:",
+                "        relation: Owner[B]",
+                "        link = link_to(\"C\")",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A.Nested",
+            target_name="B",
+            reference_kind="annotation_subscript",
+            reference_owner="Owner",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A.Nested",
+            target_name="C",
+            reference_kind="call_string_arg",
+            reference_owner="link_to",
+        ),
+    )
+
+
+def test_class_body_references_skip_nested_function_bodies_under_statements(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    if True:",
+                "        def factory(self):",
+                "            local = link_to(\"Local\")",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == ()
+
+
+def test_class_body_references_skip_lambda_bodies(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    factory = lambda: link_to(\"B\")",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == ()
+
+
+def test_class_body_references_include_annotation_under_control_statement(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    if True:",
+                "        b: Owner[B]",
+                "        def factory(self):",
+                "            local: Owner[Local]",
+                "        class Nested:",
+                "            pass",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="B",
+            reference_kind="annotation_subscript",
+            reference_owner="Owner",
+        ),
+    )
+
+
+def test_mapped_annotation_references_ignore_typing_wrappers(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    optional: Mapped[Optional[B]]",
+                "    union: Mapped[Union[B, C]]",
+                "    annotated: Mapped[Annotated[B, \"primary\"]]",
+                "    class_var: Mapped[ClassVar[C]]",
+                "    final: Mapped[Final[B]]",
+                "    literal: Mapped[Literal[\"B\"]]",
+                "    required: Mapped[Required[B]]",
+                "    not_required: Mapped[NotRequired[C]]",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.parsed_modules[0].class_references == (
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="B",
+            reference_kind="annotation_subscript",
+            reference_owner="Mapped",
+        ),
+        ClassReference(
+            source_class_id="pkg/a.py:A",
+            target_name="C",
+            reference_kind="annotation_subscript",
+            reference_owner="Mapped",
+        ),
+    )
 
 
 def test_import_candidates_are_parsed_recursively_and_indexed_deterministically(tmp_path: Path) -> None:
