@@ -23,6 +23,7 @@ ID: "iss-00027"
   - EC-002 method without return
   - EC-003 relation-only class block
   - EC-004 modifier ordering
+  - EC-005 member escaping
 - 制約:
   - no filesystem write
   - no relation reclassification
@@ -81,7 +82,7 @@ ID: "iss-00027"
     - `src/pyclassuml/render/document.py`
     - `tests/render/test_document.py`
   - closes:
-    - AC-001
+    - design interface contract: selected class members are collected and stable-sorted by class id / source_order
   - review gate:
     - render-ready member tests pass
 - S02:
@@ -95,7 +96,7 @@ ID: "iss-00027"
     - `src/pyclassuml/render/document.py`
     - `tests/render/test_document.py`
   - closes:
-    - AC-001, AC-003, EC-001, EC-002, EC-003, EC-004
+    - AC-001, AC-003, EC-001, EC-002, EC-003, EC-004, EC-005
   - review gate:
     - body snapshot tests pass
 - S03:
@@ -140,7 +141,7 @@ ID: "iss-00027"
     - SG/RG/QG pass
 
 ## 要件 ↔ ステップ対応
-- AC-001 -> S01, S02
+- AC-001 -> S02
 - AC-002 -> S03
 - AC-003 -> S02
 - AC-004 -> S03
@@ -148,6 +149,7 @@ ID: "iss-00027"
 - EC-002 -> S02
 - EC-003 -> S02
 - EC-004 -> S02
+- EC-005 -> S02
 
 ## レビュー / QA ゲート方針
 - RG1 implementation review:
@@ -191,7 +193,7 @@ ID: "iss-00027"
   - member carry test
   - selected class filtering test
 - report update:
-  - member carry policy を残す
+  - design interface contract の member carry policy を残す
 - notes:
   - source_order は parse owner の値を信頼し、render で再計算しない
 
@@ -227,7 +229,9 @@ ID: "iss-00027"
 - expected tests:
   - field line snapshot
   - method line snapshot
+  - zero-parameter and untyped/mixed parameter snapshot
   - modifier ordering snapshot
+  - member escaping snapshot
   - empty body snapshot
 - report update:
   - class body format を残す

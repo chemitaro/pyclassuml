@@ -42,7 +42,7 @@ ID: "iss-00027"
   - field line を `+ name: Type` 形式で描画する。
   - method line を `+ method(arg: Type): Return` 形式で描画する。
   - visibility を `public=+`, `protected=#`, `private=-` に写像する。
-  - `staticmethod`, `classmethod`, `property`, `async` modifier を deterministic に描画する。
+  - `staticmethod`, `classmethod`, `property`, `async` modifier を visibility の直後に deterministic に描画する。
   - `inherits -> --|>`, `association -> -->`, `uses -> ..>` の arrow mapping を固定する。
   - selected class だけの member を class body に出し、ordering / escaping を deterministic にする。
   - `iss-00018` の `RenderReadyModel.members=()` authoritative 契約を supersede する。
@@ -60,6 +60,8 @@ ID: "iss-00027"
   - render owner は `ClassMember` を preformatted line へ変換する。
   - same input -> same `.puml` を維持する。
   - relation arrow direction は `source_class_id -> target_class_id` に統一する。
+  - memberless class は既存の one-line syntax `class "Name" as alias` を維持する。
+  - member を 1 件以上持つ class だけを brace block `class "Name" as alias { ... }` で描画する。
 - Ask:
   - property を field-style 表示へ変えたい場合。
   - relation label を arrow に追加したい場合。
@@ -106,7 +108,7 @@ ID: "iss-00027"
   - When:
     - render する。
   - Then:
-    - body の有無に応じて valid な PlantUML class block が生成される。
+    - memberless class は one-line class syntax のまま、field-only / method-only class は brace block として生成される。
   - 観測点:
     - render snapshot tests
 - AC-004:
@@ -134,22 +136,34 @@ ID: "iss-00027"
     - method return annotation がない。
   - 期待:
     - `+ method(arg)` として描画し、戻り値部分を省略する。
+    - parameter が 0 件なら `+ method()` として描画する。
+    - parameter の annotation text がない場合は `+ method(arg)`、typed / untyped が混在する場合は DTO の parameter order どおり `+ method(raw, typed: Type)` として描画する。
   - 観測点:
     - render method fixture
 - EC-003:
   - 条件:
     - class body が空で relation だけがある。
   - 期待:
-    - empty body の class block は valid なまま relation を描画する。
+    - class declaration は既存 one-line syntax のまま relation を描画し、空 brace block は出さない。
   - 観測点:
     - relation-only fixture
 - EC-004:
   - 条件:
     - modifier が複数ある。
   - 期待:
-    - deterministic な prefix 順で 1 行に描画する。
+    - visibility の後ろ、member signature の前に `{static}`, `{class}`, `{property}`, `{async}` の順で描画する。
+    - duplicate modifier は 1 回に dedupe する。
+    - 未対応 modifier は render 行に出さず、failure にはしない。
   - 観測点:
     - modifier ordering fixture
+- EC-005:
+  - 条件:
+    - field / method / parameter / annotation text / return text に PlantUML-sensitive text が含まれる。
+  - 期待:
+    - 既存 `_escape_plantuml` と同じ escaping を member line segment に適用し、quote と backslash を escape する。
+    - newline は literal line break として持ち込まず、space に正規化する。
+  - 観測点:
+    - member escaping fixture
 
 ## 入力→出力例（必要時）
 - EX-001:
@@ -167,6 +181,16 @@ ID: "iss-00027"
     - `relation_type="inherits"`
   - Output:
     - `source --|> target`
+- EX-004:
+  - Input:
+    - static async method `build(raw, typed: Order) -> Receipt`
+  - Output:
+    - `+ {static} {async} build(raw, typed: Order): Receipt`
+- EX-005:
+  - Input:
+    - memberless class `Order`
+  - Output:
+    - `class "Order" as c001`
 
 ## 用語（ドメイン語彙）
 - TERM-001:
@@ -174,7 +198,7 @@ ID: "iss-00027"
     - relation_type を PlantUML arrow に写像する固定規則
 - TERM-002:
   - modifier prefix:
-    - `{static}`, `{class}`, `{property}`, `{async}` の render 表現
+    - visibility symbol の直後、signature の直前に置く `{static}`, `{class}`, `{property}`, `{async}` の render 表現
 
 ## 未確定事項
 - なし:
