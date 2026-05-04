@@ -1078,6 +1078,30 @@ def test_field_annotation_semantic_references_carry_ownership_shapes_and_skip_ma
     assert not any(reference.target_name == "ItemKey" for reference in semantic_references(result.parsed_modules[0].class_references))
 
 
+def test_mixed_unknown_and_known_wrappers_sort_safely_and_keep_fallback_targets(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "models.py",
+        "\n".join(
+            [
+                "from typing import Union",
+                "class Source:",
+                "    union_box: Box[Target] | Target",
+                "    collection_box: Union[Box[Target], list[Target]]",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert semantic_references(result.parsed_modules[0].class_references) == (
+        ClassReference("pkg/models.py:Source", "Target", "field_annotation", "union_box", "union"),
+        ClassReference("pkg/models.py:Source", "Target", "field_annotation", "union_box"),
+        ClassReference("pkg/models.py:Source", "Target", "field_annotation", "collection_box", "collection"),
+        ClassReference("pkg/models.py:Source", "Target", "field_annotation", "collection_box"),
+    )
+
+
 def test_annotated_metadata_strings_are_not_annotation_string_references(tmp_path: Path) -> None:
     project = tmp_path / "project"
     seed = write_file(

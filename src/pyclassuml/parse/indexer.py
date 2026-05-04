@@ -1168,7 +1168,22 @@ def _semantic_annotation_targets(node: ast.AST) -> tuple[tuple[str, str | None],
             collect(grandchild, shape)
 
     collect(node, "direct")
-    return tuple(sorted(targets))
+    return tuple(sorted(targets, key=_semantic_annotation_target_sort_key))
+
+
+_ANNOTATION_SHAPE_SORT_ORDER = {
+    "direct": 0,
+    "optional": 1,
+    "union": 2,
+    "collection": 3,
+    "mapping_value": 4,
+    None: 5,
+}
+
+
+def _semantic_annotation_target_sort_key(target: tuple[str, str | None]) -> tuple[str, int]:
+    target_name, shape = target
+    return (target_name, _ANNOTATION_SHAPE_SORT_ORDER[shape])
 
 
 def _annotation_shape(current_shape: str | None, next_shape: str) -> str | None:

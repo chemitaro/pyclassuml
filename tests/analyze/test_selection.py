@@ -418,6 +418,26 @@ def test_relation_priority_prefers_composition_over_aggregation_association_and_
     assert result.diagnostics == ()
 
 
+def test_mixed_unknown_and_known_field_wrappers_keep_ownership_over_fallback() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/models.py"),
+        classes=("pkg/models.py:Source", "pkg/models.py:Target"),
+        class_references=(
+            reference("pkg/models.py:Source", "Target", "field_annotation", "union_box"),
+            reference("pkg/models.py:Source", "Target", "field_annotation", "union_box", "union"),
+            reference("pkg/models.py:Source", "Target", "field_annotation", "collection_box"),
+            reference("pkg/models.py:Source", "Target", "field_annotation", "collection_box", "collection"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/models.py",), reachable=("pkg/models.py",))
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/models.py:Source", "pkg/models.py:Target", "aggregation", "field_annotation"),
+    )
+    assert result.diagnostics == ()
+
+
 def test_protocol_marker_base_classifies_selected_protocol_target_as_realizes_without_external_warning() -> None:
     seed = ParsedModule(
         module_path=Path("pkg/models.py"),
