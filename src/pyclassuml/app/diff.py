@@ -17,13 +17,16 @@ from pyclassuml.frameworks import (
 )
 from pyclassuml.model import (
     AnalysisConfig,
+    ClassId,
     CommandName,
     CommandRequest,
     Diagnostic,
     ExecutionContext,
+    ParsedModule,
+    SelectedClasses,
     TargetSet,
 )
-from pyclassuml.parse import parse_target_set
+from pyclassuml.parse import ModuleIndex, parse_target_set
 from pyclassuml.render import render_uml_document
 from pyclassuml.report import ReportInputs, ReportRunResult, write_report
 from pyclassuml.targets import normalize_diff_targets
@@ -106,10 +109,17 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
     )
     diagnostics = (*diagnostics, *selection_result.diagnostics)
 
+    changed_paths = _project_relative_changed_paths(vcs_collection.collection)
     changed_class_inventory = build_changed_class_inventory(
-        _project_relative_changed_paths(vcs_collection.collection),
+        changed_paths,
         parse_result.parsed_modules,
         parse_result.module_index,
+    )
+    class_decorations = _diff_class_decorations(
+        changed_paths,
+        parse_result.parsed_modules,
+        parse_result.module_index,
+        selection_result.selected_classes,
     )
 
     sqlalchemy_hints = extract_sqlalchemy_enrichment_hints(
@@ -135,6 +145,7 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
         selected_relations=selection_result.selected_relations,
         sqlalchemy_hints=sqlalchemy_hints,
         pydantic_hints=pydantic_hints,
+        class_decorations=class_decorations,
     )
 
     return write_report(
@@ -157,6 +168,34 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
 
 def _project_relative_changed_paths(collection: ChangedFileCollection) -> tuple[Path, ...]:
     return tuple(Path(entry.current_project_relative_path) for entry in collection.entries)
+
+
+def _diff_class_decorations(
+    changed_files: tuple[Path, ...],
+    parsed_modules: tuple[ParsedModule, ...],
+    module_index: ModuleIndex,
+    selected_classes: SelectedClasses,
+) -> tuple[tuple[ClassId, str], ...]:
+    module_by_path = {parsed_module.module_path: parsed_module for parsed_module in parsed_modules}
+    changed_module_paths = {
+        module_path
+        for changed_file in changed_files
+        if (module_path := module_index.project_relative_file_to_module.get(changed_file)) is not None
+    }
+    changed_class_ids = {
+        class_id
+        for module_path in changed_module_paths
+        if (parsed_module := module_by_path.get(module_path)) is not None
+        for class_id in parsed_module.classes
+    }
+
+    decorations = []
+    for class_id in sorted(selected_classes.class_ids):
+        if class_id in changed_class_ids:
+            decorations.append((class_id, "DiffChanged"))
+            continue
+        decorations.append((class_id, "DiffDependency"))
+    return tuple(decorations)
 
 
 def _fallback_context(process_cwd: Path) -> ExecutionContext:

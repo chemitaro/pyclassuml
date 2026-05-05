@@ -332,6 +332,77 @@ def test_render_plantuml_text_is_deterministic_and_groups_by_class_id_module_pat
     )
 
 
+def test_render_uml_document_outputs_diff_styles_only_when_diff_decorations_exist() -> None:
+    result = render_uml_document(
+        **render_inputs(),
+        class_decorations=(
+            ("pkg/orders.py:Order", "DiffChanged"),
+            ("pkg/orders.py:User", "DiffDependency"),
+        ),
+    )
+
+    assert result.failure_signal is None
+    assert result.plantuml_text is not None
+    assert result.plantuml_text.text.splitlines()[:7] == [
+        "@startuml",
+        "skinparam class {",
+        "  BackgroundColor<<DiffChanged>> #fff3b0",
+        "  BorderColor<<DiffChanged>> #d39e00",
+        "  BackgroundColor<<DiffDependency>> #e8f4ff",
+        "  BorderColor<<DiffDependency>> #5b8def",
+        "}",
+    ]
+    assert 'class "Order" as c002 <<DiffChanged>>' in result.plantuml_text.text
+    assert 'class "User" as c003 <<DiffDependency>>' in result.plantuml_text.text
+
+
+def test_render_uml_document_merges_diff_and_protocol_stereotypes() -> None:
+    protocol_id = "pkg/contracts.py:Repository"
+    render_ready = compose_render_ready_model(
+        parsed_modules=(
+            ParsedModule(
+                module_path=Path("pkg/contracts.py"),
+                imports=("from typing import Protocol",),
+                classes=(protocol_id,),
+                class_references=(
+                    ClassReference(
+                        protocol_id,
+                        "Protocol",
+                        "class_base",
+                        "base",
+                    ),
+                ),
+            ),
+        ),
+        module_index=module_index(protocol_id),
+        selected_classes=SelectedClasses(class_ids=(protocol_id,)),
+        selected_relations=SelectedRelations(),
+        sqlalchemy_hints=SqlalchemyEnrichmentHints(),
+        pydantic_hints=PydanticEnrichmentHints(),
+        class_decorations=((protocol_id, "DiffChanged"),),
+    )
+    text = render_plantuml_text(render_ready, build_diagram_model(render_ready))
+
+    assert render_ready.class_decorations == (
+        (protocol_id, "DiffChanged"),
+        (protocol_id, "Protocol"),
+    )
+    assert 'class "Repository" as c001 <<DiffChanged>> <<Protocol>>' in text.text
+    assert "BackgroundColor<<DiffChanged>>" in text.text
+
+
+def test_render_uml_document_ignores_decorations_for_non_rendered_classes() -> None:
+    result = render_uml_document(
+        **render_inputs(),
+        class_decorations=(("pkg/hidden.py:Hidden", "DiffChanged"),),
+    )
+
+    assert result.failure_signal is None
+    assert result.plantuml_text is not None
+    assert "DiffChanged" not in result.plantuml_text.text
+    assert "skinparam class {" not in result.plantuml_text.text
+
+
 def test_render_ready_model_and_plantuml_are_deterministic_for_reordered_inputs() -> None:
     first_inputs, second_inputs = determinism_inputs()
 

@@ -53,6 +53,7 @@ def compose_render_ready_model(
     selected_relations: SelectedRelations,
     sqlalchemy_hints: SqlalchemyEnrichmentHints,
     pydantic_hints: PydanticEnrichmentHints,
+    class_decorations: tuple[tuple[ClassId, str], ...] = (),
 ) -> RenderReadyModel:
     """Merge analyze selection and framework hints into a deterministic render model."""
 
@@ -86,11 +87,17 @@ def compose_render_ready_model(
     grouping_keys = tuple(sorted({_module_path_from_class_id(class_id) for class_id in valid_classes}))
 
     valid_class_ids = set(valid_classes)
-    class_decorations = tuple(
+    auto_class_decorations = tuple(
         (class_id, "Protocol")
         for class_id in valid_classes
         if _is_protocol_class(class_id, parsed_modules, module_index)
     )
+    external_class_decorations = tuple(
+        (class_id, decoration)
+        for class_id, decoration in class_decorations
+        if class_id in valid_class_ids
+    )
+    merged_class_decorations = tuple(sorted({*auto_class_decorations, *external_class_decorations}))
     members = tuple(
         sorted(
             (
@@ -107,7 +114,7 @@ def compose_render_ready_model(
         classes=tuple(valid_classes),
         members=members,
         relations=relations,
-        class_decorations=class_decorations,
+        class_decorations=merged_class_decorations,
         grouping_keys=grouping_keys,
         diagnostics=tuple(diagnostics),
     )
@@ -139,6 +146,7 @@ def render_plantuml_text(
     members_by_class_id = _members_by_class_id(render_ready_model.members)
     decorations_by_class_id = _decorations_by_class_id(render_ready_model.class_decorations)
     lines = ["@startuml"]
+    lines.extend(_diff_style_lines(render_ready_model.class_decorations))
     for container in diagram_model.containers:
         lines.append(f'package "{_escape_plantuml(container)}" {{')
         for class_id in diagram_model.rendered_classes:
@@ -173,6 +181,7 @@ def render_uml_document(
     selected_relations: SelectedRelations,
     sqlalchemy_hints: SqlalchemyEnrichmentHints,
     pydantic_hints: PydanticEnrichmentHints,
+    class_decorations: tuple[tuple[ClassId, str], ...] = (),
 ) -> RenderDocumentResult:
     """Render success DTOs or a failure handoff without side effects."""
 
@@ -183,6 +192,7 @@ def render_uml_document(
         selected_relations=selected_relations,
         sqlalchemy_hints=sqlalchemy_hints,
         pydantic_hints=pydantic_hints,
+        class_decorations=class_decorations,
     )
     diagnostics = list(render_ready_model.diagnostics)
     diagnostics.extend(_relation_endpoint_diagnostics(render_ready_model))
@@ -390,6 +400,20 @@ def _class_stereotype(decorations: tuple[str, ...]) -> str:
     if not decorations:
         return ""
     return " " + " ".join(f"<<{_escape_plantuml(decoration)}>>" for decoration in decorations)
+
+
+def _diff_style_lines(class_decorations: tuple[tuple[ClassId, str], ...]) -> list[str]:
+    decorations = {decoration for _, decoration in class_decorations}
+    if not decorations.intersection({"DiffChanged", "DiffDependency"}):
+        return []
+    return [
+        "skinparam class {",
+        "  BackgroundColor<<DiffChanged>> #fff3b0",
+        "  BorderColor<<DiffChanged>> #d39e00",
+        "  BackgroundColor<<DiffDependency>> #e8f4ff",
+        "  BorderColor<<DiffDependency>> #5b8def",
+        "}",
+    ]
 
 
 def _member_line(member: ClassMember) -> str:

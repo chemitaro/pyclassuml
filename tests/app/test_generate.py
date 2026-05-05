@@ -312,6 +312,9 @@ def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_re
     assert_relation(output, "CheckoutRequest", "o--", "CheckoutLineDto")
     assert 'class "PaymentGateway" as ' in output
     assert "<<Protocol>>" in output
+    assert "skinparam class {" not in output
+    assert "DiffChanged" not in output
+    assert "DiffDependency" not in output
     assert_relation(output, "CheckoutRequest", "-up-|>", "BaseModel")
     assert_relation(output, "OrderDraft", "*--", "CheckoutRequest")
     assert_relation(output, "OrderDraft", "..>", "Authorization")
