@@ -252,6 +252,19 @@ spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00004-framework
 - 本 issue の変更範囲は `iss-00033` issue docs、`src/pyclassuml/app/diff.py`、`src/pyclassuml/render/document.py`、および app/render/generate tests に限定される。
 - `find . -maxdepth 2 -name 'uv.lock' -o -name '__pycache__'` は出力なし。unexpected generated file は検出されていない。
 
+## Close Evidence
+```bash
+./spec-dock/scripts/spec-dock close iss-00033
+
+spec-dock: ok (close) target=iss-00033 node=iss-00033 kind=issue github=#33 state=CLOSED already_closed=false
+```
+
+```bash
+gh issue view 33 --json number,state,title,closedAt,url
+
+{"number":33,"state":"CLOSED","title":"Render Diff Class Colorization","closedAt":"2026-05-05T09:42:16Z","url":"https://github.com/chemitaro/pyclassuml/issues/33"}
+```
+
 ## 遭遇した問題と解決
 - 問題: EC-003 の plan verification が抽象的だった。
   - 解決: syntax error / parsed class join miss で `DiffChanged` を捏造しない targeted test を plan と実装に追加した。
