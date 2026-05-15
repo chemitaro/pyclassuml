@@ -202,5 +202,10 @@ git diff --check
 |---|---|---|---|
 | full pytest, sync, validate, diff check, uppercase path check, closure coverage recorded | implementation, tests, issue docs, report | final response | ready |
 
+### User Acceptance / Closure
+| date | evidence | decision | notes |
+|---|---|---|---|
+| 2026-05-15 | User confirmed the original monorepo relation-loss problem is resolved in the affected tool run | close requested | User explicitly requested issue close, push, GitHub issue close, and merge into main |
+
 ## 省略/例外メモ
 - Required reviewer gates are not claimed as passed because sub-agent invocation is unavailable under the current host policy unless explicitly requested as delegation.
