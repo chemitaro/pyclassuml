@@ -17,7 +17,7 @@ from pyclassuml.model import (
     TargetSet,
 )
 from pyclassuml.parse import indexer
-from pyclassuml.parse import parse_target_set
+from pyclassuml.parse import parse_module_source_text, parse_target_set
 
 
 def write_file(path: Path, text: str) -> Path:
@@ -142,6 +142,28 @@ def test_class_span_start_line_includes_decorators(tmp_path: Path) -> None:
 
     assert result.diagnostics == ()
     assert result.parsed_modules[0].class_spans == (ClassSpan("pkg/decorated.py:Model", start_line=3, end_line=5),)
+
+
+def test_parse_module_source_text_uses_logical_module_path_for_class_ids() -> None:
+    module = parse_module_source_text(
+        "\n".join(
+            [
+                "@entity",
+                "class Model:",
+                "    class Nested:",
+                "        pass",
+            ]
+        ),
+        Path("pkg/new.py"),
+        filename="base:pkg/old.py",
+    )
+
+    assert module.module_path == Path("pkg/new.py")
+    assert module.classes == ("pkg/new.py:Model", "pkg/new.py:Model.Nested")
+    assert module.class_spans == (
+        ClassSpan("pkg/new.py:Model", start_line=1, end_line=4),
+        ClassSpan("pkg/new.py:Model.Nested", start_line=3, end_line=4),
+    )
 
 
 def test_from_imports_preserve_aliases_in_parsed_module_imports(tmp_path: Path) -> None:

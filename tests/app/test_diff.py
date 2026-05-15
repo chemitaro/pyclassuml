@@ -572,6 +572,25 @@ def test_diff_e2e_marks_only_class_whose_body_overlaps_changed_hunk(tmp_path: Pa
     assert "DiffChanged" not in class_declaration(output, "Unchanged")
 
 
+def test_diff_e2e_marks_new_class_in_modified_file_as_diff_added(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Existing:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Existing:\n    value = 1\n\nclass NewlyAdded:\n    value = 1\n")
+
+    result = run_diff(diff_request(repo, output=Path("new-class.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "new-class.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "BackgroundColor<<DiffAdded>> #dff3ff" in output
+    assert "<<DiffAdded>>" in class_declaration(output, "NewlyAdded")
+    assert "DiffChanged" not in class_declaration(output, "NewlyAdded")
+    assert "DiffAdded" not in class_declaration(output, "Existing")
+    assert "DiffChanged" not in class_declaration(output, "Existing")
+
+
 def test_diff_e2e_marks_nested_inner_body_change_without_outer_highlight(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "pkg" / "__init__.py")
@@ -610,6 +629,23 @@ def test_diff_e2e_marks_nested_inner_body_change_without_outer_highlight(tmp_pat
     assert result.outcome_kind == "clean_success"
     assert "<<DiffChanged>>" in class_declaration(output, "Inner")
     assert "DiffChanged" not in class_declaration(output, "Outer")
+
+
+def test_diff_e2e_marks_new_nested_class_as_diff_added(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Outer:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Outer:\n    value = 1\n\n    class Inner:\n        value = 2\n")
+
+    result = run_diff(diff_request(repo, output=Path("nested-added.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "nested-added.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "BackgroundColor<<DiffAdded>> #dff3ff" in output
+    assert "<<DiffAdded>>" in class_declaration(output, "Inner")
+    assert "DiffChanged" not in class_declaration(output, "Inner")
 
 
 def test_diff_e2e_marks_class_body_deletion_only_hunk_as_changed(tmp_path: Path) -> None:
@@ -857,6 +893,98 @@ def test_diff_class_decorations_excludes_unselected_changed_classes() -> None:
     assert decorations == ()
 
 
+def test_diff_class_decorations_marks_added_file_class_as_diff_added() -> None:
+    added_id = "pkg/new.py:New"
+    decorations = diff_app._diff_class_decorations(
+        (ChangedFileEntry("pkg/new.py", "added"),),
+        (ParsedModule(Path("pkg/new.py"), classes=(added_id,), class_spans=(ClassSpan(added_id, 1, 2),)),),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/new.py"): Path("pkg/new.py")},
+            class_to_module={added_id: Path("pkg/new.py")},
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(added_id,)),
+        base_class_ids_by_path={Path("pkg/new.py"): frozenset()},
+    )
+
+    assert decorations == ((added_id, "DiffAdded"),)
+
+
+def test_diff_class_decorations_marks_outer_and_inner_classes_in_added_file_as_diff_added() -> None:
+    outer_id = "pkg/new.py:Outer"
+    inner_id = "pkg/new.py:Outer.Inner"
+    decorations = diff_app._diff_class_decorations(
+        (
+            ChangedFileEntry(
+                "pkg/new.py",
+                "added",
+                current_changed_line_ranges=(ChangedLineRange(start=1, end=3),),
+            ),
+        ),
+        (
+            ParsedModule(
+                Path("pkg/new.py"),
+                classes=(outer_id, inner_id),
+                class_spans=(
+                    ClassSpan(outer_id, 1, 3),
+                    ClassSpan(inner_id, 2, 3),
+                ),
+            ),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/new.py"): Path("pkg/new.py")},
+            class_to_module={outer_id: Path("pkg/new.py"), inner_id: Path("pkg/new.py")},
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(outer_id, inner_id)),
+        base_class_ids_by_path={Path("pkg/new.py"): frozenset()},
+    )
+
+    assert decorations == ((outer_id, "DiffAdded"), (inner_id, "DiffAdded"))
+
+
+def test_diff_class_decorations_marks_current_only_class_in_modified_file_as_diff_added() -> None:
+    existing_id = "pkg/models.py:Existing"
+    added_id = "pkg/models.py:NewlyAdded"
+    decorations = diff_app._diff_class_decorations(
+        (
+            ChangedFileEntry(
+                "pkg/models.py",
+                "modified",
+                current_changed_line_ranges=(ChangedLineRange(start=4, end=5),),
+            ),
+        ),
+        (
+            ParsedModule(
+                Path("pkg/models.py"),
+                classes=(existing_id, added_id),
+                class_spans=(
+                    ClassSpan(existing_id, start_line=1, end_line=2),
+                    ClassSpan(added_id, start_line=4, end_line=5),
+                ),
+            ),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/models.py"): Path("pkg/models.py")},
+            class_to_module={
+                existing_id: Path("pkg/models.py"),
+                added_id: Path("pkg/models.py"),
+            },
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(existing_id, added_id)),
+        base_class_ids_by_path={Path("pkg/models.py"): frozenset({existing_id})},
+    )
+
+    assert decorations == ((added_id, "DiffAdded"),)
+
+
 def test_diff_class_decorations_marks_only_selected_class_with_overlapping_changed_range() -> None:
     changed_id = "pkg/models.py:Changed"
     unchanged_id = "pkg/models.py:Unchanged"
@@ -1021,6 +1149,101 @@ def test_diff_class_decorations_do_not_fabricate_changed_class_on_join_miss() ->
     assert decorations == ()
 
 
+def test_diff_class_decorations_skips_file_when_base_inventory_is_unsafe() -> None:
+    selected_id = "pkg/models.py:Model"
+    decorations = diff_app._diff_class_decorations(
+        (ChangedFileEntry("pkg/models.py", "modified", current_changed_line_ranges=(ChangedLineRange(1, 2),)),),
+        (
+            ParsedModule(
+                Path("pkg/models.py"),
+                classes=(selected_id,),
+                class_spans=(ClassSpan(selected_id, start_line=1, end_line=2),),
+            ),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/models.py"): Path("pkg/models.py")},
+            class_to_module={selected_id: Path("pkg/models.py")},
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(selected_id,)),
+        base_class_ids_by_path={Path("pkg/models.py"): None},
+    )
+
+    assert decorations == ()
+
+
+def test_diff_base_inventory_failure_emits_warning_and_no_fabricated_decoration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 2\n")
+    original_read_base_file_text = diff_app.read_base_file_text
+
+    def read_base_file_text_spy(*args: object, **kwargs: object) -> str | None:
+        base_ref = args[2]
+        project_relative_path = args[3]
+        if base_ref == "base" and project_relative_path == "pkg/models.py":
+            raise diff_app.diff_collect.VcsDiffError("forced_base_read_failure", "forced base read failure")
+        return original_read_base_file_text(*args, **kwargs)
+
+    monkeypatch.setattr(diff_app, "read_base_file_text", read_base_file_text_spy)
+
+    result = run_diff(diff_request(repo, output=Path("unsafe-base.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "unsafe-base.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "degraded_success"
+    assert "warning:diff_classification_base_read_unavailable:" in result.stdout_text
+    assert "DiffAdded" not in class_declaration(output, "Model")
+    assert "DiffChanged" not in class_declaration(output, "Model")
+
+
+def test_diff_classification_ignores_non_python_changed_files(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+    write_file(repo / "README.md", "# base\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 2\n")
+    write_file(repo / "README.md", "# changed\n\nnot: python: syntax:\n")
+
+    result = run_diff(diff_request(repo, output=Path("mixed.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "mixed.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "diff_classification_base_parse_unavailable" not in result.stdout_text
+    assert "<<DiffChanged>>" in class_declaration(output, "Model")
+
+
+def test_head_current_parse_failure_emits_warning_and_no_fabricated_decoration(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model(:\n")
+    commit_all(repo, "head")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 2\n")
+
+    result = run_diff(
+        diff_request(repo, current_state=DiffCurrentState.HEAD, output=Path("unsafe-head.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "unsafe-head.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "degraded_success"
+    assert "warning:diff_classification_current_parse_unavailable:" in result.stdout_text
+    assert "DiffAdded" not in class_declaration(output, "Model")
+    assert "DiffChanged" not in class_declaration(output, "Model")
+
+
 def test_diff_syntax_error_preserves_diagnostics_and_emits_no_fabricated_diff_changed(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "pkg" / "broken.py", "class Broken:\n    pass\n")
@@ -1109,8 +1332,10 @@ def test_working_tree_include_untracked_includes_untracked_python_in_seed_change
     assert 'class "Tracked"' in artifact_text
     assert 'class "Untracked"' in artifact_text
     assert "skinparam class {" in artifact_text
+    assert "BackgroundColor<<DiffAdded>> #dff3ff" in artifact_text
+    assert "BackgroundColor<<DiffChanged>> #dff5df" in artifact_text
     assert "<<DiffChanged>>" in class_declaration(artifact_text, "Tracked")
-    assert "<<DiffChanged>>" in class_declaration(artifact_text, "Untracked")
+    assert "<<DiffAdded>>" in class_declaration(artifact_text, "Untracked")
     assert "<<DiffDependency>>" not in class_declaration(artifact_text, "Untracked")
     assert result.stderr_text == ""
     assert captured.out == ""
@@ -1175,6 +1400,57 @@ def test_head_current_state_colors_head_changed_class_and_dependency_only_withou
     assert "<<DiffChanged>>" not in dependency_declaration
     assert 'class "Untracked"' not in output
     assert_relation(output, "Service", "*--", "Dependency")
+
+
+def test_head_current_state_does_not_color_worktree_only_class_in_modified_file(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "service.py", "class Service:\n    version = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "service.py", "class Service:\n    version = 2\n")
+    commit_all(repo, "head")
+    write_file(repo / "pkg" / "service.py", "class WorktreeOnly:\n    value = 1\n\nclass Service:\n    version = 2\n")
+
+    result = run_diff(
+        diff_request(
+            repo,
+            current_state=DiffCurrentState.HEAD,
+            output=Path("head-worktree-only.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "head-worktree-only.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "<<DiffChanged>>" in class_declaration(output, "Service")
+    assert "DiffAdded" not in class_declaration(output, "WorktreeOnly")
+    assert "DiffChanged" not in class_declaration(output, "WorktreeOnly")
+
+
+def test_head_current_state_does_not_color_worktree_only_class_in_added_file(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "new.py", "class HeadAdded:\n    value = 1\n")
+    commit_all(repo, "head")
+    write_file(repo / "pkg" / "new.py", "class WorktreeOnly:\n    value = 2\n\nclass HeadAdded:\n    value = 1\n")
+
+    result = run_diff(
+        diff_request(
+            repo,
+            current_state=DiffCurrentState.HEAD,
+            output=Path("head-added-worktree-only.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "head-added-worktree-only.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "<<DiffAdded>>" in class_declaration(output, "HeadAdded")
+    assert "DiffAdded" not in class_declaration(output, "WorktreeOnly")
+    assert "DiffChanged" not in class_declaration(output, "WorktreeOnly")
 
 
 def test_working_tree_default_excludes_untracked_python_from_seed_changed_and_report(

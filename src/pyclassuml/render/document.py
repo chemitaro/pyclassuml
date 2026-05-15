@@ -404,14 +404,23 @@ def _class_stereotype(decorations: tuple[str, ...]) -> str:
 
 def _diff_style_lines(class_decorations: tuple[tuple[ClassId, str], ...]) -> list[str]:
     decorations = {decoration for _, decoration in class_decorations}
-    if "DiffChanged" not in decorations:
+    supported_diff_decorations = ("DiffAdded", "DiffChanged")
+    active_diff_decorations = tuple(
+        decoration for decoration in supported_diff_decorations if decoration in decorations
+    )
+    if not active_diff_decorations:
         return []
-    return [
-        "skinparam class {",
-        "  BackgroundColor<<DiffChanged>> #dff5df",
-        "  BorderColor<<DiffChanged>> #4f9d5d",
-        "}",
-    ]
+    color_by_decoration = {
+        "DiffAdded": ("#dff3ff", "#4b9ecf"),
+        "DiffChanged": ("#dff5df", "#4f9d5d"),
+    }
+    lines = ["skinparam class {"]
+    for decoration in active_diff_decorations:
+        background_color, border_color = color_by_decoration[decoration]
+        lines.append(f"  BackgroundColor<<{decoration}>> {background_color}")
+        lines.append(f"  BorderColor<<{decoration}>> {border_color}")
+    lines.append("}")
+    return lines
 
 
 def _member_line(member: ClassMember) -> str:
