@@ -584,6 +584,7 @@ def test_diff_e2e_marks_new_class_in_modified_file_as_diff_added(tmp_path: Path)
 
     output = (repo / "new-class.puml").read_text(encoding="utf-8")
     assert result.outcome_kind == "clean_success"
+    assert "BackgroundColor<<DiffAdded>> #dff3ff" in output
     assert "<<DiffAdded>>" in class_declaration(output, "NewlyAdded")
     assert "DiffChanged" not in class_declaration(output, "NewlyAdded")
     assert "DiffAdded" not in class_declaration(output, "Existing")
@@ -642,6 +643,7 @@ def test_diff_e2e_marks_new_nested_class_as_diff_added(tmp_path: Path) -> None:
 
     output = (repo / "nested-added.puml").read_text(encoding="utf-8")
     assert result.outcome_kind == "clean_success"
+    assert "BackgroundColor<<DiffAdded>> #dff3ff" in output
     assert "<<DiffAdded>>" in class_declaration(output, "Inner")
     assert "DiffChanged" not in class_declaration(output, "Inner")
 
@@ -1225,6 +1227,8 @@ def test_working_tree_include_untracked_includes_untracked_python_in_seed_change
     assert 'class "Tracked"' in artifact_text
     assert 'class "Untracked"' in artifact_text
     assert "skinparam class {" in artifact_text
+    assert "BackgroundColor<<DiffAdded>> #dff3ff" in artifact_text
+    assert "BackgroundColor<<DiffChanged>> #dff5df" in artifact_text
     assert "<<DiffChanged>>" in class_declaration(artifact_text, "Tracked")
     assert "<<DiffAdded>>" in class_declaration(artifact_text, "Untracked")
     assert "<<DiffDependency>>" not in class_declaration(artifact_text, "Untracked")

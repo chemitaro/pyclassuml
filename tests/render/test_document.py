@@ -354,6 +354,51 @@ def test_render_uml_document_outputs_diff_styles_only_when_diff_decorations_exis
     assert "DiffDependency" not in result.plantuml_text.text
 
 
+def test_render_uml_document_outputs_added_diff_style() -> None:
+    result = render_uml_document(
+        **render_inputs(),
+        class_decorations=(
+            ("pkg/orders.py:Order", "DiffAdded"),
+        ),
+    )
+
+    assert result.failure_signal is None
+    assert result.plantuml_text is not None
+    assert result.plantuml_text.text.splitlines()[:5] == [
+        "@startuml",
+        "skinparam class {",
+        "  BackgroundColor<<DiffAdded>> #dff3ff",
+        "  BorderColor<<DiffAdded>> #4b9ecf",
+        "}",
+    ]
+    assert 'class "Order" as c002 <<DiffAdded>>' in result.plantuml_text.text
+    assert "DiffChanged" not in result.plantuml_text.text
+
+
+def test_render_uml_document_outputs_added_and_changed_styles_in_stable_order() -> None:
+    result = render_uml_document(
+        **render_inputs(),
+        class_decorations=(
+            ("pkg/orders.py:User", "DiffChanged"),
+            ("pkg/orders.py:Order", "DiffAdded"),
+        ),
+    )
+
+    assert result.failure_signal is None
+    assert result.plantuml_text is not None
+    assert result.plantuml_text.text.splitlines()[:7] == [
+        "@startuml",
+        "skinparam class {",
+        "  BackgroundColor<<DiffAdded>> #dff3ff",
+        "  BorderColor<<DiffAdded>> #4b9ecf",
+        "  BackgroundColor<<DiffChanged>> #dff5df",
+        "  BorderColor<<DiffChanged>> #4f9d5d",
+        "}",
+    ]
+    assert 'class "Order" as c002 <<DiffAdded>>' in result.plantuml_text.text
+    assert 'class "User" as c003 <<DiffChanged>>' in result.plantuml_text.text
+
+
 def test_render_uml_document_merges_diff_and_protocol_stereotypes() -> None:
     protocol_id = "pkg/contracts.py:Repository"
     render_ready = compose_render_ready_model(
