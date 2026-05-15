@@ -350,9 +350,6 @@ def _entry_with_current_changed_line_ranges(
     current_state: DiffCurrentState,
     entry: ChangedFileEntry,
 ) -> ChangedFileEntry:
-    if entry.change_kind == "added":
-        return entry
-
     args = ["diff", "--relative", "--unified=0", "--find-renames", base_ref]
     if current_state is DiffCurrentState.HEAD:
         args.append("HEAD")

@@ -27,11 +27,12 @@ from pyclassuml.model import (
     SelectedClasses,
     TargetSet,
 )
-from pyclassuml.parse import ModuleIndex, parse_target_set
+from pyclassuml.parse import ModuleIndex, parse_module_source_text, parse_target_set
 from pyclassuml.render import render_uml_document
 from pyclassuml.report import ReportInputs, ReportRunResult, write_report
 from pyclassuml.targets import normalize_diff_targets
-from pyclassuml.vcs import ChangedFileCollection, ChangedFileEntry, ChangedLineRange, collect_diff_files
+from pyclassuml.vcs import ChangedFileCollection, ChangedFileEntry, ChangedLineRange, collect_diff_files, read_base_file_text
+import pyclassuml.vcs.diff_collect as diff_collect
 
 
 def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult:
@@ -121,7 +122,20 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
         parse_result.parsed_modules,
         parse_result.module_index,
         selection_result.selected_classes,
-        _current_file_lines_by_path(context.project_root, vcs_collection.collection.entries),
+        _current_file_lines_by_path_for_diff_classification(
+            request,
+            context,
+            config,
+            vcs_collection.collection.entries,
+        ),
+        _base_class_ids_by_current_path(request, context, vcs_collection.collection.entries),
+        classification_parsed_modules=_current_parsed_modules_for_diff_classification(
+            request,
+            context,
+            config,
+            vcs_collection.collection.entries,
+            parse_result.parsed_modules,
+        ),
     )
 
     sqlalchemy_hints = extract_sqlalchemy_enrichment_hints(
@@ -178,22 +192,59 @@ def _diff_class_decorations(
     module_index: ModuleIndex,
     selected_classes: SelectedClasses,
     current_file_lines_by_path: dict[Path, tuple[str, ...]] | None = None,
+    base_class_ids_by_path: dict[Path, frozenset[ClassId] | None] | None = None,
+    *,
+    classification_parsed_modules: tuple[ParsedModule, ...] | None = None,
 ) -> tuple[tuple[ClassId, str], ...]:
-    module_by_path = {parsed_module.module_path: parsed_module for parsed_module in parsed_modules}
+    classification_parsed_modules = classification_parsed_modules or parsed_modules
+    module_by_path = {parsed_module.module_path: parsed_module for parsed_module in classification_parsed_modules}
     selected_class_ids = set(selected_classes.class_ids)
+    added_class_ids: set[ClassId] = set()
     changed_class_ids: set[ClassId] = set()
     current_file_lines_by_path = current_file_lines_by_path or {}
+    base_class_ids_by_path = base_class_ids_by_path or {}
 
     for entry in changed_entries:
         changed_file = Path(entry.current_project_relative_path)
         module_path = module_index.project_relative_file_to_module.get(changed_file)
         if module_path is None or (parsed_module := module_by_path.get(module_path)) is None:
             continue
-        if entry.change_kind == "added":
-            changed_class_ids.update(class_id for class_id in parsed_module.classes if class_id in selected_class_ids)
+        base_class_ids = base_class_ids_by_path.get(changed_file)
+        if base_class_ids is None and changed_file in base_class_ids_by_path:
             continue
+        if entry.change_kind == "added":
+            selected_spans = tuple(
+                class_span for class_span in parsed_module.class_spans if class_span.class_id in selected_class_ids
+            )
+            if entry.current_changed_line_ranges:
+                current_lines = current_file_lines_by_path.get(changed_file, ())
+                for changed_range in entry.current_changed_line_ranges:
+                    added_class_ids.update(
+                        class_span.class_id
+                        for class_span in _innermost_changed_class_spans(selected_spans, changed_range, current_lines)
+                    )
+            else:
+                added_class_ids.update(class_span.class_id for class_span in selected_spans)
+            continue
+        if base_class_ids is not None:
+            current_only_spans = tuple(
+                class_span
+                for class_span in parsed_module.class_spans
+                if class_span.class_id in selected_class_ids and class_span.class_id not in base_class_ids
+            )
+            if entry.current_changed_line_ranges:
+                current_lines = current_file_lines_by_path.get(changed_file, ())
+                for changed_range in entry.current_changed_line_ranges:
+                    added_class_ids.update(
+                        class_span.class_id
+                        for class_span in _innermost_changed_class_spans(current_only_spans, changed_range, current_lines)
+                    )
+            else:
+                added_class_ids.update(class_span.class_id for class_span in current_only_spans)
         selected_spans = tuple(
-            class_span for class_span in parsed_module.class_spans if class_span.class_id in selected_class_ids
+            class_span
+            for class_span in parsed_module.class_spans
+            if class_span.class_id in selected_class_ids and class_span.class_id not in added_class_ids
         )
         current_lines = current_file_lines_by_path.get(changed_file, ())
         for changed_range in entry.current_changed_line_ranges:
@@ -204,9 +255,62 @@ def _diff_class_decorations(
 
     decorations = []
     for class_id in sorted(selected_classes.class_ids):
-        if class_id in changed_class_ids:
+        if class_id in added_class_ids:
+            decorations.append((class_id, "DiffAdded"))
+        elif class_id in changed_class_ids:
             decorations.append((class_id, "DiffChanged"))
     return tuple(decorations)
+
+
+def _current_parsed_modules_for_diff_classification(
+    request: CommandRequest,
+    context: ExecutionContext,
+    config: AnalysisConfig,
+    changed_entries: tuple[ChangedFileEntry, ...],
+    parsed_modules: tuple[ParsedModule, ...],
+) -> tuple[ParsedModule, ...]:
+    if config.diff_current_state.value != "head":
+        return parsed_modules
+    result: list[ParsedModule] = []
+    parsed_by_path = {parsed_module.module_path: parsed_module for parsed_module in parsed_modules}
+    base_ref = request.cli_options.diff.base_ref if request.cli_options.diff is not None else ""
+    for entry in changed_entries:
+        current_path = Path(entry.current_project_relative_path)
+        if current_path not in parsed_by_path:
+            continue
+        try:
+            current_text = read_base_file_text(context.vcs_root, context.project_root, "HEAD", entry.current_project_relative_path)
+            result.append(parse_module_source_text(current_text, current_path, filename=f"HEAD:{entry.current_project_relative_path}"))
+        except (diff_collect.VcsDiffError, SyntaxError):
+            result.append(parsed_by_path[current_path])
+    return tuple(result)
+
+
+def _base_class_ids_by_current_path(
+    request: CommandRequest,
+    context: ExecutionContext,
+    changed_entries: tuple[ChangedFileEntry, ...],
+) -> dict[Path, frozenset[ClassId] | None]:
+    base_ref = request.cli_options.diff.base_ref if request.cli_options.diff is not None else ""
+    result: dict[Path, frozenset[ClassId] | None] = {}
+    for entry in changed_entries:
+        current_path = Path(entry.current_project_relative_path)
+        if entry.change_kind == "added":
+            result[current_path] = frozenset()
+            continue
+        base_path = entry.previous_project_relative_path or entry.current_project_relative_path
+        try:
+            base_text = read_base_file_text(context.vcs_root, context.project_root, base_ref, base_path)
+            parsed_module = parse_module_source_text(
+                base_text,
+                current_path,
+                filename=f"{base_ref}:{base_path}",
+            )
+        except (diff_collect.VcsDiffError, SyntaxError):
+            result[current_path] = None
+            continue
+        result[current_path] = frozenset(parsed_module.classes)
+    return result
 
 
 def _current_file_lines_by_path(
@@ -219,6 +323,25 @@ def _current_file_lines_by_path(
         try:
             lines_by_path[changed_file] = tuple((project_root / changed_file).read_text(encoding="utf-8").splitlines())
         except OSError:
+            lines_by_path[changed_file] = ()
+    return lines_by_path
+
+
+def _current_file_lines_by_path_for_diff_classification(
+    request: CommandRequest,
+    context: ExecutionContext,
+    config: AnalysisConfig,
+    changed_entries: tuple[ChangedFileEntry, ...],
+) -> dict[Path, tuple[str, ...]]:
+    if config.diff_current_state.value != "head":
+        return _current_file_lines_by_path(context.project_root, changed_entries)
+    lines_by_path: dict[Path, tuple[str, ...]] = {}
+    for entry in changed_entries:
+        changed_file = Path(entry.current_project_relative_path)
+        try:
+            current_text = read_base_file_text(context.vcs_root, context.project_root, "HEAD", entry.current_project_relative_path)
+            lines_by_path[changed_file] = tuple(current_text.splitlines())
+        except diff_collect.VcsDiffError:
             lines_by_path[changed_file] = ()
     return lines_by_path
 
