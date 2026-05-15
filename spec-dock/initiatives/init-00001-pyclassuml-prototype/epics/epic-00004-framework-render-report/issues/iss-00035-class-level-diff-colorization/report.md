@@ -66,6 +66,7 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | S02-review-fix-3 | tc-s02-head-current-state | HEAD diff の decorator deletion 判定用 lines も HEAD blob に揃える | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q` -> 73 passed | pass | code-reviewer P2 対応。hunk ranges, class spans, current lines を同一 snapshot に統一 |
 | S03 | tc-s03-001, tc-s03-002, tc-s03-003 | renderer が `DiffAdded` 水色 style と `DiffChanged` 緑 style を決定的に出力する | `uv run --with pytest pytest tests/render/test_document.py tests/app/test_diff.py -q` -> 75 passed | pass | generate/no-diff unaffected は existing no-style tests と final gate で再確認 |
 | S04-review-fix | EC-004, tc-s02-head-current-state | unsafe base/current classification failure を warning diagnostic にし、snapshot fallback を避ける | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py tests/render/test_document.py -q` -> 102 passed | pass | spec-reviewer P1 と code-reviewer P2 対応 |
+| S99-final-gate | all | final validation と workflow artifact closure | `uv run --with pytest pytest -q` -> 401 passed; `./spec-dock/scripts/spec-dock validate` -> ok; `git diff --check` -> clean; `git status --short --branch` -> branch only | pass | root README/docs absent; uv.lock is tracked existing file |
 
 #### Test Contract Closure
 | closure id / test id | step | required | evidence level | pre-implementation evidence | verification command | result | notes |
@@ -121,6 +122,7 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | S03 | code-reviewer | renderer styling for `DiffAdded` plus render/app tests | pass | findings none | 0 | pass |
 | final pre-fix | spec-reviewer | completed workflow artifacts and EC closure | fail | P1 report final gate missing; P1 unsafe classification diagnostics missing | 0 | fixed in S04/report update |
 | final pre-fix | code-reviewer | full branch code review | pass | P2 HEAD dirty-worktree independence and unsafe fallback noted | 0 | addressed in S04 where in scope |
+| final post-S04 | spec-reviewer | S04 EC-004 and final artifact closure | fail | P1 S99 evidence missing; P2 plan traceability missing | 0 | fixed in final report/plan update |
 
 #### Step Commit Gate
 | step | closure state | commit scope | commit hash / final ledger | post-commit clean check | no-op rationale | no-op checked contracts / files | no-op diff-clean command | no-op read-only confirmation |
@@ -129,7 +131,8 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | S01 | committed | `src/pyclassuml/vcs/*`, `src/pyclassuml/parse/*`, tests, report | 8c9421c | clean before S02 | N/A | N/A | N/A | N/A |
 | S02 | committed | `src/pyclassuml/app/diff.py`, `tests/app/test_diff.py`, report | 58086d3 | clean before S03 | N/A | N/A | N/A | N/A |
 | S03 | committed | `src/pyclassuml/render/document.py`, render/app tests, report | 51948a3 | clean before S04 | N/A | N/A | N/A | N/A |
-| S04-review-fix | pending | `src/pyclassuml/app/diff.py`, `tests/app/test_diff.py`, report | pending | pending | N/A | N/A | N/A | N/A |
+| S04-review-fix | committed | `src/pyclassuml/app/diff.py`, `tests/app/test_diff.py`, report | b2cbfda | clean before final artifact update | N/A | N/A | N/A | N/A |
+| final artifact update | pending | `plan.md`, `report.md` | pending | pending | N/A | N/A | N/A | N/A |
 
 #### 変更したファイル
 - `spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00004-framework-render-report/issues/iss-00035-class-level-diff-colorization/requirement.md` - class-level diff colorization 要件へ具体化。
@@ -151,12 +154,14 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 - `tests/app/test_diff.py` - added / untracked E2E で `DiffAdded` style 出力を検証。
 - `src/pyclassuml/app/diff.py` - unsafe classification snapshot failure を warning diagnostic として report に流し、HEAD parse failure 時の working tree fallback を廃止。
 - `tests/app/test_diff.py` - unsafe base read failure と HEAD current parse failure が warning になり、diff decoration を捏造しない regression を追加。
+- `spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00004-framework-render-report/issues/iss-00035-class-level-diff-colorization/plan.md` - S04 unsafe classification closure を traceable に追加。
 
 #### コミット
 - `7275771` `docs(spec-dock): class単位のdiff色分けissueを追加`
 - `8c9421c` `feat(diff): class単位色分け用のbase解析を追加`
 - `58086d3` `feat(diff): class単位の追加差分色分けを実装`
 - `51948a3` `feat(render): 新規class差分の水色表示を追加`
+- `b2cbfda` `fix(diff): unsafeなclass差分分類をwarningにする`
 
 #### メモ
 - `issue start` は untracked issue scaffold があると checkout safety guard で止まるため、作業ブランチ上で initial scaffold commit を作成してから再実行した。

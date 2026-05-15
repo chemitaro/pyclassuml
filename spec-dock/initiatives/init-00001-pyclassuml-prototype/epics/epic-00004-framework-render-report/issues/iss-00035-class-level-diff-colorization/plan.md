@@ -87,6 +87,7 @@ ID: "iss-00035"
 | tc-s02-003 | S02 | dependency-only unchanged | negative | AC-004 | selected dependency with no class diff has no decoration | changed class depends on unchanged class | noisy dependency color | yes | covered-existing + updated | app E2E + report |
 | tc-s02-004 | S02 | nested class addition | edge | EC-003 | current-only nested class is `DiffAdded` | nested class addition | missed nested class addition | yes | red-required | app unit/E2E + report |
 | tc-s02-005 | S02 | class rename conservative | edge | EC-002 | renamed current class is `DiffAdded` rather than heuristically matched | class rename / move | unsafe rename heuristic | yes | red-required | app unit/E2E + report |
+| tc-s02-unsafe-classification | S04-review-fix | unsafe classification diagnostics | negative | EC-004 | unsafe base/current classification failures emit warning diagnostics and do not fabricate decorations | base read failure / HEAD current parse failure | silent missing colorization or snapshot fallback | yes | regression | app E2E + report |
 | tc-s03-001 | S03 | renderer styles | acceptance | AC-001, AC-002 | `DiffAdded` and `DiffChanged` styles are both emitted deterministically | render model with both decorations | missing PlantUML style | yes | red-required | render unit + report |
 | tc-s03-002 | S03 | generate unaffected | negative | constraint | generate output has no diff-specific style | generate command | command-scope leak | yes | covered-existing | app/render tests + report |
 | tc-s03-003 | S03 | added / untracked diff E2E | acceptance | AC-003 | tracked added and included untracked classes render as `DiffAdded` in `pyclassuml diff` output | added file / untracked file | file-level added not surfaced | yes | red-required | app E2E + report |
@@ -134,12 +135,12 @@ ID: "iss-00035"
   - 関連 closure id: tc-s01-002
 
 - `tc-s01-003` negative: unsafe base failure は Added に変換しない
-  - 前提: modified / renamed file の base blob read または base parse が失敗する。
-  - 操作: base class inventory helper を呼ぶ。
-  - 期待結果: unsafe failure として diagnostics / no-decoration path に倒し、`DiffAdded` 判定の材料にしない。
-  - 失敗検出: 失敗した modified file の current class が `DiffAdded` になる。
+  - 前提: modified / renamed file の base blob read / base parse、または `--current-state head` の current parse が失敗する。
+  - 操作: diff classification を含む `pyclassuml diff` pipeline を実行する。
+  - 期待結果: unsafe failure として warning diagnostic / no-decoration path に倒し、`DiffAdded` / `DiffChanged` 判定の材料にしない。
+  - 失敗検出: 失敗した file の current class が `DiffAdded` / `DiffChanged` になる、または warning なしで黙って色分けを消す。
   - 検証方法: `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q`
-  - 関連 closure id: tc-s01-003
+  - 関連 closure id: tc-s01-003, tc-s02-unsafe-classification
 
 #### step closure contract
 - close 条件:
