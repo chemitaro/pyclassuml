@@ -1,6 +1,8 @@
 from pathlib import Path
 import subprocess
 
+import pytest
+
 from pyclassuml.model import (
     AnalysisConfig,
     CommandName,
@@ -14,7 +16,7 @@ from pyclassuml.model import (
     OriginSeam,
     Recoverability,
 )
-from pyclassuml.vcs import ChangedFileEntry, ChangedLineRange, VcsDiffCollection, collect_diff_files
+from pyclassuml.vcs import ChangedFileEntry, ChangedLineRange, VcsDiffCollection, collect_diff_files, read_base_file_text
 import pyclassuml.vcs.diff_collect as diff_collect
 
 
@@ -245,6 +247,87 @@ def test_renamed_file_collects_current_side_changed_hunk_ranges(tmp_path: Path) 
 
     assert entry == ChangedFileEntry("pkg/new.py", "renamed", "pkg/old.py")
     assert entry.current_changed_line_ranges == (ChangedLineRange(start=2, end=2),)
+
+
+def test_read_base_file_text_reads_project_relative_blob(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "model.py", "class Model:\n    value = 2\n")
+
+    text = read_base_file_text(repo, repo, "base", "pkg/model.py")
+
+    assert text == "class Model:\n    value = 1\n"
+
+
+def test_read_base_file_text_returns_none_for_allowed_missing_blob(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "existing.py", "class Existing:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+
+    text = read_base_file_text(repo, repo, "base", "pkg/new.py", missing_ok=True)
+
+    assert text is None
+
+
+def test_read_base_file_text_rejects_unexpected_missing_blob(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "existing.py", "class Existing:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+
+    try:
+        read_base_file_text(repo, repo, "base", "pkg/new.py")
+    except diff_collect.VcsDiffError as exc:
+        assert exc.code == "git_diff_read_failure"
+    else:
+        raise AssertionError("expected VcsDiffError")
+
+
+def test_read_base_file_text_missing_ok_does_not_mask_invalid_base_ref(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "existing.py", "class Existing:\n    pass\n")
+    commit_all(repo, "base")
+
+    try:
+        read_base_file_text(repo, repo, "missing-ref", "pkg/new.py", missing_ok=True)
+    except diff_collect.VcsDiffError as exc:
+        assert exc.code == "invalid_base_ref"
+    else:
+        raise AssertionError("expected VcsDiffError")
+
+
+def test_read_base_file_text_missing_ok_does_not_mask_base_tree_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "existing.py", "class Existing:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+
+    original_run_git = diff_collect._run_git
+
+    def run_git_spy(
+        project_root: Path,
+        args: tuple[str, ...],
+        *,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[bytes]:
+        if args[:2] == ("ls-tree", "-z"):
+            return subprocess.CompletedProcess(("git", *args), 128, b"", b"fatal: simulated tree failure\n")
+        return original_run_git(project_root, args, check=check)
+
+    monkeypatch.setattr(diff_collect, "_run_git", run_git_spy)
+
+    try:
+        read_base_file_text(repo, repo, "base", "pkg/new.py", missing_ok=True)
+    except diff_collect.VcsDiffError as exc:
+        assert exc.code == "git_diff_read_failure"
+    else:
+        raise AssertionError("expected VcsDiffError")
 
 
 def test_working_tree_untracked_included_excluded_and_empty_success(tmp_path: Path) -> None:

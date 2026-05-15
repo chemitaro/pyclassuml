@@ -153,19 +153,7 @@ def parse_target_set(
             continue
 
         module_path = _project_relative(source_path, project_root)
-        imports = _extract_imports(tree)
-        class_spans = _extract_class_spans(tree, module_path)
-        class_references, module_diagnostics = _extract_class_references(tree, module_path)
-        members, member_diagnostics = _extract_class_members(tree, module_path)
-        parsed_module = ParsedModule(
-            module_path=module_path,
-            imports=imports,
-            classes=tuple(class_span.class_id for class_span in class_spans),
-            class_spans=class_spans,
-            class_references=class_references,
-            diagnostics=(*module_diagnostics, *member_diagnostics),
-            members=members,
-        )
+        parsed_module = _parsed_module_from_tree(tree, module_path)
         parsed_by_path[source_path] = parsed_module
 
         for import_ref in _extract_import_refs(tree):
@@ -208,6 +196,29 @@ def parse_target_set(
         ),
         observations=ParseObservations(ignored_dependency_candidate_count=ignored_count),
         diagnostics=tuple(diagnostics),
+    )
+
+
+def parse_module_source_text(source_text: str, module_path: Path, *, filename: str | None = None) -> ParsedModule:
+    """Parse one logical module from source text without importing target code."""
+
+    tree = ast.parse(source_text, filename=filename or module_path.as_posix())
+    return _parsed_module_from_tree(tree, module_path)
+
+
+def _parsed_module_from_tree(tree: ast.AST, module_path: Path) -> ParsedModule:
+    imports = _extract_imports(tree)
+    class_spans = _extract_class_spans(tree, module_path)
+    class_references, module_diagnostics = _extract_class_references(tree, module_path)
+    members, member_diagnostics = _extract_class_members(tree, module_path)
+    return ParsedModule(
+        module_path=module_path,
+        imports=imports,
+        classes=tuple(class_span.class_id for class_span in class_spans),
+        class_spans=class_spans,
+        class_references=class_references,
+        diagnostics=(*module_diagnostics, *member_diagnostics),
+        members=members,
     )
 
 

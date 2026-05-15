@@ -153,6 +153,47 @@ def collect_diff_files(
         )
 
 
+def read_base_file_text(
+    vcs_root: Path,
+    project_root: Path,
+    base_ref: str,
+    project_relative_path: str,
+    *,
+    missing_ok: bool = False,
+) -> str | None:
+    """Read a base-revision file blob without checking it out."""
+
+    vcs_path = _git_pathspec(vcs_root, project_root / project_relative_path)
+    _verify_base_ref(vcs_root, base_ref)
+    result = _run_git(vcs_root, ("show", f"{base_ref}:{vcs_path}"), check=False)
+    if result.returncode != 0:
+        if missing_ok and _base_blob_is_absent(vcs_root, base_ref, vcs_path):
+            return None
+        stderr = result.stderr.decode(errors="replace")
+        raise VcsDiffError(
+            "git_diff_read_failure",
+            f"Git base blob could not be read: {base_ref}:{vcs_path}: {stderr}",
+        )
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise VcsDiffError(
+            "git_diff_parse_failure",
+            f"Git base blob is not valid UTF-8: {base_ref}:{vcs_path}: {exc}",
+        ) from exc
+
+
+def _base_blob_is_absent(vcs_root: Path, base_ref: str, vcs_path: str) -> bool:
+    result = _run_git(vcs_root, ("ls-tree", "-z", base_ref, "--", vcs_path), check=False)
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace")
+        raise VcsDiffError(
+            "git_diff_read_failure",
+            f"Git base tree could not be inspected: {base_ref}:{vcs_path}: {stderr}",
+        )
+    return result.stdout == b""
+
+
 def _ensure_git_repository(project_root: Path) -> None:
     result = _run_git(project_root, ("rev-parse", "--is-inside-work-tree"))
     if result.stdout.strip() != b"true":

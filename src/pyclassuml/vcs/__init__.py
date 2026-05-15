@@ -6,6 +6,7 @@ from pyclassuml.vcs.diff_collect import (
     ChangedLineRange,
     VcsDiffCollection,
     collect_diff_files,
+    read_base_file_text,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "ChangedLineRange",
     "VcsDiffCollection",
     "collect_diff_files",
+    "read_base_file_text",
 ]

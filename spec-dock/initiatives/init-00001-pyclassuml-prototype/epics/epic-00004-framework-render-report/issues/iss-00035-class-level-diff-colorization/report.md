@@ -59,13 +59,14 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | step | closure ids | close condition | evidence | result | notes |
 |---|---|---|---|---|---|
 | spec-authoring | AC-001..AC-004 / EC-001..EC-005 | requirement/design/plan が implementation-ready になる | spec-reviewer first pass fail, rerun pending | pending | 実装前 gate |
+| S01 | tc-s01-001, tc-s01-002, tc-s01-003 | base blob read と source text parse helper が tested | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/parse/test_module_parse_and_index.py -q` -> 63 passed | pass | app no-decoration integration is covered in S02, but S01 unsafe VCS failure handling is closed |
 
 #### Test Contract Closure
 | closure id / test id | step | required | evidence level | pre-implementation evidence | verification command | result | notes |
 |---|---|---|---|---|---|---|---|
-| tc-s01-001 | S01 | yes | red-required | pending | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/parse/test_module_parse_and_index.py -q` | pending | base class inventory |
-| tc-s01-002 | S01 | yes | red-required | pending | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py -q` | pending | safe-added base absence |
-| tc-s01-003 | S01 | yes | red-required | pending | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q` | pending | unsafe base failure |
+| tc-s01-001 | S01 | yes | red-required | import missing before helper implementation | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/parse/test_module_parse_and_index.py -q` | pass | base blob read + logical path parse |
+| tc-s01-002 | S01 | yes | red-required | import missing before helper implementation | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py -q` | pass | safe-added base absence via `missing_ok=True` |
+| tc-s01-003 | S01 | yes | red-required | unsafe Git failures could be masked before fix | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/parse/test_module_parse_and_index.py -q` | pass | invalid base and base-tree failure raise VcsDiffError; app classifier no-decoration remains S02 |
 | tc-s02-001 | S02 | yes | red-required | pending | `uv run --with pytest pytest tests/app/test_diff.py -q` | pending | modified file new class |
 | tc-s02-002 | S02 | yes | covered-existing + updated | pending | `uv run --with pytest pytest tests/app/test_diff.py -q` | pending | existing class modified |
 | tc-s02-003 | S02 | yes | covered-existing + updated | pending | `uv run --with pytest pytest tests/app/test_diff.py -q` | pending | dependency-only unchanged |
@@ -78,9 +79,9 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 #### Closure Coverage
 | closure id | step | verification evidence | result | notes |
 |---|---|---|---|---|
-| tc-s01-001 | S01 | pending | pending |  |
-| tc-s01-002 | S01 | pending | pending |  |
-| tc-s01-003 | S01 | pending | pending |  |
+| tc-s01-001 | S01 | targeted pytest | pass |  |
+| tc-s01-002 | S01 | targeted pytest | pass |  |
+| tc-s01-003 | S01 | targeted pytest for VCS helper | pass | app no-decoration path remains S02 |
 | tc-s02-001 | S02 | pending | pending |  |
 | tc-s02-002 | S02 | pending | pending |  |
 | tc-s02-003 | S02 | pending | pending |  |
@@ -99,11 +100,12 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | step | decision | required reason | agent role | delegated scope | result | local-execution rationale |
 |---|---|---|---|---|---|---|
 | spec-authoring | delegated | workflow requires fresh spec review before implementation | spec-reviewer | requirement/design/plan implementation readiness | pending | N/A |
+| S01 | approved-local-execution | small upstream seam helper and tests, immediate blocking prerequisite | N/A | VCS / parse helper implementation | pass | Pattern was localized to existing seams; code-reviewer gate still required |
 
 #### Code Review Gate
 | step | reviewer | review scope | review_status | findings / fixes | re-review count | result |
 |---|---|---|---|---|---|---|
-| S01 | code-reviewer | pending | pending | pending | 0 | pending |
+| S01 | code-reviewer | S01 VCS/parse helper diff and tests/report | pending | pending | 0 | pending |
 | S02 | code-reviewer | pending | pending | pending | 0 | pending |
 | S03 | code-reviewer | pending | pending | pending | 0 | pending |
 
@@ -111,7 +113,7 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | step | closure state | commit scope | commit hash / final ledger | post-commit clean check | no-op rationale | no-op checked contracts / files | no-op diff-clean command | no-op read-only confirmation |
 |---|---|---|---|---|---|---|---|---|
 | issue scaffold | committed | initial generated issue docs | 7275771 | clean before issue start | N/A | N/A | N/A | N/A |
-| S01 | pending | pending | pending | pending | N/A | N/A | N/A | N/A |
+| S01 | pending | `src/pyclassuml/vcs/*`, `src/pyclassuml/parse/*`, tests, report | pending | pending | N/A | N/A | N/A | N/A |
 | S02 | pending | pending | pending | pending | N/A | N/A | N/A | N/A |
 | S03 | pending | pending | pending | pending | N/A | N/A | N/A | N/A |
 
@@ -120,6 +122,12 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 - `spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00004-framework-render-report/issues/iss-00035-class-level-diff-colorization/design.md` - base/current AST inventory 比較設計へ具体化。
 - `spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00004-framework-render-report/issues/iss-00035-class-level-diff-colorization/plan.md` - S01-S03 execution contract へ具体化。
 - `spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00004-framework-render-report/issues/iss-00035-class-level-diff-colorization/report.md` - workflow evidence を記録。
+- `src/pyclassuml/vcs/diff_collect.py` - base revision file blob read helper を追加。
+- `src/pyclassuml/vcs/__init__.py` - VCS helper を public surface に追加。
+- `src/pyclassuml/parse/indexer.py` - source text から logical module path で `ParsedModule` を作る helper を追加。
+- `src/pyclassuml/parse/__init__.py` - parse helper を public surface に追加。
+- `tests/vcs/test_diff_file_collect.py` - base blob read / safe missing / unsafe missing tests を追加。
+- `tests/parse/test_module_parse_and_index.py` - logical path parse test を追加。
 
 #### コミット
 - `7275771` `docs(spec-dock): class単位のdiff色分けissueを追加`
