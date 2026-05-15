@@ -3,6 +3,7 @@
 from pyclassuml.vcs.diff_collect import (
     ChangedFileCollection,
     ChangedFileEntry,
+    ChangedLineRange,
     VcsDiffCollection,
     collect_diff_files,
 )
@@ -10,6 +11,7 @@ from pyclassuml.vcs.diff_collect import (
 __all__ = [
     "ChangedFileCollection",
     "ChangedFileEntry",
+    "ChangedLineRange",
     "VcsDiffCollection",
     "collect_diff_files",
 ]

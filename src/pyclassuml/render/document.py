@@ -404,14 +404,12 @@ def _class_stereotype(decorations: tuple[str, ...]) -> str:
 
 def _diff_style_lines(class_decorations: tuple[tuple[ClassId, str], ...]) -> list[str]:
     decorations = {decoration for _, decoration in class_decorations}
-    if not decorations.intersection({"DiffChanged", "DiffDependency"}):
+    if "DiffChanged" not in decorations:
         return []
     return [
         "skinparam class {",
-        "  BackgroundColor<<DiffChanged>> #fff3b0",
-        "  BorderColor<<DiffChanged>> #d39e00",
-        "  BackgroundColor<<DiffDependency>> #e8f4ff",
-        "  BorderColor<<DiffDependency>> #5b8def",
+        "  BackgroundColor<<DiffChanged>> #dff5df",
+        "  BorderColor<<DiffChanged>> #4f9d5d",
         "}",
     ]
 

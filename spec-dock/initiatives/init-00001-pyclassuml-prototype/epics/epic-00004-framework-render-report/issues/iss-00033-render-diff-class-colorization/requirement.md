@@ -12,31 +12,30 @@ ID: "iss-00033"
 # iss-00033 Render Diff Class Colorization — 要件定義（WHAT / WHY）
 
 ## 目的
-- `pyclassuml diff` の PlantUML class diagram で、Git 差分に含まれる changed class と、到達関係によって図に載る dependency-only class を色分けして表示する。
-- 初期 research baseline の「changed / dependency-only 色分け」を正式 issue scope に昇格し、差分図をレビューしやすくする。
+- `pyclassuml diff` の PlantUML class diagram で、Git 差分に含まれる changed class / newly added class だけを薄い緑で表示する。
+- 到達関係によって図に載る dependency-only class は PlantUML の通常 class box 表示に残し、差分レビューで「実変更があった class」だけを強調する。
 
 ## 背景・現状
 - 現状の挙動:
   - `pyclassuml diff --base <ref>` は、ブランチ名 / commit hash / tag などの Git ref を基点に changed files を収集し、差分起点の class diagram を生成できる。
   - summary には `changed_class_count` が出る。
-  - ただし `.puml` 上の class box は通常表示のみで、changed class と dependency-only class を視覚的に区別できない。
+  - 旧実装では `.puml` 上の class box で changed class を黄色、dependency-only class を青色で表示していた。
 - 現状の課題:
   - 差分レビュー時に、実際に変更された class と、関連として図に載っただけの class を目視で追い分ける必要がある。
-  - 初期 baseline には「changed class / dependency-only class の 2 分類色分け」が定義されていたが、既存の diff / changed inventory / render issue には正式要件として取り込まれていない。
+  - dependency-only class まで色を付けると、通常の class diagram より視覚ノイズが増え、実際の変更箇所の強調が弱くなる。
 - 再現手順:
   1. Git 管理された Python project で class を含む file を変更する。
   2. `pyclassuml diff --base <ref> --current-state working-tree --output diff.puml` を実行する。
   3. `.puml` の class box を確認する。
 - 観測点:
-  - `.puml`: changed class と dependency-only class に異なる style / color が付与される。
-  - SVG: PlantUML 変換後に色分けが視覚的に確認できる。
+  - `.puml`: changed / newly added class だけに style / color が付与される。
+  - SVG: PlantUML 変換後に changed / newly added class だけが薄い緑で視覚的に確認できる。
   - summary: 既存の `changed_class_count` は維持される。
 - 情報源:
   - `spec-dock/initiatives/init-00001-pyclassuml-prototype/discussions/20260416t080346z-research-pyclassuml-requirements-baseline-v2.md`
     - `## 21. 色分け仕様`
     - `changed class`
     - `dependency-only class`
-    - `changed / dependency-only 色分け`
 
 ## 対象ユーザー / 利用シナリオ
 - 主な利用者:
@@ -46,12 +45,15 @@ ID: "iss-00033"
 
 ## スコープ
 - MUST:
-  - `pyclassuml diff` の出力 class box を、少なくとも 2 分類で色分けする。
+  - `pyclassuml diff` の出力 class box で、changed / newly added class だけを色分けする。
   - changed class:
-    - `--base <ref>` からの Git 差分に含まれる changed file 内で定義され、diff diagram に表示される class。
+    - `--base <ref>` からの Git 差分で、追加ファイル内に定義される、または current 側の changed hunk が class 定義範囲に重なる class。
+    - diff diagram に表示される class のみを色分け対象にする。
   - dependency-only class:
-    - diff 起点の traversal / relation selection によって表示されるが、changed file 内 class ではない class。
-  - 初期版はデフォルトテーマを持ち、設定なしで色分けされた `.puml` / SVG が得られる。
+    - diff 起点の traversal / relation selection によって表示されるが、added file 内 class ではなく、current 側 changed hunk と class 定義範囲も重ならない class。
+    - 同一 changed file 内に存在しても、その class 定義範囲に changed hunk が重ならない class は dependency-only class と同じ通常表示にする。
+    - PlantUML の通常 class box 表示を維持し、diff-specific color / stereotype を付与しない。
+  - 初期版はデフォルトテーマを持ち、設定なしで changed / newly added class だけが薄い緑になった `.puml` / SVG が得られる。
   - `.puml` は PlantUML 標準記法で色分けを表現し、PlantUML Docker 変換で SVG に反映される。
   - `generate` command の通常図には diff-specific colorization を適用しない。
   - 既存の class member rendering、composition / aggregation、inheritance / Protocol realization、uses relation の表現を維持する。
@@ -97,22 +99,22 @@ ID: "iss-00033"
 ## 受け入れ条件
 - AC-001:
   - Actor: pyclassuml user
-  - Given: `--base <ref>` からの差分に `Order` class を含む changed file がある
+  - Given: `--base <ref>` からの差分で `Order` class の定義範囲に changed hunk が重なる
   - When: `pyclassuml diff --base <ref> --current-state working-tree --output diff.puml` を実行する
   - Then: `Order` の class box は changed class として色分けされる。
   - 観測点: `.puml` に `Order` へ changed class 用の PlantUML style / color が付与され、SVG 変換後に視覚的に区別できる。
 - AC-002:
   - Actor: pyclassuml user
-  - Given: changed class が `Customer` に relation を持ち、`Customer` 自体は changed file 内 class ではない
+  - Given: changed class が `Customer` に relation を持ち、`Customer` 自体の class 定義範囲に changed hunk が重ならない
   - When: `pyclassuml diff` が diagram を生成する
-  - Then: `Customer` は dependency-only class として changed class とは別色で表示される。
-  - 観測点: `.puml` / SVG で changed class と dependency-only class の class box 色が異なる。
+  - Then: `Customer` は dependency-only class として通常の class box 表示のまま出力される。
+  - 観測点: `.puml` / SVG で `Customer` に diff-specific stereotype / color が付与されない。
 - AC-003:
   - Actor: pyclassuml user
   - Given: `pyclassuml generate` を実行する
   - When: 通常の class diagram を生成する
   - Then: diff-specific colorization は適用されない。
-  - 観測点: generate 出力に changed / dependency-only style が出ない。
+  - 観測点: generate 出力に changed style が出ない。
 - AC-004:
   - Actor: pyclassuml maintainer
   - Given: `iss-00032` の composition / aggregation fixture がある
@@ -132,7 +134,7 @@ ID: "iss-00033"
   - 期待: 図に changed class color は追加されず、既存の summary / warning 方針を維持する。
   - 観測点: `.puml` と `changed_class_count`。
 - EC-002:
-  - 条件: changed file 内 class が traversal / selection 結果に含まれない。
+  - 条件: changed / newly added class が traversal / selection 結果に含まれない。
   - 期待: summary の changed class count は既存 semantics を維持し、図に表示されない class へ無理に color declaration を作らない。
   - 観測点: summary と `.puml` の分離。
 - EC-003:
@@ -153,17 +155,17 @@ ID: "iss-00033"
   - Expected diagram semantics:
     ```text
     Order: changed class color
-    Customer: dependency-only class color
+    Customer: default class color
     Order *-- Customer: existing relation notation unchanged
     ```
 
 ## 用語
 - TERM-001:
-  - changed class: Git 差分に含まれる changed file 内で定義され、diff diagram に表示される class。
+  - changed class: Git 差分で追加された、または current 側 changed hunk が class 定義範囲に重なる class。diff diagram に表示される場合のみ色分け対象になる。
 - TERM-002:
-  - dependency-only class: changed class の依存・関係先として diagram に表示されるが、changed file 内 class ではない class。
+  - dependency-only class: changed class の依存・関係先、または同一 changed file 内の未変更 class として diagram に表示されるが、added file 内 class ではなく、current 側 changed hunk が class 定義範囲に重ならない class。
 - TERM-003:
   - default theme: 設定なしで使う初期色。具体色は design で決める。
 
 ## 未確定事項
-- 該当なし。初期版は baseline どおり changed class / dependency-only class の 2 分類色分けを実装対象にする。
+- 該当なし。初期版は changed / newly added class だけを薄い緑で色分けし、dependency-only class は通常表示にする。

@@ -416,6 +416,25 @@ class SelectedRelations:
 
 
 @dataclass(frozen=True)
+class ClassSpan:
+    class_id: ClassId
+    start_line: int
+    end_line: int
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty_string(self.class_id, "class_id")
+        if (
+            isinstance(self.start_line, bool)
+            or isinstance(self.end_line, bool)
+            or not isinstance(self.start_line, int)
+            or not isinstance(self.end_line, int)
+            or self.start_line < 1
+            or self.end_line < self.start_line
+        ):
+            raise ValueError("class span must be a positive inclusive line range")
+
+
+@dataclass(frozen=True)
 class ParsedModule:
     module_path: ModulePath
     imports: tuple[str, ...] = ()
@@ -423,6 +442,7 @@ class ParsedModule:
     class_references: tuple[ClassReference, ...] = ()
     diagnostics: tuple[Diagnostic, ...] = ()
     members: tuple[ClassMember, ...] = ()
+    class_spans: tuple[ClassSpan, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.module_path, Path):
@@ -432,6 +452,7 @@ class ParsedModule:
         class_references = _as_tuple(self.class_references)
         diagnostics = _as_tuple(self.diagnostics)
         members = _as_tuple(self.members)
+        class_spans = _as_tuple(self.class_spans)
         _ensure_non_empty_strings(imports, "imports")
         _ensure_non_empty_strings(classes, "classes")
         for class_reference in class_references:
@@ -441,11 +462,15 @@ class ParsedModule:
         for member in members:
             if not isinstance(member, ClassMember):
                 raise ValueError("members must contain ClassMember values")
+        for class_span in class_spans:
+            if not isinstance(class_span, ClassSpan):
+                raise ValueError("class_spans must contain ClassSpan values")
         object.__setattr__(self, "imports", imports)
         object.__setattr__(self, "classes", classes)
         object.__setattr__(self, "class_references", class_references)
         object.__setattr__(self, "diagnostics", diagnostics)
         object.__setattr__(self, "members", members)
+        object.__setattr__(self, "class_spans", class_spans)
 
 
 @dataclass(frozen=True)
@@ -630,6 +655,7 @@ __all__ = [
     "ClassMember",
     "ClassReference",
     "ClassId",
+    "ClassSpan",
     "CommandName",
     "CommandOptions",
     "CommandRequest",

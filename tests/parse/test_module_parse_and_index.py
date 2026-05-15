@@ -6,6 +6,7 @@ from pyclassuml.model import (
     AnalysisConfig,
     ClassMember,
     ClassReference,
+    ClassSpan,
     DiagnosticSeverity,
     ExecutionContext,
     FailureReason,
@@ -103,12 +104,37 @@ def test_seed_file_parse_builds_parsed_module_and_index(tmp_path: Path) -> None:
     module = result.parsed_modules[0]
     assert module.imports == ("from pkg import c", "pkg.b")
     assert module.classes == ("pkg/a.py:A", "pkg/a.py:A.Nested")
+    assert module.class_spans == (
+        ClassSpan("pkg/a.py:A", start_line=3, end_line=5),
+        ClassSpan("pkg/a.py:A.Nested", start_line=4, end_line=5),
+    )
     assert result.module_index.module_by_path[Path("pkg/a.py")] is module
     assert result.module_index.project_relative_file_to_module == {Path("pkg/a.py"): Path("pkg/a.py")}
     assert result.module_index.class_to_module == {
         "pkg/a.py:A": Path("pkg/a.py"),
         "pkg/a.py:A.Nested": Path("pkg/a.py"),
     }
+
+
+def test_class_span_start_line_includes_decorators(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "decorated.py",
+        "\n".join(
+            [
+                "from pkg.decorators import entity",
+                "",
+                "@entity",
+                "class Model:",
+                "    value = 1",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert result.diagnostics == ()
+    assert result.parsed_modules[0].class_spans == (ClassSpan("pkg/decorated.py:Model", start_line=3, end_line=5),)
 
 
 def test_from_imports_preserve_aliases_in_parsed_module_imports(tmp_path: Path) -> None:

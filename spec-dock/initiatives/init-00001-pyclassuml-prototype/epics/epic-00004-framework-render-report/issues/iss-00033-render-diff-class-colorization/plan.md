@@ -15,7 +15,7 @@ ID: "iss-00033"
 ## この計画で満たす要件ID
 - AC:
   - AC-001 changed class colorization
-  - AC-002 dependency-only class colorization
+  - AC-002 dependency-only class default rendering
   - AC-003 generate unaffected
   - AC-004 relation notation regression prevention
   - AC-005 deterministic output
@@ -27,7 +27,8 @@ ID: "iss-00033"
 - 制約:
   - render は Git を読まない。
   - 対象コードを import 実行しない。
-  - hunk 粒度や deleted class 表示は実装しない。
+  - hunk 粒度の member highlight や deleted class 表示は実装しない。
+  - hunk range は class-level changed 判定の入力としてのみ扱う。
 
 ## マイルストーン一覧
 - M1 render style contract:
@@ -35,7 +36,7 @@ ID: "iss-00033"
   - exit: render unit tests が diff style、Protocol coexistence、no-decoration case を固定する。
 - M2 diff decoration handoff:
   - 対象: `app.diff` の selected class と changed file context の join。
-  - exit: diff E2E tests が changed / dependency-only class を別 style として検証する。
+  - exit: diff E2E tests が changed / newly added class だけを style 付きとして検証する。
 - M3 regression / manual verification:
   - 対象: full tests、manual env diff -> `.puml` / `.svg`、SpecDock validate、review gates。
   - exit: code/QA/spec review pass、report 更新、issue close readiness。
@@ -65,12 +66,14 @@ ID: "iss-00033"
 ## ステップ一覧
 - S01 render style contract:
   - 観測可能な振る舞い:
-    - `DiffChanged` / `DiffDependency` decoration がある場合だけ PlantUML style block と class stereotype が出る。
+    - `DiffChanged` decoration がある場合だけ PlantUML style block と class stereotype が出る。
+    - dependency-only class に `DiffDependency` stereotype / 専用色が出ない。
   - review gate:
     - render unit tests pass。
 - S02 diff class decoration handoff:
   - 観測可能な振る舞い:
-    - changed file 内 selected class は `DiffChanged`、selected だが changed file 外 class は `DiffDependency`。
+    - added file 内 selected class、または changed hunk と class span が重なる selected class は `DiffChanged`。
+    - selected だが changed hunk と class span が重ならない class は diff decoration なし。
   - review gate:
     - diff E2E tests pass。
     - syntax error / parsed class join miss で `DiffChanged` を捏造せず、parse diagnostics が保持される targeted test が pass。
@@ -142,7 +145,7 @@ ID: "iss-00033"
 
 ### S02 — Diff App Decoration Handoff
 - observable behavior:
-  - `run_diff` が selected classes に `DiffChanged` / `DiffDependency` decoration を付与して render に渡す。
+  - `run_diff` が selected classes のうち added file 内 class、または changed hunk と class span が重なる class だけに `DiffChanged` decoration を付与して render に渡す。
 - design refs:
   - `依存関係分析`
   - `Module Dependency Diagram`
@@ -154,7 +157,9 @@ ID: "iss-00033"
   - `src/pyclassuml/app/diff.py`
   - `tests/app/test_diff.py`
 - expected tests:
-  - changed class and dependency-only class E2E `.puml`
+  - changed class highlighted and dependency-only class default-rendered E2E `.puml`
+  - same file 内に changed class と unchanged class が共存する場合、changed class だけが highlighted になる
+  - module-level only change は class を highlighted しない
   - selected 外 changed class には style を作らない
   - changed file without class has no changed style
   - syntax error changed file or parsed class join miss preserves diagnostics and emits no fabricated `DiffChanged`
@@ -180,17 +185,19 @@ ID: "iss-00033"
 
 ### S04 — Manual Diff Colorization
 - observable behavior:
-  - manual env Git working tree diff produces colorized `.puml` and `.svg`.
+  - manual env の多段階 commit diff produces colorized `.puml` and `.svg`.
+  - changed / newly added class だけが薄い緑になり、dependency-only class は default class box のままになる。
 - depends on:
   - S03
 - target files:
-  - ignored/manual output only under `build/manual-tests/pyclassuml-manual-env/out/iss-00033/`
+  - ignored/manual output only under `build/manual-tests/pyclassuml-manual-env/out/iss-00033-green/`
 - expected commands:
-  - `uv run pyclassuml diff --cwd build/manual-tests/pyclassuml-manual-env --base HEAD --current-state working-tree --output ...`
+  - `uv run pyclassuml diff --cwd build/manual-tests/pyclassuml-manual-env/tmp/iss-00033-multicommit-color --base 2fa3434d7ffc40c510f47488757d60ffad8fee73 --current-state head --output ...`
   - `docker run --rm ... plantuml/plantuml:latest -tsvg ...`
-  - `rg` checks for `skinparam class`, `<<DiffChanged>>`, `<<DiffDependency>>`, relation arrows.
+  - `rg` checks for `skinparam class`, `<<DiffChanged>>`, absence of `<<DiffDependency>>`, absence of old yellow/blue colors, relation arrows.
+  - SVG check confirms dependency-only `Customer` is `fill="#F1F1F1"` / `stroke:#181818`, while changed/newly added classes are `fill="#DFF5DF"` / `stroke:#4F9D5D`.
 - cleanup:
-  - restore manual env tracked changes.
+  - keep manual env tracked state clean.
   - remove `uv.lock` if generated.
 - report update:
   - manual command/output evidence。

@@ -8,6 +8,7 @@ from pyclassuml.model import (
     AnalysisMode,
     ClassMember,
     ClassId,
+    ClassSpan,
     ChangedClassInventory,
     CommandName,
     CommandOptions,
@@ -310,6 +311,33 @@ def test_public_import_surface_and_valid_construction() -> None:
     )
     assert DependencyGraph(reachable_files=[Path("a.py")], edges=[(Path("a.py"), Path("b.py"))])
     assert SelectedClasses(class_ids=["a:A"])
+
+
+def test_parsed_module_positional_constructor_keeps_class_references_order_compatibility() -> None:
+    class_id = "pkg/order.py:Order"
+    reference = ClassReference(
+        source_class_id=class_id,
+        target_name="Customer",
+        reference_kind="field_annotation",
+        reference_owner="customer",
+    )
+    diagnostic = warning_diagnostic()
+    member = ClassMember(owner_class_id=class_id, name="customer", kind="field", visibility="public", source_order=1)
+
+    parsed_module = ParsedModule(
+        Path("pkg/order.py"),
+        ("decimal",),
+        (class_id,),
+        (reference,),
+        (diagnostic,),
+        (member,),
+        (ClassSpan(class_id, start_line=1, end_line=2),),
+    )
+
+    assert parsed_module.class_references == (reference,)
+    assert parsed_module.diagnostics == (diagnostic,)
+    assert parsed_module.members == (member,)
+    assert parsed_module.class_spans == (ClassSpan(class_id, start_line=1, end_line=2),)
 
 
 def test_class_reference_contract_is_public_and_validated() -> None:

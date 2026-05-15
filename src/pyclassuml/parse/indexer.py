@@ -13,6 +13,7 @@ from pyclassuml.model import (
     AnalysisConfig,
     ClassMember,
     ClassReference,
+    ClassSpan,
     Diagnostic,
     DiagnosticSeverity,
     ExecutionContext,
@@ -152,13 +153,14 @@ def parse_target_set(
 
         module_path = _project_relative(source_path, project_root)
         imports = _extract_imports(tree)
-        classes = _extract_classes(tree, module_path)
+        class_spans = _extract_class_spans(tree, module_path)
         class_references, module_diagnostics = _extract_class_references(tree, module_path)
         members, member_diagnostics = _extract_class_members(tree, module_path)
         parsed_module = ParsedModule(
             module_path=module_path,
             imports=imports,
-            classes=classes,
+            classes=tuple(class_span.class_id for class_span in class_spans),
+            class_spans=class_spans,
             class_references=class_references,
             diagnostics=(*module_diagnostics, *member_diagnostics),
             members=members,
@@ -250,13 +252,31 @@ def _format_import_from_alias(alias: ast.alias) -> str:
 
 
 def _extract_classes(tree: ast.AST, module_path: Path) -> tuple[str, ...]:
-    classes: list[str] = []
+    return tuple(class_span.class_id for class_span in _extract_class_spans(tree, module_path))
+
+
+def _extract_class_spans(tree: ast.AST, module_path: Path) -> tuple[ClassSpan, ...]:
+    class_spans: list[ClassSpan] = []
 
     def visit(node: ast.AST, parents: tuple[str, ...]) -> None:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.ClassDef):
                 qualname = (*parents, child.name)
-                classes.append(f"{module_path.as_posix()}:{'.'.join(qualname)}")
+                class_id = f"{module_path.as_posix()}:{'.'.join(qualname)}"
+                decorator_lines = [
+                    decorator.lineno
+                    for decorator in child.decorator_list
+                    if isinstance(getattr(decorator, "lineno", None), int)
+                ]
+                start_line = min((child.lineno, *decorator_lines))
+                end_line = getattr(child, "end_lineno", None)
+                class_spans.append(
+                    ClassSpan(
+                        class_id=class_id,
+                        start_line=start_line,
+                        end_line=end_line if isinstance(end_line, int) else start_line,
+                    )
+                )
                 visit(child, qualname)
             elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -264,7 +284,7 @@ def _extract_classes(tree: ast.AST, module_path: Path) -> tuple[str, ...]:
                 visit(child, parents)
 
     visit(tree, ())
-    return tuple(sorted(classes))
+    return tuple(sorted(class_spans, key=lambda class_span: class_span.class_id))
 
 
 def _extract_class_members(tree: ast.AST, module_path: Path) -> tuple[tuple[ClassMember, ...], tuple[Diagnostic, ...]]:

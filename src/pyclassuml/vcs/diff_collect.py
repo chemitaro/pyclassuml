@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import subprocess
 
@@ -20,10 +20,38 @@ from pyclassuml.model import (
 
 
 @dataclass(frozen=True)
+class ChangedLineRange:
+    start: int
+    end: int
+    is_deletion_only: bool = False
+    deleted_lines: tuple[str, ...] = ()
+    is_before_first_line_deletion: bool = field(default=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.start, bool)
+            or isinstance(self.end, bool)
+            or not isinstance(self.is_deletion_only, bool)
+            or not isinstance(self.is_before_first_line_deletion, bool)
+            or not isinstance(self.start, int)
+            or not isinstance(self.end, int)
+            or self.start < 1
+            or self.end < self.start
+        ):
+            raise ValueError("changed line range must be a positive inclusive range")
+        deleted_lines = tuple(self.deleted_lines)
+        for line in deleted_lines:
+            if not isinstance(line, str):
+                raise ValueError("deleted_lines must contain str values")
+        object.__setattr__(self, "deleted_lines", deleted_lines)
+
+
+@dataclass(frozen=True)
 class ChangedFileEntry:
     current_project_relative_path: str
     change_kind: str
     previous_project_relative_path: str | None = None
+    current_changed_line_ranges: tuple[ChangedLineRange, ...] = field(default=(), compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.current_project_relative_path, str) or self.current_project_relative_path == "":
@@ -34,6 +62,11 @@ class ChangedFileEntry:
             not isinstance(self.previous_project_relative_path, str) or self.previous_project_relative_path == ""
         ):
             raise ValueError("previous_project_relative_path must be a non-empty str or None")
+        ranges = tuple(self.current_changed_line_ranges)
+        for line_range in ranges:
+            if not isinstance(line_range, ChangedLineRange):
+                raise ValueError("current_changed_line_ranges must contain ChangedLineRange values")
+        object.__setattr__(self, "current_changed_line_ranges", ranges)
 
 
 @dataclass(frozen=True)
@@ -137,7 +170,11 @@ def _tracked_entries(project_root: Path, base_ref: str, current_state: DiffCurre
         args.append("HEAD")
     args.extend(("--", "."))
     result = _run_git(project_root, tuple(args))
-    return _parse_name_status(result.stdout)
+    entries = _parse_name_status(result.stdout)
+    return [
+        _entry_with_current_changed_line_ranges(project_root, base_ref, current_state, entry)
+        for entry in entries
+    ]
 
 
 def _untracked_entries(project_root: Path) -> list[ChangedFileEntry]:
@@ -205,6 +242,99 @@ def _parse_name_status(output: bytes) -> list[ChangedFileEntry]:
             raise VcsDiffError("git_diff_parse_failure", f"unsupported Git diff name-status value: {status}")
 
     return entries
+
+
+def _entry_with_current_changed_line_ranges(
+    project_root: Path,
+    base_ref: str,
+    current_state: DiffCurrentState,
+    entry: ChangedFileEntry,
+) -> ChangedFileEntry:
+    if entry.change_kind == "added":
+        return entry
+
+    args = ["diff", "--relative", "--unified=0", "--find-renames", base_ref]
+    if current_state is DiffCurrentState.HEAD:
+        args.append("HEAD")
+    pathspecs = [entry.current_project_relative_path]
+    if entry.previous_project_relative_path is not None:
+        pathspecs.insert(0, entry.previous_project_relative_path)
+    args.extend(("--", *pathspecs))
+    result = _run_git(project_root, tuple(args))
+    return ChangedFileEntry(
+        current_project_relative_path=entry.current_project_relative_path,
+        change_kind=entry.change_kind,
+        previous_project_relative_path=entry.previous_project_relative_path,
+        current_changed_line_ranges=_parse_current_changed_line_ranges(result.stdout),
+    )
+
+
+def _parse_current_changed_line_ranges(output: bytes) -> tuple[ChangedLineRange, ...]:
+    ranges: list[ChangedLineRange] = []
+    lines = output.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.startswith(b"@@ "):
+            index += 1
+            continue
+        header = line.decode("utf-8", errors="replace")
+        plus_token = next((token for token in header.split() if token.startswith("+")), None)
+        if plus_token is None:
+            raise VcsDiffError("git_diff_parse_failure", f"malformed Git diff hunk header: {header}")
+        deleted_lines: list[bytes] = []
+        index += 1
+        while index < len(lines) and not lines[index].startswith(b"@@ "):
+            hunk_line = lines[index]
+            if hunk_line.startswith(b"diff --git "):
+                break
+            if hunk_line.startswith(b"-") and not hunk_line.startswith(b"--- "):
+                deleted_lines.append(hunk_line[1:])
+            index += 1
+        if (line_range := _parse_current_hunk_range(plus_token, header, deleted_lines)) is not None:
+            ranges.append(line_range)
+    return tuple(ranges)
+
+
+def _parse_current_hunk_range(
+    plus_token: str,
+    header: str,
+    deleted_lines: list[bytes],
+) -> ChangedLineRange | None:
+    body = plus_token[1:]
+    if "," in body:
+        start_text, length_text = body.split(",", 1)
+    else:
+        start_text, length_text = body, "1"
+    try:
+        start = int(start_text)
+        length = int(length_text)
+    except ValueError as exc:
+        raise VcsDiffError("git_diff_parse_failure", f"malformed Git diff hunk header: {header}") from exc
+    if start < 1 or length < 0:
+        if start == 0 and length == 0 and _deleted_lines_include_decorator(deleted_lines):
+            return ChangedLineRange(
+                start=1,
+                end=1,
+                is_deletion_only=True,
+                deleted_lines=tuple(line.decode("utf-8", errors="replace") for line in deleted_lines),
+                is_before_first_line_deletion=True,
+            )
+        if start == 0 and length == 0:
+            return None
+        raise VcsDiffError("git_diff_parse_failure", f"malformed Git diff hunk header: {header}")
+    if length == 0:
+        return ChangedLineRange(
+            start=start,
+            end=start,
+            is_deletion_only=True,
+            deleted_lines=tuple(line.decode("utf-8", errors="replace") for line in deleted_lines),
+        )
+    return ChangedLineRange(start=start, end=start + length - 1)
+
+
+def _deleted_lines_include_decorator(deleted_lines: list[bytes]) -> bool:
+    return any(line.lstrip().startswith(b"@") for line in deleted_lines)
 
 
 def _decode_nul_paths(output: bytes) -> list[str]:

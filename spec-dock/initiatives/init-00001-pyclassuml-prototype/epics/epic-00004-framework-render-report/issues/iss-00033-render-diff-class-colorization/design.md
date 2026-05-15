@@ -14,15 +14,16 @@ ID: "iss-00033"
 
 ## 目的・制約
 - 目的:
-  - `pyclassuml diff` の class diagram で、Git 差分に含まれる changed class と、到達関係で表示される dependency-only class を PlantUML/SVG 上で色分けする。
-  - 初期 baseline の 2 分類色分けを、既存 diff pipeline と render seam に自然に接続する。
+  - `pyclassuml diff` の class diagram で、Git 差分に含まれる changed / newly added class だけを PlantUML/SVG 上で薄い緑に色分けする。
+  - 初期 baseline の changed / dependency-only 分類を、dependency-only は通常表示に残す方針へ調整して既存 diff pipeline と render seam に接続する。
 - MUST:
   - diff command だけに colorization を適用する。
-  - changed class / dependency-only class の 2 分類を deterministic に class box へ反映する。
+  - changed / newly added class だけを deterministic に class box へ反映する。
+  - dependency-only class は通常の PlantUML class box 表示を維持する。
   - `changed_class_count` summary、既存 relation notation、Protocol stereotype を壊さない。
 - MUST NOT:
   - render 層から Git を読まない。
-  - hunk 粒度や deleted class 表示をこの issue で扱わない。
+  - hunk 粒度の member highlight や deleted class 表示をこの issue で扱わない。
   - generate command に diff-specific style を出さない。
 - 非交渉制約:
   - AST-only、read-only、import 非実行、同一入力で同一 `.puml`。
@@ -40,9 +41,12 @@ ID: "iss-00033"
   - `src/pyclassuml/model/contracts.py`
     - `RenderReadyModel.class_decorations` は `(class_id, decoration)` pair の tuple。
 - 採用するパターン:
-  - changed class 判定は `app.diff` で作る。理由は diff command の actual changed-file context を持っている owner が `app.diff` だから。
+  - changed class 判定は `app.diff` で作る。理由は diff command の actual changed-file context と parse result を結合できる owner が `app.diff` だから。
+  - VCS seam は changed files に current 側 hunk line ranges を添えて downstream へ渡す。
+  - Parse seam は class 定義範囲を class id とともに保持し、app.diff が changed hunk と class span を突き合わせる。
+  - hunk range は class-level classification の入力としてだけ使い、method / field 単位の表示 highlight には使わない。
   - render は handoff された decoration だけを PlantUML style に変換する。Git には依存しない。
-  - 既存 `class_decorations` を拡張利用し、`DiffChanged` / `DiffDependency` stereotype を追加する。
+  - 既存 `class_decorations` を拡張利用し、changed / newly added class だけに `DiffChanged` stereotype を追加する。
 - 採用しないもの:
   - `ChangedClassInventory` を class id list まで拡張する案。
     - summary DTO の責務が広がるため採用しない。
@@ -54,16 +58,16 @@ ID: "iss-00033"
 ## 採用方針 / トレードオフ
 - 決定:
   - `render_uml_document(..., class_decorations=())` の optional keyword を追加する。
-  - `app.diff` は selected class のうち changed file 内 class へ `DiffChanged`、それ以外へ `DiffDependency` を渡す。
+  - `app.diff` は selected class のうち added file 内 class、または changed hunk と class span が重なる class へ `DiffChanged` を渡し、それ以外の dependency-only class へ diff decoration を渡さない。
   - `app.generate` は引数を渡さないため、diff-specific style は出ない。
-  - render は `DiffChanged` / `DiffDependency` decoration がある場合だけ PlantUML `skinparam class` block を出力する。
+  - render は `DiffChanged` decoration がある場合だけ PlantUML `skinparam class` block を出力する。
 - デフォルトテーマ:
-  - `DiffChanged`: 背景 `#fff3b0`、枠線 `#d39e00`
-  - `DiffDependency`: 背景 `#e8f4ff`、枠線 `#5b8def`
-  - 理由: changed は注意を引く黄色系、dependency-only は補助的な青系として判別しやすく、既存 relation 色には干渉しない。
+  - `DiffChanged`: 背景 `#dff5df`、枠線 `#4f9d5d`
+  - `DiffDependency`: 使用しない。dependency-only class は PlantUML default class color のままにする。
+  - 理由: changed / newly added class だけを薄い緑で強調し、依存として表示されただけの class は通常図の読み味を維持する。
 - トレードオフ:
   - stereotype 名は `.puml` に出る可能性があるが、PlantUML 標準の style target として安定する。
-  - 追加 / 変更 / 削除の細分化はしない。今回の baseline は 2 分類である。
+  - 追加 / 変更 / 削除の細分化はしない。今回の表示対象は changed / newly added class の単一ハイライトである。
 
 ## 依存関係分析
 - upstream:
@@ -94,7 +98,7 @@ rectangle "report\nartifact + summary" as report
 vcs --> app : changed files
 parse --> app : module/class index
 selection --> app : displayed classes
-app --> render : DiffChanged / DiffDependency decorations
+app --> render : DiffChanged decorations only
 render --> report : PlantUML text
 @enduml
 ```
@@ -113,12 +117,13 @@ render --> report : PlantUML text
   - merge rule:
     - auto `Protocol` decoration と external decoration を `(class_id, decoration)` で dedupe し、deterministic sort する。
 - `render_plantuml_text`:
-  - `DiffChanged` / `DiffDependency` が存在する場合、`@startuml` 直後に default theme の `skinparam class` block を出す。
+  - `DiffChanged` が存在する場合、`@startuml` 直後に default theme の `skinparam class` block を出す。
   - class declaration は既存 `_class_stereotype` により `<<Protocol>> <<DiffChanged>>` のように複数 stereotype を出せる。
 - `app.diff` private helper:
   - `_diff_class_decorations(changed_files, parsed_modules, module_index, selected_classes) -> tuple[tuple[ClassId, str], ...]`
-  - changed file に定義され、かつ `selected_classes.class_ids` に含まれる class: `DiffChanged`
-  - `selected_classes.class_ids` に含まれるが `DiffChanged` ではない class: `DiffDependency`
+  - added file に定義され、かつ `selected_classes.class_ids` に含まれる class: `DiffChanged`
+  - modified / renamed file では current 側 changed hunk line range と class span が重なり、かつ `selected_classes.class_ids` に含まれる class: `DiffChanged`
+  - `selected_classes.class_ids` に含まれるが changed hunk と class span が重ならない class: decoration なし
 
 ## ディレクトリ / ファイル変更計画
 ```text
@@ -145,7 +150,7 @@ render --> report : PlantUML text
 - AC-001:
   - `app.diff` が changed file 内 selected class へ `DiffChanged` decoration を渡し、render が changed theme を出す。
 - AC-002:
-  - `app.diff` が selected だが changed file 内ではない class へ `DiffDependency` decoration を渡す。
+  - `app.diff` が selected だが changed file 内ではない class へ diff decoration を渡さない。
 - AC-003:
   - `app.generate` は追加 decoration を渡さない。render は decoration がない限り style block を出さない。
 - AC-004:
@@ -153,7 +158,7 @@ render --> report : PlantUML text
 - AC-005:
   - helper output、decoration merge、style block、class order を sort して deterministic にする。
 - EC-001:
-  - changed file に class がない場合、`module_index` / `ParsedModule.classes` join から `DiffChanged` は作られない。
+  - changed file に class がない場合、`module_index` / class span join から `DiffChanged` は作られない。
 - EC-002:
   - selected class に含まれない changed class は color declaration 対象にしない。
 - EC-003:
@@ -163,24 +168,25 @@ render --> report : PlantUML text
 
 ## テスト戦略
 - Unit / render:
-  - `render_plantuml_text` が diff style block と `<<DiffChanged>>` / `<<DiffDependency>>` を出す。
+  - `render_plantuml_text` が diff style block と `<<DiffChanged>>` を出す。
+  - dependency-only class に `<<DiffDependency>>` や専用色が出ない。
   - `Protocol` と diff stereotype が同居する。
   - decoration がない generate-like input では style block が出ない。
 - App / integration:
-  - `pyclassuml diff` E2E で changed class と dependency-only class が別 stereotype になる。
+  - `pyclassuml diff` E2E で changed / newly added class だけが `DiffChanged` stereotype になる。
   - `changed_class_count` は従来どおり維持される。
   - relation notation `*--` / `o--` / `-up-|>` / `..up|>` / `..>` は変わらない。
   - untracked on/off、head current-state は既存 semantics に従う。
 - Manual:
   - `build/manual-tests/pyclassuml-manual-env` の git 差分を一時的に作り、`pyclassuml diff --base HEAD --current-state working-tree` で `.puml` と `.svg` を生成する。
-  - `.puml` で `skinparam class`、`<<DiffChanged>>`、`<<DiffDependency>>`、既存 relation notation を確認する。
+  - `.puml` で `skinparam class`、`<<DiffChanged>>`、dependency-only class が通常表示であること、既存 relation notation を確認する。
   - manual env の変更は restore し、repo root の `uv.lock` を残さない。
 
 ## リスク / ロールバック
 - リスク:
   - `class_decorations` を style 用にも使うことで stereotype 表示が増える。
     - ただし PlantUML 標準の style target として有用であり、現在も Protocol stereotype を出しているため整合する。
-  - changed class と selected class の join を誤ると dependency-only へ誤分類される。
+  - changed class と selected class の join を誤ると changed highlight が不足する。
     - `module_index.project_relative_file_to_module` と `ParsedModule.classes` を使い、既存 changed inventory と同じ join key を使う。
 - ロールバック:
   - `app.diff` の extra decoration handoff と render の diff style block を戻せば、既存 diagram semantics に戻る。

@@ -337,23 +337,21 @@ def test_render_uml_document_outputs_diff_styles_only_when_diff_decorations_exis
         **render_inputs(),
         class_decorations=(
             ("pkg/orders.py:Order", "DiffChanged"),
-            ("pkg/orders.py:User", "DiffDependency"),
         ),
     )
 
     assert result.failure_signal is None
     assert result.plantuml_text is not None
-    assert result.plantuml_text.text.splitlines()[:7] == [
+    assert result.plantuml_text.text.splitlines()[:5] == [
         "@startuml",
         "skinparam class {",
-        "  BackgroundColor<<DiffChanged>> #fff3b0",
-        "  BorderColor<<DiffChanged>> #d39e00",
-        "  BackgroundColor<<DiffDependency>> #e8f4ff",
-        "  BorderColor<<DiffDependency>> #5b8def",
+        "  BackgroundColor<<DiffChanged>> #dff5df",
+        "  BorderColor<<DiffChanged>> #4f9d5d",
         "}",
     ]
     assert 'class "Order" as c002 <<DiffChanged>>' in result.plantuml_text.text
-    assert 'class "User" as c003 <<DiffDependency>>' in result.plantuml_text.text
+    assert 'class "User" as c003' in result.plantuml_text.text
+    assert "DiffDependency" not in result.plantuml_text.text
 
 
 def test_render_uml_document_merges_diff_and_protocol_stereotypes() -> None:
