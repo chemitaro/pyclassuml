@@ -1139,6 +1139,58 @@ def test_diff_class_decorations_skips_file_when_base_inventory_is_unsafe() -> No
     assert decorations == ()
 
 
+def test_diff_base_inventory_failure_emits_warning_and_no_fabricated_decoration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 2\n")
+    original_read_base_file_text = diff_app.read_base_file_text
+
+    def read_base_file_text_spy(*args: object, **kwargs: object) -> str | None:
+        base_ref = args[2]
+        project_relative_path = args[3]
+        if base_ref == "base" and project_relative_path == "pkg/models.py":
+            raise diff_app.diff_collect.VcsDiffError("forced_base_read_failure", "forced base read failure")
+        return original_read_base_file_text(*args, **kwargs)
+
+    monkeypatch.setattr(diff_app, "read_base_file_text", read_base_file_text_spy)
+
+    result = run_diff(diff_request(repo, output=Path("unsafe-base.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "unsafe-base.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "degraded_success"
+    assert "warning:diff_classification_base_read_unavailable:" in result.stdout_text
+    assert "DiffAdded" not in class_declaration(output, "Model")
+    assert "DiffChanged" not in class_declaration(output, "Model")
+
+
+def test_head_current_parse_failure_emits_warning_and_no_fabricated_decoration(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model(:\n")
+    commit_all(repo, "head")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 2\n")
+
+    result = run_diff(
+        diff_request(repo, current_state=DiffCurrentState.HEAD, output=Path("unsafe-head.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "unsafe-head.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "degraded_success"
+    assert "warning:diff_classification_current_parse_unavailable:" in result.stdout_text
+    assert "DiffAdded" not in class_declaration(output, "Model")
+    assert "DiffChanged" not in class_declaration(output, "Model")
+
+
 def test_diff_syntax_error_preserves_diagnostics_and_emits_no_fabricated_diff_changed(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "pkg" / "broken.py", "class Broken:\n    pass\n")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -22,8 +23,11 @@ from pyclassuml.model import (
     CommandName,
     CommandRequest,
     Diagnostic,
+    DiagnosticSeverity,
     ExecutionContext,
+    OriginSeam,
     ParsedModule,
+    Recoverability,
     SelectedClasses,
     TargetSet,
 )
@@ -33,6 +37,18 @@ from pyclassuml.report import ReportInputs, ReportRunResult, write_report
 from pyclassuml.targets import normalize_diff_targets
 from pyclassuml.vcs import ChangedFileCollection, ChangedFileEntry, ChangedLineRange, collect_diff_files, read_base_file_text
 import pyclassuml.vcs.diff_collect as diff_collect
+
+
+@dataclass(frozen=True)
+class DiffClassificationSnapshot:
+    parsed_modules: tuple[ParsedModule, ...]
+    diagnostics: tuple[Diagnostic, ...] = ()
+
+
+@dataclass(frozen=True)
+class BaseClassInventory:
+    class_ids_by_path: dict[Path, frozenset[ClassId] | None]
+    diagnostics: tuple[Diagnostic, ...] = ()
 
 
 def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult:
@@ -117,6 +133,15 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
         parse_result.parsed_modules,
         parse_result.module_index,
     )
+    current_classification_snapshot = _current_parsed_modules_for_diff_classification(
+        request,
+        context,
+        config,
+        vcs_collection.collection.entries,
+        parse_result.parsed_modules,
+    )
+    base_class_inventory = _base_class_ids_by_current_path(request, context, vcs_collection.collection.entries)
+    diagnostics = (*diagnostics, *current_classification_snapshot.diagnostics, *base_class_inventory.diagnostics)
     class_decorations = _diff_class_decorations(
         vcs_collection.collection.entries,
         parse_result.parsed_modules,
@@ -128,14 +153,8 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
             config,
             vcs_collection.collection.entries,
         ),
-        _base_class_ids_by_current_path(request, context, vcs_collection.collection.entries),
-        classification_parsed_modules=_current_parsed_modules_for_diff_classification(
-            request,
-            context,
-            config,
-            vcs_collection.collection.entries,
-            parse_result.parsed_modules,
-        ),
+        base_class_inventory.class_ids_by_path,
+        classification_parsed_modules=current_classification_snapshot.parsed_modules,
     )
 
     sqlalchemy_hints = extract_sqlalchemy_enrichment_hints(
@@ -196,7 +215,8 @@ def _diff_class_decorations(
     *,
     classification_parsed_modules: tuple[ParsedModule, ...] | None = None,
 ) -> tuple[tuple[ClassId, str], ...]:
-    classification_parsed_modules = classification_parsed_modules or parsed_modules
+    if classification_parsed_modules is None:
+        classification_parsed_modules = parsed_modules
     module_by_path = {parsed_module.module_path: parsed_module for parsed_module in classification_parsed_modules}
     selected_class_ids = set(selected_classes.class_ids)
     added_class_ids: set[ClassId] = set()
@@ -268,12 +288,12 @@ def _current_parsed_modules_for_diff_classification(
     config: AnalysisConfig,
     changed_entries: tuple[ChangedFileEntry, ...],
     parsed_modules: tuple[ParsedModule, ...],
-) -> tuple[ParsedModule, ...]:
+) -> DiffClassificationSnapshot:
     if config.diff_current_state.value != "head":
-        return parsed_modules
+        return DiffClassificationSnapshot(parsed_modules=parsed_modules)
     result: list[ParsedModule] = []
+    diagnostics: list[Diagnostic] = []
     parsed_by_path = {parsed_module.module_path: parsed_module for parsed_module in parsed_modules}
-    base_ref = request.cli_options.diff.base_ref if request.cli_options.diff is not None else ""
     for entry in changed_entries:
         current_path = Path(entry.current_project_relative_path)
         if current_path not in parsed_by_path:
@@ -281,18 +301,31 @@ def _current_parsed_modules_for_diff_classification(
         try:
             current_text = read_base_file_text(context.vcs_root, context.project_root, "HEAD", entry.current_project_relative_path)
             result.append(parse_module_source_text(current_text, current_path, filename=f"HEAD:{entry.current_project_relative_path}"))
-        except (diff_collect.VcsDiffError, SyntaxError):
-            result.append(parsed_by_path[current_path])
-    return tuple(result)
+        except diff_collect.VcsDiffError as exc:
+            diagnostics.append(
+                _diff_classification_diagnostic(
+                    "diff_classification_current_read_unavailable",
+                    f"Diff classification skipped for {entry.current_project_relative_path}: {exc.message}",
+                )
+            )
+        except SyntaxError as exc:
+            diagnostics.append(
+                _diff_classification_diagnostic(
+                    "diff_classification_current_parse_unavailable",
+                    f"Diff classification skipped for {entry.current_project_relative_path}: {exc.msg}",
+                )
+            )
+    return DiffClassificationSnapshot(parsed_modules=tuple(result), diagnostics=tuple(diagnostics))
 
 
 def _base_class_ids_by_current_path(
     request: CommandRequest,
     context: ExecutionContext,
     changed_entries: tuple[ChangedFileEntry, ...],
-) -> dict[Path, frozenset[ClassId] | None]:
+) -> BaseClassInventory:
     base_ref = request.cli_options.diff.base_ref if request.cli_options.diff is not None else ""
     result: dict[Path, frozenset[ClassId] | None] = {}
+    diagnostics: list[Diagnostic] = []
     for entry in changed_entries:
         current_path = Path(entry.current_project_relative_path)
         if entry.change_kind == "added":
@@ -306,11 +339,37 @@ def _base_class_ids_by_current_path(
                 current_path,
                 filename=f"{base_ref}:{base_path}",
             )
-        except (diff_collect.VcsDiffError, SyntaxError):
+        except diff_collect.VcsDiffError as exc:
+            diagnostics.append(
+                _diff_classification_diagnostic(
+                    "diff_classification_base_read_unavailable",
+                    f"Diff classification skipped for {entry.current_project_relative_path}: {exc.message}",
+                )
+            )
+            result[current_path] = None
+            continue
+        except SyntaxError as exc:
+            diagnostics.append(
+                _diff_classification_diagnostic(
+                    "diff_classification_base_parse_unavailable",
+                    f"Diff classification skipped for {entry.current_project_relative_path}: {exc.msg}",
+                )
+            )
             result[current_path] = None
             continue
         result[current_path] = frozenset(parsed_module.classes)
-    return result
+    return BaseClassInventory(class_ids_by_path=result, diagnostics=tuple(diagnostics))
+
+
+def _diff_classification_diagnostic(code: str, message: str) -> Diagnostic:
+    return Diagnostic(
+        severity=DiagnosticSeverity.WARNING,
+        code=code,
+        message=message,
+        origin_seam=OriginSeam.APP,
+        recoverability=Recoverability.DEGRADED_OUTPUT,
+        failure_reason=None,
+    )
 
 
 def _current_file_lines_by_path(

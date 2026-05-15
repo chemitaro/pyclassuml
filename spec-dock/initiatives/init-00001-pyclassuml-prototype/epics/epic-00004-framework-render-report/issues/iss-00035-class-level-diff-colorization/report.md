@@ -58,13 +58,14 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 #### Step Contract Closure
 | step | closure ids | close condition | evidence | result | notes |
 |---|---|---|---|---|---|
-| spec-authoring | AC-001..AC-004 / EC-001..EC-005 | requirement/design/plan が implementation-ready になる | spec-reviewer first pass fail, rerun pending | pending | 実装前 gate |
+| spec-authoring | AC-001..AC-004 / EC-001..EC-005 | requirement/design/plan が implementation-ready になる | spec-reviewer first pass fail, second pass pass | pass | 実装前 gate |
 | S01 | tc-s01-001, tc-s01-002, tc-s01-003 | base blob read と source text parse helper が tested | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/parse/test_module_parse_and_index.py -q` -> 63 passed | pass | app no-decoration integration is covered in S02, but S01 unsafe VCS failure handling is closed |
 | S02 | tc-s02-001, tc-s02-002, tc-s02-003, tc-s02-004, tc-s02-005 | app.diff が class-level `DiffAdded` / `DiffChanged` / no decoration を分類する | `uv run --with pytest pytest tests/app/test_diff.py -q` -> 46 passed | pass | renderer style is closed in S03 |
 | S02-review-fix | tc-s02-001, tc-s02-005 | `--current-state head` で working-tree-only class を diff added と誤色付けしない | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q` -> 73 passed | pass | code-reviewer P2 対応 |
 | S02-review-fix-2 | tc-s02-001, tc-s02-005 | HEAD diff の分類用 current class inventory を HEAD blob に揃える | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q` -> 73 passed | pass | code-reviewer P2 対応。worktree-only class が前方に挿入されても誤色付けしない |
 | S02-review-fix-3 | tc-s02-head-current-state | HEAD diff の decorator deletion 判定用 lines も HEAD blob に揃える | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q` -> 73 passed | pass | code-reviewer P2 対応。hunk ranges, class spans, current lines を同一 snapshot に統一 |
 | S03 | tc-s03-001, tc-s03-002, tc-s03-003 | renderer が `DiffAdded` 水色 style と `DiffChanged` 緑 style を決定的に出力する | `uv run --with pytest pytest tests/render/test_document.py tests/app/test_diff.py -q` -> 75 passed | pass | generate/no-diff unaffected は existing no-style tests と final gate で再確認 |
+| S04-review-fix | EC-004, tc-s02-head-current-state | unsafe base/current classification failure を warning diagnostic にし、snapshot fallback を避ける | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py tests/render/test_document.py -q` -> 102 passed | pass | spec-reviewer P1 と code-reviewer P2 対応 |
 
 #### Test Contract Closure
 | closure id / test id | step | required | evidence level | pre-implementation evidence | verification command | result | notes |
@@ -78,6 +79,7 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | tc-s02-004 | S02 | yes | red-required | missing before implementation | `uv run --with pytest pytest tests/app/test_diff.py -q` | pass | nested new class is `DiffAdded` |
 | tc-s02-005 | S02 | yes | red-required | missing before implementation | `uv run --with pytest pytest tests/app/test_diff.py -q` | pass | current-only class identity is `DiffAdded`; rename heuristic not introduced |
 | tc-s02-head-current-state | S02 | yes | regression | code-reviewer P2 findings | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q` | pass | HEAD diff classification uses HEAD blob inventory and does not color worktree-only class in modified or added file |
+| tc-s02-unsafe-classification | S04-review-fix | yes | regression | spec-reviewer P1 finding | `uv run --with pytest pytest tests/app/test_diff.py -q` | pass | unsafe base/current classification failures emit warning diagnostics and do not fabricate decorations |
 | tc-s03-001 | S03 | yes | red-required | pending before style implementation | `uv run --with pytest pytest tests/render/test_document.py tests/app/test_diff.py -q` | pass | renderer outputs `DiffAdded` style |
 | tc-s03-002 | S03 | yes | covered-existing | covered by existing no-style tests | `uv run --with pytest pytest tests/render/test_document.py tests/app/test_diff.py -q` | pass | no diff decorations still suppress style block |
 | tc-s03-003 | S03 | yes | red-required | pending before style implementation | `uv run --with pytest pytest tests/render/test_document.py tests/app/test_diff.py -q` | pass | added / untracked E2E includes `DiffAdded` style assertions |
@@ -94,6 +96,7 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | tc-s02-004 | S02 | targeted pytest | pass |  |
 | tc-s02-005 | S02 | targeted pytest | pass |  |
 | tc-s02-head-current-state | S02 | targeted pytest | pass | code-reviewer P2 fixes for modified and added files, including prepended worktree-only class |
+| tc-s02-unsafe-classification | S04-review-fix | targeted pytest | pass | base read failure and HEAD current parse failure |
 | tc-s03-001 | S03 | targeted pytest | pass |  |
 | tc-s03-002 | S03 | targeted pytest | pass |  |
 | tc-s03-003 | S03 | targeted pytest | pass |  |
@@ -106,16 +109,18 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 #### Implementation Delegation Gate
 | step | decision | required reason | agent role | delegated scope | result | local-execution rationale |
 |---|---|---|---|---|---|---|
-| spec-authoring | delegated | workflow requires fresh spec review before implementation | spec-reviewer | requirement/design/plan implementation readiness | pending | N/A |
+| spec-authoring | delegated | workflow requires fresh spec review before implementation | spec-reviewer | requirement/design/plan implementation readiness | pass | N/A |
 | S01 | approved-local-execution | small upstream seam helper and tests, immediate blocking prerequisite | N/A | VCS / parse helper implementation | pass | Pattern was localized to existing seams; code-reviewer gate still required |
 | S02 | approved-local-execution | tightly coupled app.diff classifier and regression tests | N/A | app.diff class-level decoration implementation | pass | Main orchestrator handled small classifier change; code-reviewer gate still required |
 
 #### Code Review Gate
 | step | reviewer | review scope | review_status | findings / fixes | re-review count | result |
 |---|---|---|---|---|---|---|
-| S01 | code-reviewer | S01 VCS/parse helper diff and tests/report | pending | pending | 0 | pending |
-| S02 | code-reviewer | S02 app.diff classifier diff and tests/report | pending | pending | 0 | pending |
+| S01 | code-reviewer | S01 VCS/parse helper diff and tests/report | pass | findings resolved after base blob tree failure handling | 1 | pass |
+| S02 | code-reviewer | S02 app.diff classifier diff and tests/report | pass | P2 HEAD snapshot consistency findings resolved in follow-up fixes | 3 | pass |
 | S03 | code-reviewer | renderer styling for `DiffAdded` plus render/app tests | pass | findings none | 0 | pass |
+| final pre-fix | spec-reviewer | completed workflow artifacts and EC closure | fail | P1 report final gate missing; P1 unsafe classification diagnostics missing | 0 | fixed in S04/report update |
+| final pre-fix | code-reviewer | full branch code review | pass | P2 HEAD dirty-worktree independence and unsafe fallback noted | 0 | addressed in S04 where in scope |
 
 #### Step Commit Gate
 | step | closure state | commit scope | commit hash / final ledger | post-commit clean check | no-op rationale | no-op checked contracts / files | no-op diff-clean command | no-op read-only confirmation |
@@ -123,7 +128,8 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | issue scaffold | committed | initial generated issue docs | 7275771 | clean before issue start | N/A | N/A | N/A | N/A |
 | S01 | committed | `src/pyclassuml/vcs/*`, `src/pyclassuml/parse/*`, tests, report | 8c9421c | clean before S02 | N/A | N/A | N/A | N/A |
 | S02 | committed | `src/pyclassuml/app/diff.py`, `tests/app/test_diff.py`, report | 58086d3 | clean before S03 | N/A | N/A | N/A | N/A |
-| S03 | pending | `src/pyclassuml/render/document.py`, render/app tests, report | pending | pending | N/A | N/A | N/A | N/A |
+| S03 | committed | `src/pyclassuml/render/document.py`, render/app tests, report | 51948a3 | clean before S04 | N/A | N/A | N/A | N/A |
+| S04-review-fix | pending | `src/pyclassuml/app/diff.py`, `tests/app/test_diff.py`, report | pending | pending | N/A | N/A | N/A | N/A |
 
 #### 変更したファイル
 - `spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00004-framework-render-report/issues/iss-00035-class-level-diff-colorization/requirement.md` - class-level diff colorization 要件へ具体化。
@@ -143,11 +149,14 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 - `src/pyclassuml/render/document.py` - `DiffAdded` / `DiffChanged` の PlantUML style block を decoration presence に応じて決定的に出力。
 - `tests/render/test_document.py` - `DiffAdded` style と mixed style ordering の render tests を追加。
 - `tests/app/test_diff.py` - added / untracked E2E で `DiffAdded` style 出力を検証。
+- `src/pyclassuml/app/diff.py` - unsafe classification snapshot failure を warning diagnostic として report に流し、HEAD parse failure 時の working tree fallback を廃止。
+- `tests/app/test_diff.py` - unsafe base read failure と HEAD current parse failure が warning になり、diff decoration を捏造しない regression を追加。
 
 #### コミット
 - `7275771` `docs(spec-dock): class単位のdiff色分けissueを追加`
 - `8c9421c` `feat(diff): class単位色分け用のbase解析を追加`
 - `58086d3` `feat(diff): class単位の追加差分色分けを実装`
+- `51948a3` `feat(render): 新規class差分の水色表示を追加`
 
 #### メモ
 - `issue start` は untracked issue scaffold があると checkout safety guard で止まるため、作業ブランチ上で initial scaffold commit を作成してから再実行した。
