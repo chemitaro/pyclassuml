@@ -17,9 +17,15 @@ RelationType: TypeAlias = str
 EvidenceKind: TypeAlias = str
 GroupingKey: TypeAlias = str
 Alias: TypeAlias = str
+MemberKind: TypeAlias = str
+MemberVisibility: TypeAlias = str
 
 _SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 _TARGET_PYTHON = re.compile(r"^3\.[0-9]+$")
+_MEMBER_KINDS = frozenset({"field", "method"})
+_MEMBER_VISIBILITIES = frozenset({"public", "protected", "private"})
+_RELATION_TYPES = frozenset({"inherits", "realizes", "composition", "aggregation", "association", "uses"})
+_ANNOTATION_SHAPES = frozenset({"direct", "optional", "union", "collection", "mapping_value"})
 
 
 class CommandName(str, Enum):
@@ -113,9 +119,34 @@ def _ensure_non_empty_string(value: object, field_name: str) -> None:
         raise ValueError(f"{field_name} must be a non-empty str")
 
 
+def _ensure_optional_string(value: object, field_name: str) -> None:
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"{field_name} must be str or None")
+
+
 def _ensure_non_empty_strings(values: tuple[object, ...], field_name: str) -> None:
     for value in values:
         _ensure_non_empty_string(value, field_name)
+
+
+def _ensure_member_kind(value: object) -> None:
+    if value not in _MEMBER_KINDS:
+        raise ValueError("kind must be one of: field, method")
+
+
+def _ensure_member_visibility(value: object) -> None:
+    if value not in _MEMBER_VISIBILITIES:
+        raise ValueError("visibility must be one of: public, protected, private")
+
+
+def _ensure_relation_type(value: object) -> None:
+    if value not in _RELATION_TYPES:
+        raise ValueError("relation_type must be one of: inherits, realizes, composition, aggregation, association, uses")
+
+
+def _ensure_annotation_shape(value: object) -> None:
+    if value is not None and value not in _ANNOTATION_SHAPES:
+        raise ValueError("annotation_shape must be one of: direct, optional, union, collection, mapping_value, None")
 
 
 def _ensure_diagnostics(values: tuple[object, ...], field_name: str) -> None:
@@ -308,12 +339,99 @@ class ClassReference:
     target_name: str
     reference_kind: EvidenceKind
     reference_owner: str
+    annotation_shape: str | None = None
 
     def __post_init__(self) -> None:
         _ensure_non_empty_string(self.source_class_id, "source_class_id")
         _ensure_non_empty_string(self.target_name, "target_name")
         _ensure_non_empty_string(self.reference_kind, "reference_kind")
         _ensure_non_empty_string(self.reference_owner, "reference_owner")
+        _ensure_annotation_shape(self.annotation_shape)
+
+
+@dataclass(frozen=True)
+class MemberParameter:
+    name: str
+    annotation_text: str | None = None
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty_string(self.name, "name")
+        _ensure_optional_string(self.annotation_text, "annotation_text")
+
+
+@dataclass(frozen=True)
+class ClassMember:
+    owner_class_id: ClassId
+    name: str
+    kind: MemberKind
+    visibility: MemberVisibility
+    annotation_text: str | None = None
+    parameters: tuple[MemberParameter, ...] = ()
+    return_annotation_text: str | None = None
+    modifiers: tuple[str, ...] = ()
+    source_order: int = 0
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty_string(self.owner_class_id, "owner_class_id")
+        _ensure_non_empty_string(self.name, "name")
+        _ensure_member_kind(self.kind)
+        _ensure_member_visibility(self.visibility)
+        _ensure_optional_string(self.annotation_text, "annotation_text")
+        parameters = _as_tuple(self.parameters)
+        for parameter in parameters:
+            if not isinstance(parameter, MemberParameter):
+                raise ValueError("parameters must contain MemberParameter values")
+        _ensure_optional_string(self.return_annotation_text, "return_annotation_text")
+        modifiers = _as_tuple(self.modifiers)
+        _ensure_non_empty_strings(modifiers, "modifiers")
+        _ensure_non_negative_int(self.source_order, "source_order")
+        object.__setattr__(self, "parameters", parameters)
+        object.__setattr__(self, "modifiers", modifiers)
+
+
+@dataclass(frozen=True)
+class SelectedRelation:
+    source_class_id: ClassId
+    target_class_id: ClassId
+    relation_type: RelationType
+    evidence_kind: EvidenceKind
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty_string(self.source_class_id, "source_class_id")
+        _ensure_non_empty_string(self.target_class_id, "target_class_id")
+        _ensure_relation_type(self.relation_type)
+        _ensure_non_empty_string(self.evidence_kind, "evidence_kind")
+
+
+@dataclass(frozen=True)
+class SelectedRelations:
+    relations: tuple[SelectedRelation, ...] = ()
+
+    def __post_init__(self) -> None:
+        relations = _as_tuple(self.relations)
+        for relation in relations:
+            if not isinstance(relation, SelectedRelation):
+                raise ValueError("relations must contain SelectedRelation values")
+        object.__setattr__(self, "relations", relations)
+
+
+@dataclass(frozen=True)
+class ClassSpan:
+    class_id: ClassId
+    start_line: int
+    end_line: int
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty_string(self.class_id, "class_id")
+        if (
+            isinstance(self.start_line, bool)
+            or isinstance(self.end_line, bool)
+            or not isinstance(self.start_line, int)
+            or not isinstance(self.end_line, int)
+            or self.start_line < 1
+            or self.end_line < self.start_line
+        ):
+            raise ValueError("class span must be a positive inclusive line range")
 
 
 @dataclass(frozen=True)
@@ -323,6 +441,8 @@ class ParsedModule:
     classes: tuple[ClassId, ...] = ()
     class_references: tuple[ClassReference, ...] = ()
     diagnostics: tuple[Diagnostic, ...] = ()
+    members: tuple[ClassMember, ...] = ()
+    class_spans: tuple[ClassSpan, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.module_path, Path):
@@ -331,16 +451,26 @@ class ParsedModule:
         classes = _as_tuple(self.classes)
         class_references = _as_tuple(self.class_references)
         diagnostics = _as_tuple(self.diagnostics)
+        members = _as_tuple(self.members)
+        class_spans = _as_tuple(self.class_spans)
         _ensure_non_empty_strings(imports, "imports")
         _ensure_non_empty_strings(classes, "classes")
         for class_reference in class_references:
             if not isinstance(class_reference, ClassReference):
                 raise ValueError("class_references must contain ClassReference values")
         _ensure_diagnostics(diagnostics, "diagnostics")
+        for member in members:
+            if not isinstance(member, ClassMember):
+                raise ValueError("members must contain ClassMember values")
+        for class_span in class_spans:
+            if not isinstance(class_span, ClassSpan):
+                raise ValueError("class_spans must contain ClassSpan values")
         object.__setattr__(self, "imports", imports)
         object.__setattr__(self, "classes", classes)
         object.__setattr__(self, "class_references", class_references)
         object.__setattr__(self, "diagnostics", diagnostics)
+        object.__setattr__(self, "members", members)
+        object.__setattr__(self, "class_spans", class_spans)
 
 
 @dataclass(frozen=True)
@@ -390,7 +520,7 @@ class ChangedClassInventory:
 @dataclass(frozen=True)
 class RenderReadyModel:
     classes: tuple[ClassId, ...] = ()
-    members: tuple[str, ...] = ()
+    members: tuple[ClassMember, ...] = ()
     relations: tuple[tuple[ClassId, ClassId, RelationType], ...] = ()
     class_decorations: tuple[tuple[ClassId, str], ...] = ()
     grouping_keys: tuple[GroupingKey, ...] = ()
@@ -404,11 +534,14 @@ class RenderReadyModel:
         grouping_keys = _as_tuple(self.grouping_keys)
         diagnostics = _as_tuple(self.diagnostics)
         _ensure_non_empty_strings(classes, "classes")
-        _ensure_non_empty_strings(members, "members")
+        for member in members:
+            if not isinstance(member, ClassMember):
+                raise ValueError("members must contain ClassMember values")
         _ensure_non_empty_strings(grouping_keys, "grouping_keys")
         for relation in _as_tuple(self.relations):
             relation_tuple = _as_fixed_tuple(relation, 3, "relations", "triples")
             _ensure_non_empty_strings(relation_tuple, "relations")
+            _ensure_relation_type(relation_tuple[2])
             relations.append(relation_tuple)
         for decoration in _as_tuple(self.class_decorations):
             decoration_tuple = _as_fixed_tuple(decoration, 2, "class_decorations", "pairs")
@@ -440,6 +573,7 @@ class DiagramModel:
         for relation in _as_tuple(self.rendered_relations):
             relation_tuple = _as_fixed_tuple(relation, 3, "rendered_relations", "triples")
             _ensure_non_empty_strings(relation_tuple, "rendered_relations")
+            _ensure_relation_type(relation_tuple[2])
             rendered_relations.append(relation_tuple)
         for alias in _as_tuple(self.aliases):
             alias_tuple = _as_fixed_tuple(alias, 2, "aliases", "pairs")
@@ -518,8 +652,10 @@ __all__ = [
     "AnalysisConfig",
     "AnalysisMode",
     "ChangedClassInventory",
+    "ClassMember",
     "ClassReference",
     "ClassId",
+    "ClassSpan",
     "CommandName",
     "CommandOptions",
     "CommandRequest",
@@ -536,6 +672,9 @@ __all__ = [
     "FailureReason",
     "GenerateOptions",
     "GroupingKey",
+    "MemberKind",
+    "MemberParameter",
+    "MemberVisibility",
     "ModulePath",
     "OriginSeam",
     "ParsedModule",
@@ -546,6 +685,8 @@ __all__ = [
     "RenderReadyModel",
     "RunSummary",
     "SelectedClasses",
+    "SelectedRelation",
+    "SelectedRelations",
     "TargetObservations",
     "TargetSet",
 ]

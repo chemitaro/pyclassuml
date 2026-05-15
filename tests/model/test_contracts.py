@@ -6,7 +6,9 @@ import pytest
 from pyclassuml.model import (
     AnalysisConfig,
     AnalysisMode,
+    ClassMember,
     ClassId,
+    ClassSpan,
     ChangedClassInventory,
     CommandName,
     CommandOptions,
@@ -22,6 +24,7 @@ from pyclassuml.model import (
     ExecutionContext,
     FailureReason,
     GenerateOptions,
+    MemberParameter,
     OriginSeam,
     ParsedModule,
     PlantUmlText,
@@ -30,6 +33,8 @@ from pyclassuml.model import (
     RenderReadyModel,
     RunSummary,
     SelectedClasses,
+    SelectedRelation,
+    SelectedRelations,
     TargetObservations,
     TargetSet,
 )
@@ -115,6 +120,146 @@ def test_enum_value_sets_are_exact_contract_domains() -> None:
     }
 
 
+def test_member_contracts_are_public_immutable_and_tuple_coerced() -> None:
+    parameter = MemberParameter(name="amount", annotation_text="Decimal")
+    field = ClassMember(
+        owner_class_id="pkg/order.py:Order",
+        name="customer",
+        kind="field",
+        visibility="public",
+        annotation_text=None,
+        source_order=10,
+    )
+    method = ClassMember(
+        owner_class_id="pkg/order.py:Order",
+        name="total",
+        kind="method",
+        visibility="protected",
+        parameters=[parameter],
+        return_annotation_text=None,
+        modifiers=["classmethod"],
+        source_order=20,
+    )
+
+    assert field.annotation_text is None
+    assert method.parameters == (parameter,)
+    assert method.modifiers == ("classmethod",)
+    with pytest.raises(FrozenInstanceError):
+        method.name = "subtotal"
+
+
+def test_member_collections_coerce_generator_inputs_with_stable_order() -> None:
+    first_parameter = MemberParameter(name="self")
+    second_parameter = MemberParameter(name="amount", annotation_text="Decimal")
+    first_member = ClassMember(
+        owner_class_id="pkg/order.py:Order",
+        name="total",
+        kind="method",
+        visibility="public",
+        parameters=(parameter for parameter in (first_parameter, second_parameter)),
+        modifiers=(modifier for modifier in ("classmethod", "abstractmethod")),
+        source_order=10,
+    )
+    second_member = ClassMember(
+        owner_class_id="pkg/order.py:Order",
+        name="customer",
+        kind="field",
+        visibility="private",
+        source_order=20,
+    )
+    parsed_module = ParsedModule(
+        module_path=Path("pkg/order.py"),
+        classes=["pkg/order.py:Order"],
+        members=(member for member in (first_member, second_member)),
+    )
+    render_ready = RenderReadyModel(
+        classes=["pkg/order.py:Order"],
+        members=(member for member in (second_member, first_member)),
+    )
+
+    assert first_member.parameters == (first_parameter, second_parameter)
+    assert first_member.modifiers == ("classmethod", "abstractmethod")
+    assert parsed_module.members == (first_member, second_member)
+    assert render_ready.members == (second_member, first_member)
+
+
+def test_member_contracts_validate_domains_and_nested_types() -> None:
+    valid_kwargs: dict[str, object] = {
+        "owner_class_id": "pkg/order.py:Order",
+        "name": "total",
+        "kind": "method",
+        "visibility": "public",
+    }
+
+    for field, value in (
+        ("owner_class_id", ""),
+        ("name", ""),
+        ("kind", "property"),
+        ("visibility", "package"),
+        ("annotation_text", 1),
+        ("parameters", ["not-a-parameter"]),
+        ("return_annotation_text", 1),
+        ("modifiers", [""]),
+        ("source_order", -1),
+        ("source_order", True),
+    ):
+        with pytest.raises(ValueError):
+            ClassMember(**{**valid_kwargs, field: value})
+
+    with pytest.raises(ValueError):
+        MemberParameter(name="")
+
+    with pytest.raises(ValueError):
+        MemberParameter(name="amount", annotation_text=1)
+
+
+def test_parsed_module_and_render_ready_model_accept_structured_members() -> None:
+    member = ClassMember(
+        owner_class_id="pkg/order.py:Order",
+        name="total",
+        kind="method",
+        visibility="private",
+        parameters=(MemberParameter("self"),),
+        source_order=1,
+    )
+
+    parsed_module = ParsedModule(
+        module_path=Path("pkg/order.py"),
+        classes=["pkg/order.py:Order"],
+        members=[member],
+    )
+    render_ready = RenderReadyModel(classes=["pkg/order.py:Order"], members=[member])
+
+    assert parsed_module.members == (member,)
+    assert render_ready.members == (member,)
+
+    with pytest.raises(ValueError):
+        ParsedModule(module_path=Path("pkg/order.py"), members=["pkg/order.py:Order.total"])
+
+    with pytest.raises(ValueError):
+        RenderReadyModel(members=["pkg/order.py:Order.total"])
+
+
+def test_selected_relation_contract_is_shared_and_restricts_relation_type() -> None:
+    relation = SelectedRelation(
+        source_class_id="pkg/a.py:A",
+        target_class_id="pkg/b.py:B",
+        relation_type="association",
+        evidence_kind="annotation",
+    )
+    inventory = SelectedRelations(relations=[relation])
+
+    assert inventory.relations == (relation,)
+    for relation_type in ("inherits", "realizes", "composition", "aggregation", "association", "uses"):
+        assert SelectedRelation("pkg/a.py:A", "pkg/b.py:B", relation_type, "evidence")
+
+    with pytest.raises(ValueError):
+        SelectedRelation("pkg/a.py:A", "pkg/b.py:B", "owns", "evidence")
+
+    with pytest.raises(ValueError):
+        SelectedRelations(relations=["not-a-relation"])
+
+
 def test_public_import_surface_and_valid_construction() -> None:
     class_id: ClassId = "pyclassuml.model.contracts:CommandRequest"
     generate_options = GenerateOptions(targets=[Path("src"), "pyclassuml.*"])
@@ -168,12 +313,46 @@ def test_public_import_surface_and_valid_construction() -> None:
     assert SelectedClasses(class_ids=["a:A"])
 
 
+def test_parsed_module_positional_constructor_keeps_class_references_order_compatibility() -> None:
+    class_id = "pkg/order.py:Order"
+    reference = ClassReference(
+        source_class_id=class_id,
+        target_name="Customer",
+        reference_kind="field_annotation",
+        reference_owner="customer",
+    )
+    diagnostic = warning_diagnostic()
+    member = ClassMember(owner_class_id=class_id, name="customer", kind="field", visibility="public", source_order=1)
+
+    parsed_module = ParsedModule(
+        Path("pkg/order.py"),
+        ("decimal",),
+        (class_id,),
+        (reference,),
+        (diagnostic,),
+        (member,),
+        (ClassSpan(class_id, start_line=1, end_line=2),),
+    )
+
+    assert parsed_module.class_references == (reference,)
+    assert parsed_module.diagnostics == (diagnostic,)
+    assert parsed_module.members == (member,)
+    assert parsed_module.class_spans == (ClassSpan(class_id, start_line=1, end_line=2),)
+
+
 def test_class_reference_contract_is_public_and_validated() -> None:
     reference = ClassReference(
         source_class_id="pkg/a.py:A",
         target_name="B",
         reference_kind="annotation_subscript",
         reference_owner="Owner",
+    )
+    field_reference = ClassReference(
+        source_class_id="pkg/a.py:A",
+        target_name="B",
+        reference_kind="field_annotation",
+        reference_owner="field",
+        annotation_shape="collection",
     )
 
     parsed_module = ParsedModule(
@@ -183,6 +362,9 @@ def test_class_reference_contract_is_public_and_validated() -> None:
     )
 
     assert parsed_module.class_references == (reference,)
+    assert field_reference.annotation_shape == "collection"
+    for annotation_shape in ("direct", "optional", "union", "collection", "mapping_value", None):
+        assert ClassReference("pkg/a.py:A", "B", "field_annotation", "field", annotation_shape)
 
     for field in ("source_class_id", "target_name", "reference_kind", "reference_owner"):
         kwargs = {
@@ -201,6 +383,9 @@ def test_class_reference_contract_is_public_and_validated() -> None:
             classes=["pkg/a.py:A"],
             class_references=["not-a-reference"],
         )
+
+    with pytest.raises(ValueError):
+        ClassReference("pkg/a.py:A", "B", "field_annotation", "field", "mapped_key")
 
 
 @pytest.mark.parametrize(
@@ -453,9 +638,15 @@ def test_optional_artifact_result_and_exit_code_contract() -> None:
 
 
 def test_render_and_result_handoff_are_separate_shapes() -> None:
+    member = ClassMember(
+        owner_class_id="a:A",
+        name="field",
+        kind="field",
+        visibility="public",
+    )
     render_ready = RenderReadyModel(
         classes=["a:A"],
-        members=["a:A.field"],
+        members=[member],
         relations=[("a:A", "b:B", "uses")],
         class_decorations=[("a:A", "dataclass")],
         grouping_keys=["package"],

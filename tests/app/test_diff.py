@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import re
 import subprocess
 
 import pytest
@@ -8,6 +9,7 @@ import pyclassuml.app.diff as diff_app
 from pyclassuml.app import run_diff
 from pyclassuml.model import (
     ChangedClassInventory,
+    ClassSpan,
     CommandName,
     CommandOptions,
     CommandRequest,
@@ -15,11 +17,33 @@ from pyclassuml.model import (
     DiffOptions,
     FailureReason,
     GenerateOptions,
+    ParsedModule,
+    SelectedClasses,
 )
+from pyclassuml.parse import ModuleIndex
 from pyclassuml.report import ReportInputs
+from pyclassuml.vcs import ChangedFileEntry, ChangedLineRange
 
 
 TIMESTAMP = datetime(2026, 5, 4, 12, 34, 56)
+
+
+def class_alias(plantuml_text: str, class_name: str) -> str:
+    match = re.search(rf'^\s*class "{re.escape(class_name)}" as (c\d+)', plantuml_text, re.MULTILINE)
+    assert match is not None, f"missing alias declaration for {class_name}"
+    return match.group(1)
+
+
+def assert_relation(plantuml_text: str, source_name: str, arrow: str, target_name: str) -> None:
+    source_alias = class_alias(plantuml_text, source_name)
+    target_alias = class_alias(plantuml_text, target_name)
+    assert f"{source_alias} {arrow} {target_alias}" in plantuml_text
+
+
+def class_declaration(plantuml_text: str, class_name: str) -> str:
+    match = re.search(rf'^\s*class "{re.escape(class_name)}" as c\d+(?: .*)?$', plantuml_text, re.MULTILINE)
+    assert match is not None, f"missing class declaration for {class_name}"
+    return match.group(0)
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -322,6 +346,738 @@ def test_happy_path_writes_artifact_summary_and_does_not_emit_process_streams(
     assert captured.err == ""
 
 
+def test_diff_member_rendering_e2e_covers_changed_class_body_and_alias_relations(
+    tmp_path: Path,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(
+        repo / "pkg" / "checkout.py",
+        "\n".join(
+            [
+                "class CheckoutSnapshot:",
+                "    request_id: str",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "checkout.py",
+        "\n".join(
+            [
+                "class CheckoutSnapshot:",
+                "    request_id: str",
+                '    order: "Order"',
+                "",
+                '    def submit(self, order: "Order") -> "Receipt":',
+                "        return Receipt()",
+                "",
+                "class Order:",
+                "    order_id: str",
+                "",
+                "class Receipt:",
+                "    receipt_id: str",
+            ]
+        ),
+    )
+
+    result = run_diff(
+        diff_request(repo, output=Path("member-diff.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "member-diff.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert 'class "CheckoutSnapshot" as ' in output
+    assert 'class "Order" as ' in output
+    assert 'class "Receipt" as ' in output
+    assert "+ request_id: str" in output
+    assert "+ order: 'Order'" in output
+    assert "+ submit(order: 'Order'): 'Receipt'" in output
+    assert_relation(output, "CheckoutSnapshot", "*--", "Order")
+    assert_relation(output, "CheckoutSnapshot", "..>", "Receipt")
+    assert "seed_file_count: 1" in result.stdout_text
+    assert "changed_class_count: 3" in result.stdout_text
+
+
+def test_diff_e2e_marks_changed_class_and_dependency_only_class(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "customer.py", "class Customer:\n    customer_id: str\n")
+    write_file(
+        repo / "pkg" / "order.py",
+        "\n".join(
+            [
+                "from pkg.customer import Customer",
+                "",
+                "class Order:",
+                "    customer: Customer",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "order.py",
+        "\n".join(
+            [
+                "from pkg.customer import Customer",
+                "",
+                "class Order:",
+                "    customer: Customer",
+                "    status: str",
+            ]
+        ),
+    )
+
+    result = run_diff(
+        diff_request(repo, output=Path("colorized.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "colorized.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "skinparam class {" in output
+    assert "<<DiffChanged>>" in class_declaration(output, "Order")
+    assert "DiffDependency" not in output
+    assert "DiffChanged" not in class_declaration(output, "Customer")
+    assert_relation(output, "Order", "*--", "Customer")
+
+
+def test_diff_colorization_coexists_with_relation_notation_regression_fixture(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(
+        repo / "pkg" / "model.py",
+        "\n".join(
+            [
+                "from typing import Protocol",
+                "",
+                "class Base:",
+                "    pass",
+                "",
+                "class Address:",
+                "    pass",
+                "",
+                "class Line:",
+                "    pass",
+                "",
+                "class Receipt:",
+                "    pass",
+                "",
+                "class Gateway(Protocol):",
+                "    def authorize(self, request: 'Checkout') -> Receipt:",
+                "        ...",
+                "",
+                "class SqlGateway(Gateway):",
+                "    pass",
+                "",
+                "class Checkout(Base):",
+                "    address: Address",
+                "    lines: list[Line]",
+                "    def submit(self) -> Receipt:",
+                "        return Receipt()",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "model.py",
+        (repo / "pkg" / "model.py").read_text(encoding="utf-8").replace(
+            "        ...",
+            "        return Receipt()",
+        ),
+    )
+
+    result = run_diff(
+        diff_request(repo, output=Path("relations.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "relations.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "<<DiffChanged>>" in output
+    assert "<<DiffChanged>> <<Protocol>>" in class_declaration(output, "Gateway")
+    assert_relation(output, "Checkout", "-up-|>", "Base")
+    assert_relation(output, "Checkout", "*--", "Address")
+    assert_relation(output, "Checkout", "o--", "Line")
+    assert_relation(output, "Checkout", "..>", "Receipt")
+    assert_relation(output, "Gateway", "..>", "Checkout")
+    assert_relation(output, "Gateway", "..>", "Receipt")
+    assert_relation(output, "SqlGateway", "..up|>", "Gateway")
+    assert "*-->" not in output
+    assert "o-->" not in output
+
+
+def test_diff_colorized_output_is_deterministic(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "dependency.py", "class Dependency:\n    pass\n")
+    write_file(repo / "pkg" / "changed.py", "from pkg.dependency import Dependency\n\nclass Changed:\n    item: Dependency\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "changed.py",
+        "from pkg.dependency import Dependency\n\nclass Changed:\n    item: Dependency\n    flag: bool\n",
+    )
+
+    first = run_diff(diff_request(repo, output=Path("first.puml")), timestamp=TIMESTAMP)
+    second = run_diff(diff_request(repo, output=Path("second.puml")), timestamp=TIMESTAMP)
+
+    assert first.outcome_kind == "clean_success"
+    assert second.outcome_kind == "clean_success"
+    assert (repo / "first.puml").read_text(encoding="utf-8") == (repo / "second.puml").read_text(encoding="utf-8")
+
+
+def test_diff_e2e_marks_only_class_whose_body_overlaps_changed_hunk(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "class Unchanged:",
+                "    value = 1",
+                "",
+                "class Changed:",
+                "    value = 1",
+                "",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "class Unchanged:",
+                "    value = 1",
+                "",
+                "class Changed:",
+                "    value = 2",
+                "",
+            ]
+        ),
+    )
+
+    result = run_diff(diff_request(repo, output=Path("models.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "models.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.summary.counters["changed_class_count"] == 2
+    assert "<<DiffChanged>>" in class_declaration(output, "Changed")
+    assert "DiffChanged" not in class_declaration(output, "Unchanged")
+
+
+def test_diff_e2e_marks_nested_inner_body_change_without_outer_highlight(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "class Outer:",
+                "    outer_value = 1",
+                "",
+                "    class Inner:",
+                "        value = 1",
+                "",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "class Outer:",
+                "    outer_value = 1",
+                "",
+                "    class Inner:",
+                "        value = 2",
+                "",
+            ]
+        ),
+    )
+
+    result = run_diff(diff_request(repo, output=Path("nested.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "nested.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "<<DiffChanged>>" in class_declaration(output, "Inner")
+    assert "DiffChanged" not in class_declaration(output, "Outer")
+
+
+def test_diff_e2e_marks_class_body_deletion_only_hunk_as_changed(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n    removed = True\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+
+    result = run_diff(diff_request(repo, output=Path("body-deletion.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "body-deletion.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "skinparam class {" in output
+    assert "<<DiffChanged>>" in class_declaration(output, "Model")
+
+
+def test_diff_e2e_module_level_only_change_does_not_emit_diff_changed_style(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "settings.py",
+        "\n".join(
+            [
+                "VALUE = 1",
+                "",
+                "class Settings:",
+                "    name = 'default'",
+                "",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "settings.py",
+        "\n".join(
+            [
+                "VALUE = 2",
+                "",
+                "class Settings:",
+                "    name = 'default'",
+                "",
+            ]
+        ),
+    )
+
+    result = run_diff(diff_request(repo, output=Path("settings.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "settings.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "DiffChanged" not in class_declaration(output, "Settings")
+    assert "skinparam class" not in output
+
+
+def test_diff_e2e_module_level_deletion_only_hunk_does_not_emit_diff_changed_style(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "settings.py",
+        "\n".join(
+            [
+                "VALUE = 1",
+                "",
+                "class Settings:",
+                "    name = 'default'",
+                "",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "settings.py",
+        "\n".join(
+            [
+                "class Settings:",
+                "    name = 'default'",
+                "",
+            ]
+        ),
+    )
+
+    result = run_diff(diff_request(repo, output=Path("settings-deletion.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "settings-deletion.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "DiffChanged" not in class_declaration(output, "Settings")
+    assert "skinparam class" not in output
+
+
+def test_diff_e2e_indented_module_level_deletion_after_class_does_not_emit_diff_changed_style(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n\nVALUES = [\n    1,\n]\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+
+    result = run_diff(diff_request(repo, output=Path("module-deletion-after-class.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "module-deletion-after-class.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "DiffChanged" not in class_declaration(output, "Model")
+    assert "skinparam class" not in output
+
+
+def test_diff_e2e_marks_decorator_only_class_change_as_diff_changed(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "@entity\nclass Model:\n    value = 1\n")
+
+    result = run_diff(diff_request(repo, output=Path("decorator-change.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "decorator-change.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "<<DiffChanged>>" in class_declaration(output, "Model")
+
+
+def test_diff_e2e_marks_decorator_only_class_removal_as_diff_changed(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "@entity\nclass Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+
+    result = run_diff(diff_request(repo, output=Path("decorator-removal.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "decorator-removal.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "<<DiffChanged>>" in class_declaration(output, "Model")
+
+
+def test_diff_e2e_does_not_attach_function_decorator_removal_to_following_class(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "@trace",
+                "def helper(): return 1",
+                "class Model:",
+                "    value = 1",
+                "",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "def helper(): return 1",
+                "class Model:",
+                "    value = 1",
+                "",
+            ]
+        ),
+    )
+
+    result = run_diff(diff_request(repo, output=Path("function-decorator-removal.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "function-decorator-removal.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "DiffChanged" not in class_declaration(output, "Model")
+    assert "skinparam class" not in output
+
+
+def test_diff_e2e_does_not_attach_deleted_decorated_helper_to_class_moved_to_file_start(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "@trace",
+                "def helper():",
+                "    return 1",
+                "",
+                "class Model:",
+                "    value = 1",
+                "",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "class Model:",
+                "    value = 1",
+                "",
+            ]
+        ),
+    )
+
+    result = run_diff(diff_request(repo, output=Path("deleted-helper.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "deleted-helper.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "DiffChanged" not in class_declaration(output, "Model")
+    assert "skinparam class" not in output
+
+
+def test_diff_class_decorations_excludes_unselected_changed_classes() -> None:
+    selected_id = "pkg/selected.py:Selected"
+    hidden_id = "pkg/hidden.py:Hidden"
+    decorations = diff_app._diff_class_decorations(
+        (ChangedFileEntry("pkg/hidden.py", "added"),),
+        (
+            ParsedModule(Path("pkg/selected.py"), classes=(selected_id,)),
+            ParsedModule(Path("pkg/hidden.py"), classes=(hidden_id,)),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={
+                Path("pkg/selected.py"): Path("pkg/selected.py"),
+                Path("pkg/hidden.py"): Path("pkg/hidden.py"),
+            },
+            class_to_module={
+                selected_id: Path("pkg/selected.py"),
+                hidden_id: Path("pkg/hidden.py"),
+            },
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(selected_id,)),
+    )
+
+    assert decorations == ()
+
+
+def test_diff_class_decorations_marks_only_selected_class_with_overlapping_changed_range() -> None:
+    changed_id = "pkg/models.py:Changed"
+    unchanged_id = "pkg/models.py:Unchanged"
+    decorations = diff_app._diff_class_decorations(
+        (
+            ChangedFileEntry(
+                "pkg/models.py",
+                "modified",
+                current_changed_line_ranges=(ChangedLineRange(start=6, end=6),),
+            ),
+        ),
+        (
+            ParsedModule(
+                Path("pkg/models.py"),
+                classes=(changed_id, unchanged_id),
+                class_spans=(
+                    ClassSpan(unchanged_id, start_line=1, end_line=2),
+                    ClassSpan(changed_id, start_line=4, end_line=6),
+                ),
+            ),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/models.py"): Path("pkg/models.py")},
+            class_to_module={
+                changed_id: Path("pkg/models.py"),
+                unchanged_id: Path("pkg/models.py"),
+            },
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(changed_id, unchanged_id)),
+    )
+
+    assert decorations == ((changed_id, "DiffChanged"),)
+
+
+def test_diff_class_decorations_prefers_innermost_nested_class_for_changed_range() -> None:
+    outer_id = "pkg/models.py:Outer"
+    inner_id = "pkg/models.py:Outer.Inner"
+    decorations = diff_app._diff_class_decorations(
+        (
+            ChangedFileEntry(
+                "pkg/models.py",
+                "modified",
+                current_changed_line_ranges=(ChangedLineRange(start=5, end=5),),
+            ),
+        ),
+        (
+            ParsedModule(
+                Path("pkg/models.py"),
+                classes=(outer_id, inner_id),
+                class_spans=(
+                    ClassSpan(outer_id, start_line=1, end_line=5),
+                    ClassSpan(inner_id, start_line=4, end_line=5),
+                ),
+            ),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/models.py"): Path("pkg/models.py")},
+            class_to_module={
+                outer_id: Path("pkg/models.py"),
+                inner_id: Path("pkg/models.py"),
+            },
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(outer_id, inner_id)),
+    )
+
+    assert decorations == ((inner_id, "DiffChanged"),)
+
+
+def test_diff_class_decorations_does_not_attach_function_decorator_deletion_to_following_class() -> None:
+    model_id = "pkg/models.py:Model"
+    decorations = diff_app._diff_class_decorations(
+        (
+            ChangedFileEntry(
+                "pkg/models.py",
+                "modified",
+                current_changed_line_ranges=(
+                    ChangedLineRange(
+                        start=1,
+                        end=1,
+                        is_deletion_only=True,
+                        deleted_lines=("@trace",),
+                        is_before_first_line_deletion=True,
+                    ),
+                ),
+            ),
+        ),
+        (
+            ParsedModule(
+                Path("pkg/models.py"),
+                classes=(model_id,),
+                class_spans=(ClassSpan(model_id, start_line=2, end_line=3),),
+            ),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/models.py"): Path("pkg/models.py")},
+            class_to_module={model_id: Path("pkg/models.py")},
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(model_id,)),
+        {Path("pkg/models.py"): ("def helper(): return 1", "class Model:", "    value = 1")},
+    )
+
+    assert decorations == ()
+
+
+def test_diff_class_decorations_keeps_class_decorator_deletion_after_function() -> None:
+    model_id = "pkg/models.py:Model"
+    decorations = diff_app._diff_class_decorations(
+        (
+            ChangedFileEntry(
+                "pkg/models.py",
+                "modified",
+                current_changed_line_ranges=(
+                    ChangedLineRange(start=1, end=1, is_deletion_only=True, deleted_lines=("@entity",)),
+                ),
+            ),
+        ),
+        (
+            ParsedModule(
+                Path("pkg/models.py"),
+                classes=(model_id,),
+                class_spans=(ClassSpan(model_id, start_line=2, end_line=3),),
+            ),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/models.py"): Path("pkg/models.py")},
+            class_to_module={model_id: Path("pkg/models.py")},
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(model_id,)),
+        {Path("pkg/models.py"): ("def helper(): return 1", "class Model:", "    value = 1")},
+    )
+
+    assert decorations == ((model_id, "DiffChanged"),)
+
+
+def test_diff_class_decorations_do_not_fabricate_changed_class_on_join_miss() -> None:
+    selected_id = "pkg/other.py:Other"
+    decorations = diff_app._diff_class_decorations(
+        (ChangedFileEntry("pkg/broken.py", "modified", current_changed_line_ranges=(ChangedLineRange(1, 1),)),),
+        (ParsedModule(Path("pkg/other.py"), classes=(selected_id,)),),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/other.py"): Path("pkg/other.py")},
+            class_to_module={selected_id: Path("pkg/other.py")},
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(selected_id,)),
+    )
+
+    assert decorations == ()
+
+
+def test_diff_syntax_error_preserves_diagnostics_and_emits_no_fabricated_diff_changed(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "broken.py", "class Broken:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "broken.py", "class Broken(:\n")
+
+    result = run_diff(
+        diff_request(repo, output=Path("broken.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "strict_promoted_failure"
+    assert result.command_result.summary.counters["changed_class_count"] == 0
+    assert "error:bad_syntax:" in result.stderr_text
+    assert "error:render_selected_class_missing:" not in result.stderr_text
+    assert not (repo / "broken.puml").exists()
+
+
+def test_diff_changed_python_file_without_classes_preserves_failure_and_emits_no_diff_style(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "constants.py", "VALUE = 1\n\ndef helper() -> int:\n    return VALUE\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "constants.py", "VALUE = 2\n\ndef helper() -> int:\n    return VALUE\n")
+    calls: dict[str, object] = {}
+    original_render = diff_app.render_uml_document
+
+    def render_spy(*args: object, **kwargs: object):
+        calls["class_decorations"] = kwargs.get("class_decorations")
+        return original_render(*args, **kwargs)
+
+    monkeypatch.setattr(diff_app, "render_uml_document", render_spy)
+
+    result = run_diff(
+        diff_request(repo, output=Path("constants.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "degraded_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.DIAGRAM_UNBUILDABLE_AFTER_RECOVERY
+    assert result.command_result.summary.counters["seed_file_count"] == 1
+    assert result.command_result.summary.counters["changed_class_count"] == 0
+    assert result.command_result.diagnostics == ()
+    assert calls["class_decorations"] == ()
+    assert result.stdout_text == ""
+    assert "failure_reason: diagram_unbuildable_after_recovery" in result.stderr_text
+    assert "DiffChanged" not in result.stderr_text
+    assert "skinparam class" not in result.stderr_text
+    assert not (repo / "constants.puml").exists()
+
+
 def test_working_tree_include_untracked_includes_untracked_python_in_seed_changed_and_report(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -352,9 +1108,73 @@ def test_working_tree_include_untracked_includes_untracked_python_in_seed_change
     assert "changed_class_count: 2" in result.stdout_text
     assert 'class "Tracked"' in artifact_text
     assert 'class "Untracked"' in artifact_text
+    assert "skinparam class {" in artifact_text
+    assert "<<DiffChanged>>" in class_declaration(artifact_text, "Tracked")
+    assert "<<DiffChanged>>" in class_declaration(artifact_text, "Untracked")
+    assert "<<DiffDependency>>" not in class_declaration(artifact_text, "Untracked")
     assert result.stderr_text == ""
     assert captured.out == ""
     assert captured.err == ""
+
+
+def test_head_current_state_colors_head_changed_class_and_dependency_only_without_untracked(
+    tmp_path: Path,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "dependency.py", "class Dependency:\n    dependency_id: str\n")
+    write_file(
+        repo / "pkg" / "service.py",
+        "\n".join(
+            [
+                "from pkg.dependency import Dependency",
+                "",
+                "class Service:",
+                "    dependency: Dependency",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "service.py",
+        "\n".join(
+            [
+                "from pkg.dependency import Dependency",
+                "",
+                "class Service:",
+                "    dependency: Dependency",
+                "    version: str",
+            ]
+        ),
+    )
+    commit_all(repo, "head")
+    write_file(repo / "pkg" / "untracked.py", "class Untracked:\n    pass\n")
+
+    result = run_diff(
+        diff_request(
+            repo,
+            current_state=DiffCurrentState.HEAD,
+            include_untracked=True,
+            output=Path("head-colorized.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "head-colorized.puml").read_text(encoding="utf-8")
+    service_declaration = class_declaration(output, "Service")
+    dependency_declaration = class_declaration(output, "Dependency")
+    assert result.outcome_kind == "warning_only_success"
+    assert result.command_result.summary.counters["seed_file_count"] == 1
+    assert result.command_result.summary.counters["changed_class_count"] == 1
+    assert "warning:head_untracked_noop:" in result.stdout_text
+    assert "skinparam class {" in output
+    assert "<<DiffChanged>>" in service_declaration
+    assert "<<DiffDependency>>" not in service_declaration
+    assert "<<DiffDependency>>" not in dependency_declaration
+    assert "<<DiffChanged>>" not in dependency_declaration
+    assert 'class "Untracked"' not in output
+    assert_relation(output, "Service", "*--", "Dependency")
 
 
 def test_working_tree_default_excludes_untracked_python_from_seed_changed_and_report(

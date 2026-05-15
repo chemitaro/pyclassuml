@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyclassuml.analyze.selection import SelectedRelation, SelectedRelations
 from pyclassuml.model import (
     ClassId,
     Diagnostic,
@@ -13,6 +12,8 @@ from pyclassuml.model import (
     ParsedModule,
     Recoverability,
     SelectedClasses,
+    SelectedRelation,
+    SelectedRelations,
 )
 from pyclassuml.parse import ModuleIndex
 

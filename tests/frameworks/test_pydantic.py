@@ -4,6 +4,7 @@ from pyclassuml.analyze.selection import SelectedRelation, SelectedRelations
 from pyclassuml.frameworks.pydantic import extract_pydantic_enrichment_hints
 from pyclassuml.model import (
     AnalysisConfig,
+    ClassMember,
     ClassReference,
     DiagnosticSeverity,
     ExecutionContext,
@@ -94,6 +95,16 @@ def test_parse_to_pydantic_handoff_adds_direct_forward_ref_hint(tmp_path: Path) 
     )
     parse_result = parse_target_set(target_set(seed), context(project, package_root=package), AnalysisConfig())
 
+    assert parse_result.parsed_modules[0].members == (
+        ClassMember(
+            owner_class_id="pkg/models.py:A",
+            name="child",
+            kind="field",
+            visibility="public",
+            annotation_text="'B'",
+            source_order=1,
+        ),
+    )
     hints = extract_pydantic_enrichment_hints(
         parsed_modules=parse_result.parsed_modules,
         module_index=parse_result.module_index,
@@ -228,6 +239,86 @@ def test_parse_to_pydantic_handoff_adds_subscript_forward_ref_hints(tmp_path: Pa
     assert hints.warning_diagnostics == ()
 
 
+def test_parse_to_pydantic_handoff_resolves_whole_string_container_forward_refs(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    package = project / "pkg"
+    seed = write_file(
+        package / "models.py",
+        "\n".join(
+            [
+                "from pydantic import BaseModel",
+                "class A(BaseModel):",
+                "    items: \"list['Item']\"",
+                "    maybe: \"Optional[Item]\"",
+                "    label: \"Literal['ignored']\"",
+                "class Item:",
+                "    pass",
+            ]
+        ),
+    )
+    parse_result = parse_target_set(target_set(seed), context(project, package_root=package), AnalysisConfig())
+
+    hints = extract_pydantic_enrichment_hints(
+        parsed_modules=parse_result.parsed_modules,
+        module_index=parse_result.module_index,
+        selected_classes=SelectedClasses(class_ids=("pkg/models.py:A", "pkg/models.py:Item")),
+        selected_relations=SelectedRelations(),
+    )
+
+    assert hints.added_relations == (
+        SelectedRelation(
+            source_class_id="pkg/models.py:A",
+            target_class_id="pkg/models.py:Item",
+            relation_type="uses",
+            evidence_kind="pydantic_forward_ref",
+        ),
+    )
+    assert hints.warning_diagnostics == ()
+
+
+def test_parse_to_pydantic_handoff_resolves_whole_string_union_forward_refs(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    package = project / "pkg"
+    seed = write_file(
+        package / "models.py",
+        "\n".join(
+            [
+                "from pydantic import BaseModel",
+                "class Model(BaseModel):",
+                "    choice: \"Union[A, B]\"",
+                "class A:",
+                "    pass",
+                "class B:",
+                "    pass",
+            ]
+        ),
+    )
+    parse_result = parse_target_set(target_set(seed), context(project, package_root=package), AnalysisConfig())
+
+    hints = extract_pydantic_enrichment_hints(
+        parsed_modules=parse_result.parsed_modules,
+        module_index=parse_result.module_index,
+        selected_classes=SelectedClasses(class_ids=("pkg/models.py:Model", "pkg/models.py:A", "pkg/models.py:B")),
+        selected_relations=SelectedRelations(),
+    )
+
+    assert hints.added_relations == (
+        SelectedRelation(
+            source_class_id="pkg/models.py:Model",
+            target_class_id="pkg/models.py:A",
+            relation_type="uses",
+            evidence_kind="pydantic_forward_ref",
+        ),
+        SelectedRelation(
+            source_class_id="pkg/models.py:Model",
+            target_class_id="pkg/models.py:B",
+            relation_type="uses",
+            evidence_kind="pydantic_forward_ref",
+        ),
+    )
+    assert hints.warning_diagnostics == ()
+
+
 def test_parse_to_pydantic_handoff_adds_nested_model_forward_ref_hint(tmp_path: Path) -> None:
     project = tmp_path / "project"
     package = project / "pkg"
@@ -355,6 +446,93 @@ def test_direct_quoted_forward_ref_adds_selected_relation_hint() -> None:
             evidence_kind="pydantic_forward_ref",
         ),
     )
+    assert hints.warning_diagnostics == ()
+
+
+def test_analyze_association_suppresses_duplicate_pydantic_forward_ref_use() -> None:
+    hints = extract_pydantic_enrichment_hints(
+        parsed_modules=(
+            parsed_module(
+                base_reference(),
+                ClassReference(
+                    source_class_id="pkg/models.py:A",
+                    target_name="B",
+                    reference_kind="field_annotation",
+                    reference_owner="child",
+                ),
+                annotation_reference(target_name="B"),
+            ),
+        ),
+        module_index=module_index("pkg/models.py:A", "pkg/models.py:B"),
+        selected_classes=SelectedClasses(class_ids=("pkg/models.py:A", "pkg/models.py:B")),
+        selected_relations=SelectedRelations(
+            (
+                SelectedRelation(
+                    source_class_id="pkg/models.py:A",
+                    target_class_id="pkg/models.py:B",
+                    relation_type="association",
+                    evidence_kind="field_annotation",
+                ),
+            )
+        ),
+    )
+
+    assert hints.added_relations == ()
+    assert hints.warning_diagnostics == ()
+
+
+def test_selected_inherits_endpoint_suppresses_duplicate_pydantic_forward_ref_use() -> None:
+    hints = extract_pydantic_enrichment_hints(
+        parsed_modules=(
+            parsed_module(
+                base_reference(),
+                ClassReference(
+                    source_class_id="pkg/models.py:A",
+                    target_name="B",
+                    reference_kind="field_annotation",
+                    reference_owner="child",
+                ),
+                annotation_reference(target_name="B"),
+            ),
+        ),
+        module_index=module_index("pkg/models.py:A", "pkg/models.py:B"),
+        selected_classes=SelectedClasses(class_ids=("pkg/models.py:A", "pkg/models.py:B")),
+        selected_relations=SelectedRelations(
+            (
+                SelectedRelation(
+                    source_class_id="pkg/models.py:A",
+                    target_class_id="pkg/models.py:B",
+                    relation_type="inherits",
+                    evidence_kind="class_base",
+                ),
+            )
+        ),
+    )
+
+    assert hints.added_relations == ()
+    assert hints.warning_diagnostics == ()
+
+
+def test_semantic_field_evidence_suppresses_duplicate_pydantic_warning() -> None:
+    hints = extract_pydantic_enrichment_hints(
+        parsed_modules=(
+            parsed_module(
+                base_reference(),
+                ClassReference(
+                    source_class_id="pkg/models.py:A",
+                    target_name="Missing",
+                    reference_kind="field_annotation",
+                    reference_owner="child",
+                ),
+                annotation_reference(target_name="Missing"),
+            ),
+        ),
+        module_index=module_index("pkg/models.py:A"),
+        selected_classes=SelectedClasses(class_ids=("pkg/models.py:A",)),
+        selected_relations=SelectedRelations(),
+    )
+
+    assert hints.added_relations == ()
     assert hints.warning_diagnostics == ()
 
 

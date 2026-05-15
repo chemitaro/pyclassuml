@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00032",
+  "title": "Render Composition And Aggregation From Field Types",
+  "slug": "render-composition-aggregation-from-field-types",
+  "created_at": "2026-05-05T01:36:29+09:00",
+  "updated_at": "2026-05-05T01:36:29+09:00",
+  "parent_id": "epic-00031",
+  "initiative_id": "init-00001",
+  "epic_id": "epic-00031",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 32,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  }
+}

@@ -13,7 +13,8 @@ ID: "iss-00028"
 
 ## 目的
 - epic-00023 の outcome を CLI generate / diff と manual environment で end-to-end に検証し、member-aware output が実利用に耐えることを示す。
-- `build/manual-tests/pyclassuml-manual-env/retail_domain` を使い、Pydantic `BaseModel`、dataclass、Protocol、exception、nested / ambiguous / unresolved refs を最終 acceptance に含める。
+- `build/manual-tests/pyclassuml-manual-env/retail_domain` を使い、Pydantic `BaseModel`、dataclass、Protocol、exception、ambiguous / unresolved refs を manual acceptance に含める。
+- nested class は tracked integration fixture で必須 acceptance とし、manual env では既存 `retail_domain` に存在する場合だけ追加観測として report に残す。
 
 ## 背景・現状
 - 現状の挙動:
@@ -42,7 +43,8 @@ ID: "iss-00028"
 - MUST:
   - tracked integration test で class body / typed relation / warnings を検証する。
   - `build/manual-tests/pyclassuml-manual-env/retail_domain` を使った manual acceptance を実施する。
-  - Pydantic `BaseModel`, dataclass, Protocol, exception, nested / ambiguous / unresolved refs を acceptance に含める。
+  - Pydantic `BaseModel`, dataclass, Protocol, exception, ambiguous / unresolved refs を manual acceptance に含める。
+  - nested class は tracked integration acceptance に含める。
   - final acceptance では `.puml` に class body、method signatures、field relations、inherits relation、warnings が観測できることを要求する。
 - MUST NOT:
   - manual environment を Git 管理下の fixture として書き換えない。
@@ -102,7 +104,9 @@ ID: "iss-00028"
   - When:
     - manual `generate` / `diff` を実行する。
   - Then:
-    - `domain`, `api`, `application`, `infra` をまたぐ class body / relation / warnings が観測できる。
+    - manual `generate` で `domain`, `api`, `application`, `infra` をまたぐ class body / relation / warnings が観測できる。
+    - manual `diff` で disposable copy の changed class body、selection-outside / unresolved warning、stdout summary が観測できる。
+    - diff path の relation arrow は tracked diff integration test で観測できる。
   - 観測点:
     - manual output `.puml`
 - AC-004:
@@ -113,7 +117,9 @@ ID: "iss-00028"
   - When:
     - integration / manual acceptance を行う。
   - Then:
-    - warning が summary / failure handoff / `.puml` context から確認できる。
+    - unresolved / ambiguous warning は CLI stdout summary の diagnostics で確認できる。
+    - `.puml` は warning source の class body context を補助的に確認する。
+    - failure handoff はこの issue では必須にしない。warning-only success を acceptance とする。
   - 観測点:
     - tracked tests、manual output、CLI stderr / stdout summary
 

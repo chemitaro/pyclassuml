@@ -130,12 +130,19 @@ compose --> failure
     - class / alias / relation / container order だけを決める
   - `render_plantuml_text(render_ready_model, diagram_model) -> PlantUmlText`
     - member line helper を使って class body を組み立てる
+    - memberless class は `class "Name" as alias` の one-line syntax を維持する
+    - member を 1 件以上持つ class は `class "Name" as alias {`、2-space indented member lines、`  }` で閉じる
   - arrow mapping:
     - `inherits -> --|>`
     - `association -> -->`
     - `uses -> ..>`
+  - modifier prefix placement:
+    - visibility symbol の後ろ、signature の前に置く
   - modifier prefix order:
     - `{static}`, `{class}`, `{property}`, `{async}`
+  - unsupported modifier:
+    - render output には出さない
+    - duplicate modifier は 1 回に dedupe する
 
 ## Sequence Delta（必要時）
 - changed interaction:
@@ -156,10 +163,17 @@ compose --> failure
     - field without type -> `+ name`
     - method with return -> `+ name(args): Return`
     - method without return -> `+ name(args)`
+    - zero-parameter method -> `+ name()`
+    - untyped parameter -> `name`
+    - typed parameter -> `name: Type`
+    - mixed parameters -> DTO parameter order, comma+space joined
+    - modifiers -> `+ {static} {async} name()` style, after visibility and before name
+    - escaping -> quote/backslash escape via `_escape_plantuml`; newline is normalized to a single space before escaping
 - invariant changes:
   - member order is class-local source order
   - alias order is class id sort
   - relation order is typed relation sort
+  - class body order is selected class id order, then member `source_order`, then `kind`, then `name`
 - UML:
   - N/A
 
@@ -188,6 +202,7 @@ tests/render/test_document.py             # Modify: class body / arrow mapping /
 - EC-002 -> method without return rendering rule
 - EC-003 -> empty body + relation-only rendering
 - EC-004 -> modifier prefix order
+- EC-005 -> member segment escaping and newline normalization
 - constraint -> no filesystem write / no reclassification
 
 ## テスト戦略
@@ -213,6 +228,7 @@ tests/render/test_document.py             # Modify: class body / arrow mapping /
 - EC-002 -> method without return fixture
 - EC-003 -> relation-only fixture
 - EC-004 -> modifier ordering fixture
+- EC-005 -> member escaping fixture
 - constraint -> no summary / no write review
 
 ## リスク / 移行 / ロールバック（必要時）

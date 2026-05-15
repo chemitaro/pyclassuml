@@ -47,6 +47,12 @@ ID: "iss-00025"
   - `__init__` の direct `self.x = value` assignment から instance field member を抽出する。
   - base class reference、field annotation reference、method parameter / return annotation reference を downstream で区別可能な形で保持する。
   - member と reference の順序を source-order deterministic にする。
+  - typed relation 用の semantic `ClassReference` は次の語彙で固定する。
+    - base class: `reference_kind="class_base"`, `reference_owner="base"`
+    - class-level field annotation: `reference_kind="field_annotation"`, `reference_owner="<field_name>"`
+    - `__init__` parameter-derived instance field annotation: `reference_kind="init_field_annotation"`, `reference_owner="<field_name>"`
+    - method parameter annotation: `reference_kind="method_parameter_annotation"`, `reference_owner="<method_name>.<parameter_name>"`
+    - method return annotation: `reference_kind="method_return_annotation"`, `reference_owner="<method_name>"`
 - MUST NOT:
   - runtime import や annotation evaluation を行わない。
   - 一般メソッド body の汎用 data-flow 解析を行わない。
@@ -61,6 +67,8 @@ ID: "iss-00025"
   - parse owner は syntactic evidence の抽出に限定し、relation type の決定は行わない。
   - `__init__` では direct `self.<name>` assignment のみを見る。
   - class-local source order を `ClassMember.source_order` に固定する。
+  - `ClassReference` emission order は source position を第一キーにし、同一位置では `source_class_id`, `reference_kind`, `reference_owner`, `target_name` の stable order にする。
+  - typed reference は semantic 語彙を正本にし、既存 framework compatibility 用の `annotation_string` / `annotation_subscript` / `call_string_arg` は必要な範囲で維持してよい。
 - Ask:
   - property を field として扱いたい場合。
   - `__init__` 以外の method body assignment まで広げたい場合。
@@ -119,6 +127,10 @@ ID: "iss-00025"
     - parse を行う。
   - Then:
     - field member と downstream typed relation の両方に使える evidence が handoff される。
+    - quoted annotation は relation target extraction では quote を外した class-like name として扱う。
+    - `list["Item"]` / `Optional["Item"]` / `Union["A", "B"]` などの container 内 quoted ref は container を実行せず AST から内部 target を抽出する。
+    - Pydantic `BaseModel` recognition は syntactic evidence のみで行い、`BaseModel` / `pydantic.BaseModel` の base class reference を eligibility evidence とする。
+    - field extraction 自体は Pydantic 専用ではなく、全 class-level annotation に対して generic に行う。
   - 観測点:
     - Pydantic parse tests
 
@@ -127,7 +139,9 @@ ID: "iss-00025"
   - 条件:
     - unsupported annotation syntax で stable text 化できない。
   - 期待:
-    - member は保持し、該当 annotation text は `None` 相当に degrade し、必要なら warning を追加する。
+    - member は保持し、該当 annotation text は `None` 相当に degrade する。
+    - `ast.unparse` などの stable text 化が例外で失敗した場合は、`ParsedModule.diagnostics` に warning diagnostic を追加する。
+    - diagnostic は `code="annotation_text_unavailable"`, `severity=WARNING`, `origin_seam=PARSE`, `recoverability=DEGRADED_OUTPUT`, `failure_reason=None` とする。
   - 観測点:
     - parse degraded fixture
 - EC-002:
@@ -174,6 +188,9 @@ ID: "iss-00025"
 - TERM-002:
   - unsupported annotation:
     - stable text / reference extraction ができないが module 全体 failure にはしない annotation
+- TERM-003:
+  - class-like quoted ref:
+    - string literal annotation のうち `Item`, `pkg.Item`, `list["Item"]`, `Optional["Item"]`, `Union["A", "B"]` のように class target として抽出できる name。`Literal["value"]` は class-like target から除外する。
 
 ## 未確定事項
 - なし:

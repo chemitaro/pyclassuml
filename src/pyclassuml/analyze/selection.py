@@ -8,37 +8,55 @@ from pathlib import Path
 from pyclassuml.analyze.traversal import TraversalObservations
 from pyclassuml.model import (
     ClassId,
+    ClassReference,
     DependencyGraph,
     Diagnostic,
     DiagnosticSeverity,
-    EvidenceKind,
     OriginSeam,
     ParsedModule,
     Recoverability,
-    RelationType,
     SelectedClasses,
+    SelectedRelation,
+    SelectedRelations,
 )
 from pyclassuml.parse import ModuleIndex
 
 
-@dataclass(frozen=True)
-class SelectedRelation:
-    """A selected class-to-class relation with its core evidence kind."""
-
-    source_class_id: ClassId
-    target_class_id: ClassId
-    relation_type: RelationType
-    evidence_kind: EvidenceKind
-
-
-@dataclass(frozen=True)
-class SelectedRelations:
-    """Relation inventory produced by the analyze selection seam."""
-
-    relations: tuple[SelectedRelation, ...] = ()
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "relations", tuple(self.relations))
+_RELATION_TYPE_PRIORITY = {
+    "inherits": 0,
+    "realizes": 0,
+    "composition": 1,
+    "aggregation": 2,
+    "association": 3,
+    "uses": 4,
+}
+_EVIDENCE_KIND_PRIORITY = {
+    "inherits": {
+        "class_base": 0,
+    },
+    "realizes": {
+        "class_base": 0,
+    },
+    "composition": {
+        "field_annotation": 0,
+        "init_field_annotation": 1,
+    },
+    "aggregation": {
+        "field_annotation": 0,
+        "init_field_annotation": 1,
+    },
+    "association": {
+        "field_annotation": 0,
+        "init_field_annotation": 1,
+        "pydantic_forward_ref": 2,
+    },
+    "uses": {
+        "method_parameter_annotation": 0,
+        "method_return_annotation": 1,
+        "module_import": 2,
+        "pydantic_forward_ref": 3,
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -74,12 +92,10 @@ def select_classes_and_relations(
 ) -> SelectionResult:
     """Select renderable classes and accepted module-import relations."""
 
-    del module_index
-
     reachable_files = set(graph.reachable_files)
     module_by_path = {module.module_path: module for module in parsed_modules}
     selected_class_ids: set[ClassId] = set()
-    relations: set[SelectedRelation] = set()
+    relation_candidates: list[SelectedRelation] = []
     diagnostics: list[Diagnostic] = []
 
     for seed_path in sorted(traversal_observations.seed_project_relative_paths):
@@ -110,7 +126,7 @@ def select_classes_and_relations(
 
         source_class_id = source_classes[0]
         target_class_id = target_classes[0]
-        relations.add(
+        relation_candidates.append(
             SelectedRelation(
                 source_class_id=source_class_id,
                 target_class_id=target_class_id,
@@ -121,7 +137,45 @@ def select_classes_and_relations(
         selected_class_ids.add(source_class_id)
         selected_class_ids.add(target_class_id)
 
-    sorted_relations = tuple(sorted(relations, key=_relation_sort_key))
+    protocol_class_ids = _selected_protocol_class_ids(
+        parsed_modules=parsed_modules,
+        module_index=module_index,
+        selected_class_ids=selected_class_ids,
+    )
+    module_by_path = {module.module_path: module for module in parsed_modules}
+
+    for reference in _typed_relation_references(parsed_modules):
+        relation_type = _relation_type_for_reference(reference)
+        if relation_type is None:
+            continue
+        if reference.source_class_id not in selected_class_ids:
+            continue
+        if _is_qualified_protocol_marker_base_reference(reference):
+            continue
+        if _is_imported_bare_protocol_marker_base_reference(
+            reference=reference,
+            module_index=module_index,
+            module_by_path=module_by_path,
+        ):
+            continue
+        resolved = _resolve_typed_relation_target(
+            reference=reference,
+            module_index=module_index,
+            selected_class_ids=selected_class_ids,
+        )
+        if isinstance(resolved, Diagnostic):
+            diagnostics.append(resolved)
+            continue
+        relation_candidates.append(
+            SelectedRelation(
+                source_class_id=reference.source_class_id,
+                target_class_id=resolved,
+                relation_type=_realized_relation_type(relation_type, resolved, protocol_class_ids),
+                evidence_kind=reference.reference_kind,
+            )
+        )
+
+    sorted_relations = tuple(sorted(_normalize_relations(relation_candidates), key=_relation_sort_key))
     sorted_diagnostics = tuple(sorted(diagnostics, key=_diagnostic_sort_key))
     selected_classes = SelectedClasses(class_ids=tuple(sorted(selected_class_ids)))
     selected_relations = SelectedRelations(relations=sorted_relations)
@@ -166,10 +220,277 @@ def _ambiguous_relation_endpoint_diagnostic(
     )
 
 
-def _relation_sort_key(relation: SelectedRelation) -> tuple[str, str, str, str]:
+def _typed_relation_references(parsed_modules: tuple[ParsedModule, ...]) -> tuple[ClassReference, ...]:
+    return tuple(reference for module in parsed_modules for reference in module.class_references)
+
+
+def _selected_protocol_class_ids(
+    *,
+    parsed_modules: tuple[ParsedModule, ...],
+    module_index: ModuleIndex,
+    selected_class_ids: set[ClassId],
+) -> frozenset[ClassId]:
+    protocol_class_ids: set[ClassId] = set()
+    module_by_path = {module.module_path: module for module in parsed_modules}
+    for reference in _typed_relation_references(parsed_modules):
+        if reference.source_class_id not in selected_class_ids:
+            continue
+        if _is_qualified_protocol_marker_base_reference(reference):
+            protocol_class_ids.add(reference.source_class_id)
+            continue
+        if not _is_bare_protocol_marker_base_reference(reference):
+            continue
+        if _is_imported_bare_protocol_marker_base_reference(
+            reference=reference,
+            module_index=module_index,
+            module_by_path=module_by_path,
+        ):
+            protocol_class_ids.add(reference.source_class_id)
+            continue
+    return frozenset(protocol_class_ids)
+
+
+def _relation_type_for_reference(reference: ClassReference) -> str | None:
+    if reference.reference_kind == "class_base" and reference.reference_owner == "base":
+        return "inherits"
+    if reference.reference_kind in {"field_annotation", "init_field_annotation"}:
+        if reference.annotation_shape == "direct":
+            return "composition"
+        if reference.annotation_shape in {"optional", "union", "collection", "mapping_value"}:
+            return "aggregation"
+        return "association"
+    if reference.reference_kind in {"method_parameter_annotation", "method_return_annotation"}:
+        return "uses"
+    return None
+
+
+def _realized_relation_type(
+    relation_type: str,
+    target_class_id: ClassId,
+    protocol_class_ids: frozenset[ClassId],
+) -> str:
+    if relation_type == "inherits" and target_class_id in protocol_class_ids:
+        return "realizes"
+    return relation_type
+
+
+def _is_qualified_protocol_marker_base_reference(reference: ClassReference) -> bool:
+    return (
+        reference.reference_kind == "class_base"
+        and reference.reference_owner == "base"
+        and reference.target_name in {"typing.Protocol", "typing_extensions.Protocol"}
+    )
+
+
+def _is_bare_protocol_marker_base_reference(reference: ClassReference) -> bool:
+    return (
+        reference.reference_kind == "class_base"
+        and reference.reference_owner == "base"
+        and reference.target_name == "Protocol"
+    )
+
+
+def _is_imported_bare_protocol_marker_base_reference(
+    *,
+    reference: ClassReference,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> bool:
+    if not _is_bare_protocol_marker_base_reference(reference):
+        return False
+    source_module_path = module_index.class_to_module.get(reference.source_class_id)
+    if source_module_path is None:
+        return False
+    source_module = module_by_path.get(source_module_path)
+    if source_module is None:
+        return False
+    return _imports_protocol_marker(source_module.imports)
+
+
+def _imports_protocol_marker(imports: tuple[str, ...]) -> bool:
+    return any(
+        _imports_name_from(import_text, module_name="typing", imported_name="Protocol")
+        or _imports_name_from(import_text, module_name="typing_extensions", imported_name="Protocol")
+        for import_text in imports
+    )
+
+
+def _imports_name_from(import_text: str, *, module_name: str, imported_name: str) -> bool:
+    prefix = f"from {module_name} import "
+    if not import_text.startswith(prefix):
+        return False
+    return any(
+        _imports_name_as_local_name(name, imported_name)
+        for name in import_text.removeprefix(prefix).split(",")
+    )
+
+
+def _imports_name_as_local_name(imported_text: str, expected_name: str) -> bool:
+    parts = tuple(part.strip() for part in imported_text.split(" as ", maxsplit=1))
+    if len(parts) == 2:
+        imported_name, local_name = parts
+        return imported_name == expected_name and local_name == expected_name
+    return parts[0] == expected_name
+
+
+def _resolve_typed_relation_target(
+    *,
+    reference: ClassReference,
+    module_index: ModuleIndex,
+    selected_class_ids: set[ClassId],
+) -> ClassId | Diagnostic:
+    candidates = _target_candidates(
+        source_class_id=reference.source_class_id,
+        target_name=reference.target_name,
+        module_index=module_index,
+    )
+    if len(candidates) == 0:
+        return _typed_relation_warning_diagnostic(
+            code="typed_relation_unresolved",
+            reference=reference,
+        )
+    if len(candidates) > 1:
+        return _typed_relation_warning_diagnostic(
+            code="typed_relation_ambiguous",
+            reference=reference,
+            candidate_class_ids=candidates,
+        )
+
+    target_class_id = candidates[0]
+    if target_class_id not in selected_class_ids:
+        return _typed_relation_warning_diagnostic(
+            code="typed_relation_selection_outside",
+            reference=reference,
+            candidate_class_ids=(target_class_id,),
+        )
+    return target_class_id
+
+
+def _target_candidates(
+    *,
+    source_class_id: ClassId,
+    target_name: str,
+    module_index: ModuleIndex,
+) -> tuple[ClassId, ...]:
+    all_class_ids = tuple(sorted(module_index.class_to_module))
+    if target_name in module_index.class_to_module:
+        return (target_name,)
+
+    module_qualified_candidates = _prefer_same_module_candidate(
+        candidates=tuple(
+            class_id
+            for class_id in all_class_ids
+            if any(
+                class_id == candidate or class_id.endswith(f"/{candidate}")
+                for candidate in _module_qualified_target_candidates(target_name)
+            )
+        ),
+        source_class_id=source_class_id,
+        module_index=module_index,
+    )
+    if module_qualified_candidates:
+        return module_qualified_candidates
+
+    short_name_candidates = _prefer_same_module_candidate(
+        candidates=tuple(class_id for class_id in all_class_ids if _short_class_name(class_id) == target_name),
+        source_class_id=source_class_id,
+        module_index=module_index,
+    )
+    return short_name_candidates
+
+
+def _prefer_same_module_candidate(
+    *,
+    candidates: tuple[ClassId, ...],
+    source_class_id: ClassId,
+    module_index: ModuleIndex,
+) -> tuple[ClassId, ...]:
+    if len(candidates) <= 1:
+        return candidates
+    source_module = module_index.class_to_module.get(source_class_id)
+    same_module_candidates = tuple(
+        candidate for candidate in candidates if module_index.class_to_module.get(candidate) == source_module
+    )
+    if len(same_module_candidates) == 1:
+        return same_module_candidates
+    return candidates
+
+
+def _module_qualified_target_candidates(target_name: str) -> tuple[str, ...]:
+    parts = tuple(part for part in target_name.split(".") if part)
+    if len(parts) < 2:
+        return ()
+    candidates = {
+        f"{'/'.join(parts[:split_at])}.py:{'.'.join(parts[split_at:])}"
+        for split_at in range(1, len(parts))
+    }
+    return tuple(sorted(candidates))
+
+
+def _short_class_name(class_id: ClassId) -> str:
+    return class_id.rsplit(":", 1)[-1].rsplit(".", 1)[-1]
+
+
+def _typed_relation_warning_diagnostic(
+    *,
+    code: str,
+    reference: ClassReference,
+    candidate_class_ids: tuple[ClassId, ...] = (),
+) -> Diagnostic:
+    candidate_message = ""
+    if candidate_class_ids:
+        candidate_message = f"; candidates={','.join(candidate_class_ids)}"
+    return Diagnostic(
+        severity=DiagnosticSeverity.WARNING,
+        code=code,
+        message=(
+            "typed relation reference could not be converted to a selected class relation: "
+            f"source_class_id={reference.source_class_id}; "
+            f"target_name={reference.target_name}; "
+            f"reference_kind={reference.reference_kind}; "
+            f"reference_owner={reference.reference_owner}"
+            f"{candidate_message}"
+        ),
+        origin_seam=OriginSeam.ANALYZE,
+        recoverability=Recoverability.RECOVERABLE,
+        failure_reason=None,
+    )
+
+
+def _normalize_relations(relations: list[SelectedRelation]) -> tuple[SelectedRelation, ...]:
+    by_triple: dict[tuple[ClassId, ClassId, str], SelectedRelation] = {}
+    for relation in relations:
+        key = (relation.source_class_id, relation.target_class_id, relation.relation_type)
+        current = by_triple.get(key)
+        if current is None or _evidence_kind_rank(relation) < _evidence_kind_rank(current):
+            by_triple[key] = relation
+
+    by_endpoint: dict[tuple[ClassId, ClassId], SelectedRelation] = {}
+    for relation in by_triple.values():
+        key = (relation.source_class_id, relation.target_class_id)
+        current = by_endpoint.get(key)
+        if current is None or _relation_type_rank(relation) < _relation_type_rank(current):
+            by_endpoint[key] = relation
+    return tuple(by_endpoint.values())
+
+
+def _relation_type_rank(relation: SelectedRelation) -> int:
+    return _RELATION_TYPE_PRIORITY.get(relation.relation_type, len(_RELATION_TYPE_PRIORITY))
+
+
+def _evidence_kind_rank(relation: SelectedRelation) -> int:
+    return _EVIDENCE_KIND_PRIORITY.get(relation.relation_type, {}).get(
+        relation.evidence_kind,
+        len(_EVIDENCE_KIND_PRIORITY.get(relation.relation_type, {})),
+    )
+
+
+def _relation_sort_key(relation: SelectedRelation) -> tuple[str, str, int, int, str, str]:
     return (
         relation.source_class_id,
         relation.target_class_id,
+        _relation_type_rank(relation),
+        _evidence_kind_rank(relation),
         relation.relation_type,
         relation.evidence_kind,
     )

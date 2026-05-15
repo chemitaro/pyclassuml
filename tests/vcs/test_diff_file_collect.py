@@ -14,7 +14,7 @@ from pyclassuml.model import (
     OriginSeam,
     Recoverability,
 )
-from pyclassuml.vcs import ChangedFileEntry, VcsDiffCollection, collect_diff_files
+from pyclassuml.vcs import ChangedFileEntry, ChangedLineRange, VcsDiffCollection, collect_diff_files
 import pyclassuml.vcs.diff_collect as diff_collect
 
 
@@ -123,6 +123,121 @@ def test_working_tree_tracked_added_modified_renamed_and_delete_excluded(tmp_pat
         ChangedFileEntry("new_name.py", "renamed", "old_name.py"),
     )
     assert result.diagnostics == ()
+
+
+def test_modified_file_collects_current_side_changed_hunk_ranges(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "class Unchanged:",
+                "    value = 1",
+                "",
+                "class Changed:",
+                "    value = 1",
+                "",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "models.py",
+        "\n".join(
+            [
+                "class Unchanged:",
+                "    value = 1",
+                "",
+                "class Changed:",
+                "    value = 2",
+                "",
+            ]
+        ),
+    )
+
+    (entry,) = assert_success(collect_diff_files(request(repo), context(repo), config()))
+
+    assert entry == ChangedFileEntry("pkg/models.py", "modified")
+    assert entry.current_changed_line_ranges == (ChangedLineRange(start=5, end=5),)
+
+
+def test_deleted_only_hunk_uses_current_side_point_range(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n    removed = True\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+
+    (entry,) = assert_success(collect_diff_files(request(repo), context(repo), config()))
+
+    assert entry == ChangedFileEntry("pkg/models.py", "modified")
+    assert entry.current_changed_line_ranges == (
+        ChangedLineRange(start=2, end=2, is_deletion_only=True, deleted_lines=("    removed = True",)),
+    )
+
+
+def test_deleted_only_hunk_before_first_current_line_is_not_current_side_changed_range(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "settings.py", "VALUE = 1\n\nclass Settings:\n    name = 'default'\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "settings.py", "class Settings:\n    name = 'default'\n")
+
+    (entry,) = assert_success(collect_diff_files(request(repo), context(repo), config()))
+
+    assert entry == ChangedFileEntry("pkg/settings.py", "modified")
+    assert entry.current_changed_line_ranges == ()
+
+
+def test_deleted_only_decorator_hunk_before_first_current_line_keeps_deleted_lines(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "models.py", "@entity\nclass Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+
+    (entry,) = assert_success(collect_diff_files(request(repo), context(repo), config()))
+
+    assert entry == ChangedFileEntry("pkg/models.py", "modified")
+    assert entry.current_changed_line_ranges == (
+        ChangedLineRange(start=1, end=1, is_deletion_only=True, deleted_lines=("@entity",)),
+    )
+    assert entry.current_changed_line_ranges[0].is_before_first_line_deletion is True
+
+
+def test_deleted_only_module_level_hunk_after_class_keeps_current_side_point_range(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n\nVALUES = [\n    1,\n]\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+
+    (entry,) = assert_success(collect_diff_files(request(repo), context(repo), config()))
+
+    assert entry == ChangedFileEntry("pkg/models.py", "modified")
+    assert entry.current_changed_line_ranges == (
+        ChangedLineRange(
+            start=2,
+            end=2,
+            is_deletion_only=True,
+            deleted_lines=("", "VALUES = [", "    1,", "]"),
+        ),
+    )
+
+
+def test_renamed_file_collects_current_side_changed_hunk_ranges(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "old.py", "class Model:\n    value = 1\n    keep = True\n    also_keep = True\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    git(repo, "mv", "pkg/old.py", "pkg/new.py")
+    write_file(repo / "pkg" / "new.py", "class Model:\n    value = 2\n    keep = True\n    also_keep = True\n")
+
+    (entry,) = assert_success(collect_diff_files(request(repo), context(repo), config()))
+
+    assert entry == ChangedFileEntry("pkg/new.py", "renamed", "pkg/old.py")
+    assert entry.current_changed_line_ranges == (ChangedLineRange(start=2, end=2),)
 
 
 def test_working_tree_untracked_included_excluded_and_empty_success(tmp_path: Path) -> None:

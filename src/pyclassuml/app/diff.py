@@ -17,17 +17,21 @@ from pyclassuml.frameworks import (
 )
 from pyclassuml.model import (
     AnalysisConfig,
+    ClassId,
+    ClassSpan,
     CommandName,
     CommandRequest,
     Diagnostic,
     ExecutionContext,
+    ParsedModule,
+    SelectedClasses,
     TargetSet,
 )
-from pyclassuml.parse import parse_target_set
+from pyclassuml.parse import ModuleIndex, parse_target_set
 from pyclassuml.render import render_uml_document
 from pyclassuml.report import ReportInputs, ReportRunResult, write_report
 from pyclassuml.targets import normalize_diff_targets
-from pyclassuml.vcs import ChangedFileCollection, collect_diff_files
+from pyclassuml.vcs import ChangedFileCollection, ChangedFileEntry, ChangedLineRange, collect_diff_files
 
 
 def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult:
@@ -106,10 +110,18 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
     )
     diagnostics = (*diagnostics, *selection_result.diagnostics)
 
+    changed_paths = _project_relative_changed_paths(vcs_collection.collection)
     changed_class_inventory = build_changed_class_inventory(
-        _project_relative_changed_paths(vcs_collection.collection),
+        changed_paths,
         parse_result.parsed_modules,
         parse_result.module_index,
+    )
+    class_decorations = _diff_class_decorations(
+        vcs_collection.collection.entries,
+        parse_result.parsed_modules,
+        parse_result.module_index,
+        selection_result.selected_classes,
+        _current_file_lines_by_path(context.project_root, vcs_collection.collection.entries),
     )
 
     sqlalchemy_hints = extract_sqlalchemy_enrichment_hints(
@@ -135,6 +147,7 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
         selected_relations=selection_result.selected_relations,
         sqlalchemy_hints=sqlalchemy_hints,
         pydantic_hints=pydantic_hints,
+        class_decorations=class_decorations,
     )
 
     return write_report(
@@ -157,6 +170,141 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
 
 def _project_relative_changed_paths(collection: ChangedFileCollection) -> tuple[Path, ...]:
     return tuple(Path(entry.current_project_relative_path) for entry in collection.entries)
+
+
+def _diff_class_decorations(
+    changed_entries: tuple[ChangedFileEntry, ...],
+    parsed_modules: tuple[ParsedModule, ...],
+    module_index: ModuleIndex,
+    selected_classes: SelectedClasses,
+    current_file_lines_by_path: dict[Path, tuple[str, ...]] | None = None,
+) -> tuple[tuple[ClassId, str], ...]:
+    module_by_path = {parsed_module.module_path: parsed_module for parsed_module in parsed_modules}
+    selected_class_ids = set(selected_classes.class_ids)
+    changed_class_ids: set[ClassId] = set()
+    current_file_lines_by_path = current_file_lines_by_path or {}
+
+    for entry in changed_entries:
+        changed_file = Path(entry.current_project_relative_path)
+        module_path = module_index.project_relative_file_to_module.get(changed_file)
+        if module_path is None or (parsed_module := module_by_path.get(module_path)) is None:
+            continue
+        if entry.change_kind == "added":
+            changed_class_ids.update(class_id for class_id in parsed_module.classes if class_id in selected_class_ids)
+            continue
+        selected_spans = tuple(
+            class_span for class_span in parsed_module.class_spans if class_span.class_id in selected_class_ids
+        )
+        current_lines = current_file_lines_by_path.get(changed_file, ())
+        for changed_range in entry.current_changed_line_ranges:
+            changed_class_ids.update(
+                class_span.class_id
+                for class_span in _innermost_changed_class_spans(selected_spans, changed_range, current_lines)
+            )
+
+    decorations = []
+    for class_id in sorted(selected_classes.class_ids):
+        if class_id in changed_class_ids:
+            decorations.append((class_id, "DiffChanged"))
+    return tuple(decorations)
+
+
+def _current_file_lines_by_path(
+    project_root: Path,
+    changed_entries: tuple[ChangedFileEntry, ...],
+) -> dict[Path, tuple[str, ...]]:
+    lines_by_path: dict[Path, tuple[str, ...]] = {}
+    for entry in changed_entries:
+        changed_file = Path(entry.current_project_relative_path)
+        try:
+            lines_by_path[changed_file] = tuple((project_root / changed_file).read_text(encoding="utf-8").splitlines())
+        except OSError:
+            lines_by_path[changed_file] = ()
+    return lines_by_path
+
+
+def _innermost_changed_class_spans(
+    class_spans: tuple[ClassSpan, ...],
+    changed_range: ChangedLineRange,
+    current_lines: tuple[str, ...],
+) -> tuple[ClassSpan, ...]:
+    overlapping_spans = tuple(
+        class_span
+        for class_span in class_spans
+        if _class_span_overlaps_changed_range(class_span, changed_range, current_lines)
+    )
+    return tuple(
+        class_span
+        for class_span in overlapping_spans
+        if not any(_class_span_contains(class_span, other) for other in overlapping_spans if other is not class_span)
+    )
+
+
+def _class_span_contains(outer: ClassSpan, inner: ClassSpan) -> bool:
+    return outer.start_line <= inner.start_line and inner.end_line <= outer.end_line
+
+
+def _class_span_overlaps_changed_range(
+    class_span: ClassSpan,
+    changed_range: ChangedLineRange,
+    current_lines: tuple[str, ...],
+) -> bool:
+    if not changed_range.is_deletion_only:
+        return changed_range.start <= class_span.end_line and class_span.start_line <= changed_range.end
+    if _deleted_lines_include_decorator(changed_range.deleted_lines):
+        return _deleted_decorator_belongs_to_class(class_span, changed_range, current_lines)
+    return (
+        class_span.start_line <= changed_range.start <= class_span.end_line
+        and _deleted_lines_look_like_class_span_change(changed_range.deleted_lines)
+    )
+
+
+def _deleted_lines_include_decorator(deleted_lines: tuple[str, ...]) -> bool:
+    return any(line.lstrip().startswith("@") for line in deleted_lines)
+
+
+def _deleted_decorator_belongs_to_class(
+    class_span: ClassSpan,
+    changed_range: ChangedLineRange,
+    current_lines: tuple[str, ...],
+) -> bool:
+    if _deleted_lines_include_top_level_function_definition(changed_range.deleted_lines):
+        return False
+    if changed_range.is_before_first_line_deletion:
+        return class_span.start_line == 1
+    if changed_range.start == class_span.start_line:
+        return True
+    if changed_range.start != class_span.start_line - 1:
+        return False
+    if not current_lines:
+        return True
+    class_line = _line_at(current_lines, class_span.start_line)
+    return _looks_like_class_definition(class_line)
+
+
+def _line_at(lines: tuple[str, ...], line_number: int) -> str:
+    index = line_number - 1
+    if index < 0 or index >= len(lines):
+        return ""
+    return lines[index].lstrip()
+
+
+def _looks_like_class_definition(line: str) -> bool:
+    return line.startswith("class ")
+
+
+def _deleted_lines_include_top_level_function_definition(deleted_lines: tuple[str, ...]) -> bool:
+    return any(_looks_like_top_level_function_definition(line) for line in deleted_lines)
+
+
+def _looks_like_top_level_function_definition(line: str) -> bool:
+    stripped = line.lstrip()
+    return line == stripped and stripped.startswith(("def ", "async def "))
+
+
+def _deleted_lines_look_like_class_span_change(deleted_lines: tuple[str, ...]) -> bool:
+    first_content_line = next((line for line in deleted_lines if line.strip()), "")
+    return first_content_line.startswith((" ", "\t", "@"))
 
 
 def _fallback_context(process_cwd: Path) -> ExecutionContext:

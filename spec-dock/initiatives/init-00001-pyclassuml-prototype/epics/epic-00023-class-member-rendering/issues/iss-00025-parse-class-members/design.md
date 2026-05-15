@@ -126,13 +126,28 @@ refs --> dto
     - `FunctionDef` / `AsyncFunctionDef`
     - `__init__` direct `self.<name>` assignment
   - typed reference evidence:
-    - base class
-    - field annotation
-    - method parameter annotation
-    - method return annotation
-    - `__init__` parameter-derived instance field annotation
+    - base class:
+      - `ClassReference(target_name=<base_name>, reference_kind="class_base", reference_owner="base")`
+    - field annotation:
+      - `ClassReference(target_name=<annotation_target>, reference_kind="field_annotation", reference_owner="<field_name>")`
+    - method parameter annotation:
+      - `ClassReference(target_name=<annotation_target>, reference_kind="method_parameter_annotation", reference_owner="<method_name>.<parameter_name>")`
+    - method return annotation:
+      - `ClassReference(target_name=<annotation_target>, reference_kind="method_return_annotation", reference_owner="<method_name>")`
+    - `__init__` parameter-derived instance field annotation:
+      - `ClassReference(target_name=<parameter_annotation_target>, reference_kind="init_field_annotation", reference_owner="<field_name>")`
+  - quoted annotation extraction:
+    - `ClassMember.annotation_text` / `return_annotation_text` は source text を安定化した文字列を保持し、quoted annotation の quote は display text では保持してよい。
+    - `ClassReference.target_name` は relation resolution 用なので、quoted forward ref の quote を外した class-like name にする。
+    - container annotation は AST-only で再帰的に見る。`list["Item"]` は target `Item`、`Optional["Item"]` は target `Item`、`Union["A", "B"]` は targets `A`, `B` とする。
+    - `Literal["value"]` は class-like target として扱わず reference を出さない。
+  - Pydantic handling:
+    - parse は Pydantic 専用 relation を作らない。
+    - `BaseModel` / `pydantic.BaseModel` base reference は syntactic eligibility evidence として保持する。
+    - field extraction は Pydantic class に限定せず、全 class-level annotation を generic field member として扱う。
   - degrade policy:
-    - annotation text を作れない場合は member を残し、text / reference だけ落とす
+    - annotation text を作れない場合は member を残し、text / reference だけ落とす。
+    - stable text 化の例外では `ParsedModule.diagnostics` に `annotation_text_unavailable` warning を追加する。
 
 ## Sequence Delta（必要時）
 - changed interaction:
@@ -148,9 +163,12 @@ refs --> dto
 - aggregate / entity / value object changes:
   - new aggregate は導入しない
 - domain event / policy / specification changes:
-  - `reference_kind` / `reference_owner` vocabulary を method / field / base の区別がつく形へ拡張する
+  - `reference_kind` / `reference_owner` vocabulary を method / field / base の区別がつく形へ拡張する。
+  - semantic vocabulary は `class_base/base`, `field_annotation/<field_name>`, `init_field_annotation/<field_name>`, `method_parameter_annotation/<method_name>.<parameter_name>`, `method_return_annotation/<method_name>` に固定する。
+  - existing framework compatibility vocabulary（`annotation_string`, `annotation_subscript`, `call_string_arg`）は互換維持用として残せるが、issue 26 の typed relation owner は semantic vocabulary を優先する。
 - invariant changes:
   - member は owner class 単位で source order stable
+  - class references は source position stable。複数 target が同一 annotation から出る場合は source position の後に `target_name` lexical order で安定化する。
   - implicit receiver `self` / `cls` は parameter list から除外する
 - UML:
   - N/A: helper flow で十分

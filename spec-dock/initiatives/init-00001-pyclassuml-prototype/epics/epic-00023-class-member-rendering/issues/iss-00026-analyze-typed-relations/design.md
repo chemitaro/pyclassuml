@@ -62,6 +62,10 @@ ID: "iss-00026"
   - B を採用する。
   - 理由:
     - Pydantic field は class member semantic の一部であり、relation_type owner を analyze に集約した方が diagram semantics が一貫する。
+  - framework suppression:
+    - `frameworks.pydantic` は analyze が作った `association` と同じ `(source_class_id, target_class_id)` の `pydantic_forward_ref` `uses` を追加しない。
+    - semantic `field_annotation` / `init_field_annotation` evidence が同じ source / target に存在する場合、Pydantic compatibility evidence 由来の unresolved / ambiguous / selection-outside warning は duplicate として抑制する。
+    - semantic evidence が存在しない legacy parse evidence のみの場合は、従来どおり `pydantic_forward_ref` fallback を残す。
 
 ## 依存関係分析
 - module dependency:
@@ -135,12 +139,39 @@ analyze --> fw
     - field / Pydantic field -> `association`
     - method parameter / return -> `uses`
     - module import edge fallback -> `uses`
+  - resolver rule:
+    - resolver input は `ClassReference(source_class_id, target_name, reference_kind, reference_owner)` と `ModuleIndex.class_to_module` と selected set。
+    - source class が selected set 外なら relation も warning も出さない。
+    - `target_name` matching order:
+      - exact full class id
+      - module-qualified candidate（`pkg.models.Item` -> `pkg/models.py:Item` など）
+      - class suffix / short class name
+    - candidate が 0 件なら unresolved warning。
+    - candidate が複数件で、source module と同じ `ModuleIndex.class_to_module` の candidate が 1 件だけなら same-module candidate を採用する。
+    - same-module 優先後も複数件なら ambiguous warning。
+    - target candidate が 1 件でも selected set 外なら selection-outside warning。
+    - typed evidence は selected class set / traversal frontier を拡張しない。
+  - warning diagnostic contract:
+    - `unresolved`: `code="typed_relation_unresolved"`
+    - `ambiguous`: `code="typed_relation_ambiguous"`
+    - `selection_outside`: `code="typed_relation_selection_outside"`
+    - all warnings use `severity=WARNING`, `origin_seam=ANALYZE`, `recoverability=RECOVERABLE`, `failure_reason=None`
+    - message includes `source_class_id`, `target_name`, `reference_kind`, `reference_owner`; ambiguous message also includes candidate class ids.
   - dedupe rule:
     - same `(source_class_id, target_class_id, relation_type)` triple は 1 件にまとめる
+    - same triple の `evidence_kind` survivor は relation_type 別 priority で決める。
+      - `inherits`: `class_base`
+      - `association`: `field_annotation > init_field_annotation > pydantic_forward_ref`
+      - `uses`: `method_parameter_annotation > method_return_annotation > module_import > pydantic_forward_ref`
   - priority rule:
     - relation は最終的に `(source_class_id, target_class_id)` ごとに 1 件へ正規化する。
     - 同一 endpoint に複数 relation_type がある場合は `inherits > association > uses` の順で優先する。
     - module import fallback の `uses` は、same endpoint に `inherits` / `association` / method annotation `uses` がない場合だけ残す。
+  - ordering rule:
+    - selected classes: lexical `class_id`
+    - typed evidence scan: `ParsedModule` tuple order, then `class_references` tuple order
+    - final relations: `(source_class_id, target_class_id, relation_type_priority, evidence_kind_priority, evidence_kind)`
+    - diagnostics: `(code, source_class_id extracted from message context, target_name, reference_kind, reference_owner, message)`
 
 ## Sequence Delta（必要時）
 - changed interaction:
@@ -159,9 +190,9 @@ analyze --> fw
   - new aggregate なし
 - domain event / policy / specification changes:
   - warning code policy:
-    - unresolved
-    - ambiguous
-    - selection_outside
+    - `typed_relation_unresolved`
+    - `typed_relation_ambiguous`
+    - `typed_relation_selection_outside`
 - invariant changes:
   - seed classes are always selected
   - dependency classes are added only by existing `iss-00014` module-import endpoint selection
