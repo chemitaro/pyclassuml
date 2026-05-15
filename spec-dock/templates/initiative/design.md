@@ -15,21 +15,21 @@ ID: "<INIT_ID>"
 - ...
 
 ## 現状と目指す姿
-- As-Is:
+- 現状:
   - ...
-- To-Be:
+- 目指す姿:
   - ...
 
-## System Context
-- Title:
-  - System context / target-state overview
-- Question answered:
+## システムコンテキスト
+- タイトル:
+  - システムコンテキスト / 目指す状態の全体像
+- 答える問い:
   - ...
-- Scope:
+- 範囲:
   - ...
-- Excluded details:
+- 含めない詳細:
   - ...
-- Update trigger:
+- 更新条件:
   - ...
 
 ### UML（推奨: system context / target-state overview）
@@ -39,47 +39,47 @@ ID: "<INIT_ID>"
 
 LAYOUT_WITH_LEGEND()
 
-title System context / target-state overview
+title システムコンテキスト / 目指す状態の全体像
 
-Person(user, "User", "Primary actor")
-System(system, "Target system", "System under this initiative")
-System_Ext(external, "External system", "External dependency")
+Person(user, "利用者", "主なアクター")
+System(system, "対象システム", "この Initiative の対象システム")
+System_Ext(external, "外部システム", "外部依存")
 
-Rel(user, system, "Uses")
-Rel(system, external, "Depends on")
+Rel(user, system, "利用する")
+Rel(system, external, "依存する")
 @enduml
 ```
 
 ## ドメイン境界 / ユビキタス言語（必要時）
-- bounded context / domain area:
+- 境界づけられたコンテキスト / ドメイン領域:
   - ...
-- core / supporting / generic domain:
+- 中核 / 支援 / 汎用ドメイン:
   - ...
-- key domain terms:
+- 主要ドメイン用語:
   - ...
-- cross-epic actor-goal overview:
-  - N/A: reason
+- Epic 横断の actor-goal 概要:
+  - N/A: 理由
 
-## Container Overview（必要時）
-- Title:
+## コンテナ概要（必要時）
+- タイトル:
   - ...
-- Question answered:
+- 答える問い:
   - ...
-- Scope:
+- 範囲:
   - ...
-- Excluded details:
+- 含めない詳細:
   - ...
-- Update trigger:
+- 更新条件:
   - ...
 - UML:
-  - N/A: reason
+  - N/A: 理由
 
 ## 対象境界 / 依存
-- in scope:
+- 対象範囲:
   - ...
-- external dependency:
+- 外部依存:
   - ...
-- boundary policy:
+- 境界方針:
   - ...
 
 ## ガードレール
@@ -93,19 +93,19 @@ Rel(system, external, "Depends on")
   - ...
 
 ## ロールアウト原則
-- rollout strategy:
+- ロールアウト戦略:
   - ...
-- rollback principle:
+- ロールバック原則:
   - ...
-- feature flag principle:
+- feature flag 原則:
   - ...
 
 ## 観測性 / NFR 原則
-- observability:
+- 観測性:
   - ...
-- performance / reliability:
+- 性能 / 信頼性:
   - ...
-- audit / compliance:
+- 監査 / コンプライアンス:
   - ...
 
 ## 主要リスク

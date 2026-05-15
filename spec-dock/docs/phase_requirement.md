@@ -5,6 +5,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 
 関連:
 - 全体像: [guide.md](guide.md)
+- Spec authoring workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Scope workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
 - 議論資料の置き方と命名: 対象 scope 配下の `discussions/rules.md`, [reference_naming.md](reference_naming.md)
 
@@ -45,7 +46,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 2. As-Is / 観測点 / 制約を集める
 3. requirement に上げる前の事実や比較を `research` / `disc` に残す
 4. 必要ならヒアリングし、反映前に docs に整理する
-5. `requirement.md` を固めて reviewer loop を回す
+5. `requirement.md` を固めて fresh `spec-reviewer` loop を `review_status: pass` まで回す
 6. 関連 docs を束ねて design へ handoff する
 
 ## entry checklist
@@ -132,10 +133,13 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 - 主要 TBD に `質問 / 選択肢 / 推奨案` がある
 - design 論点と追加調査 / ヒアリング論点が仕分けできている
 - `requirement.md` と必要な `research` / `disc` / `adr` を束で渡せる
+- fresh `spec-reviewer` が requirement scope を review し、`review_status: pass` を返している
 - reviewer が「design へ進めてよい」と判断できる
+- `report.md` の `Spec Authoring Gate` に調査、ヒアリング、review、修正、promotion evidence が残っている
 
 ## short rules
 
 - subagent は `researcher / consultant = 調査比較`, `doc writer = 文面整合`, `reviewer = WHAT / WHY 逸脱検出` で使い分ける
 - subagent には `対象 scope / 未確定論点 / 欲しい出力` を最小セットで渡す
 - 迷ったら `追加調査 → ヒアリング → disc → adr → pause` の順で判断する
+- scope / non-scope / user intent / acceptance criteria に影響する未確認事項が残る場合は design へ進めない

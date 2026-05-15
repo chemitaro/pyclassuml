@@ -68,8 +68,9 @@ def _run_delete(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
             json_output=typed.json_output,
         )
     )
+    post_sync_failed = result.post_sync is not None and result.post_sync.failed
     return CommandOutcome(
-        exit_code=0 if result.status == "ok" else 1,
+        exit_code=0 if result.status == "ok" and not post_sync_failed else 1,
         text=render_delete_text(result, json_output=typed.json_output),
     )
 
@@ -78,4 +79,3 @@ def _expect_delete_args(args: CommandArgs) -> DeleteArgs:
     if not isinstance(args, DeleteArgs):
         raise RuntimeError("Invalid command args for delete")
     return args
-

@@ -1,12 +1,13 @@
 # guide（全体像 / 導線）
 
 spec-dock の docs レイヤ、概念、生成物を最短で把握するための入口です。
-scope 固有の手順は `workflow_*.md`、shared な requirement / design の作法は `phase_*.md`、plan は `phase_plan.md` と `phase_plan_<scope>.md` の二段構成、コマンドや制約は `reference_*.md` を正本とします。
+scope 固有の手順は `workflow_*.md`、仕様書作成の phase promotion は `workflow_spec_authoring.md`、shared な requirement / design の作法は `phase_*.md`、plan は `phase_plan.md` と `phase_plan_<scope>.md` の二段構成、コマンドや制約は `reference_*.md` を正本とします。
 runtime command の現行 contract は `./spec-dock/scripts/spec-dock ...` です。
 
 ## docs の読み分け
 
 - `workflow_*.md`: Initiative / Epic / Issue / ADR の scope 固有 workflow
+- `workflow_spec_authoring.md`: Initiative / Epic / Issue 共通の requirement / design / plan 作成 workflow
 - `phase_*.md`: shared phase playbook（共通の作り方）
 - `phase_plan_<scope>.md`: scope 固有の plan authoring rule
 - `reference_*.md`: GitHub / naming / deps / sync などの参照仕様
@@ -21,6 +22,7 @@ phase playbook:
 - [phase_plan_issue.md](phase_plan_issue.md)
 
 入口:
+- Spec authoring: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Initiative: [workflow_initiative.md](workflow_initiative.md)
 - Epic: [workflow_epic.md](workflow_epic.md)
 - Issue: [workflow_issue.md](workflow_issue.md)
@@ -30,7 +32,7 @@ phase playbook:
 
 - Initiative: 投資単位。なぜやるか、成功条件、スコープを持つ
 - Epic: 設計の背骨。契約、移行、観測性、Issue 分割を持つ
-- Issue: 実装の最小単位。active issue を起点に TDD で完了する
+- Issue: 実装の最小単位。active issue を起点に behavior-slice based execution contract で完了する
 - ADR: 後続へ残る意思決定。initiative / epic / issue の任意 scope に紐づく
 
 親子関係:
@@ -85,25 +87,31 @@ spec-dock/
 ## 最短 workflow
 
 1. 既存ノードに収まるか確認し、必要なら `new` / `import` する
-2. `active set` で作業対象を固定する
-3. 対象 scope の `workflow_*.md` を正本にし、requirement / design は shared playbook、plan は `phase_plan.md` → `phase_plan_<scope>.md` の順で書く
-4. Initiative は Epic 分解、Epic は Issue 分割、Issue は TDD ベースの execution contract を plan に落とす
-5. `validate` / `sync` で整合性と生成物を更新する
+2. Issue 実行では `issue start <target>` で作業対象を固定し、対象ブランチへ checkout する
+3. 仕様書作成は `workflow_spec_authoring.md` を正本にし、対象 scope の `workflow_*.md`、requirement / design の shared playbook、`phase_plan.md` → `phase_plan_<scope>.md` の順で書く
+4. Initiative は Epic 分解、Epic は Issue 分割、Issue は agent-native / behavior-slice based execution contract を plan に落とす
+5. `validate` / `sync` で整合性と生成物を更新し、Issue lifecycle を閉じる場合は `issue finish` を使う
 
 ## 代表コマンド（runtime script）
 
 ```bash
+./spec-dock/scripts/spec-dock issue start <github-issue-number>
+./spec-dock/scripts/spec-dock issue start --id <issue-id>
+./spec-dock/scripts/spec-dock issue finish
 ./spec-dock/scripts/spec-dock active set <id|#num|url>
-./spec-dock/scripts/spec-dock deps check <target> --github
+./spec-dock/scripts/spec-dock deps check <target>
 ./spec-dock/scripts/spec-dock deps add --from <issue-id> --to <issue-id>
 ./spec-dock/scripts/spec-dock deps remove --from <issue-id> --to <issue-id>
 ./spec-dock/scripts/spec-dock validate
-./spec-dock/scripts/spec-dock sync --github
+./spec-dock/scripts/spec-dock sync
 ```
+
+`active set` / `active set --checkout` は manual / recovery 用の low-level command です。通常の Issue 実行では `issue start` / `issue finish` を入口にします。
 
 
 ## 次に読む
 
 - 実務導線: [README.md](README.md)
+- 仕様書作成 workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - 作業対象別 workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
 - 参照仕様: [reference_github.md](reference_github.md), [reference_naming.md](reference_naming.md), [reference_deps.md](reference_deps.md), [reference_sync.md](reference_sync.md)

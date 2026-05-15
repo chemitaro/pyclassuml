@@ -19,7 +19,7 @@ _GH_ISSUE_REPO_URL_RE = re.compile(
 def ensure_gh_available() -> None:
     if shutil.which("gh") is None:
         raise RuntimeError(
-            "'gh' CLI not found. Install GitHub CLI (gh), or use '--no-github' for 'new', or omit '--github' for 'sync'."
+            "'gh' CLI not found. Install GitHub CLI (gh), or use '--no-github' for supported cache/local state commands."
         )
 
 

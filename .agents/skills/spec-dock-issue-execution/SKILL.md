@@ -6,23 +6,61 @@ description: Leaf skill for issue execution tasks in spec-dock.
 # Spec-dock Issue Execution
 
 - Use this skill for issue execution work.
-- Typical fit: implement the active issue via TDD and update `report.md`.
+- Typical fit: implement the active issue through approved behavior-slice execution and update `report.md`.
 - Start from `spec-dock/active/context-pack.md`, then follow the issue workflow.
 - `spec-dock/docs/workflow_issue.md` is the source of truth for issue execution and completion.
+- `spec-dock/docs/workflow_spec_authoring.md` is the source of truth for issue requirement / design / plan phase promotion before execution.
+- Normal lifecycle path: start with `./spec-dock/scripts/spec-dock issue start <target>` and finish with `./spec-dock/scripts/spec-dock issue finish`.
+`issue finish` is lifecycle closure only: it closes or confirms the linked GitHub issue and clears active state, but it does not guarantee commit, push, PR, merge, validate, test, or review completion; delivery completion still requires separate evidence in tests, reviews, reports, and PR/merge workflow.
+- Treat direct `./spec-dock/scripts/spec-dock active set ...` as a manual / recovery command, not the primary issue execution path.
 - For shared phase authoring method, use:
+  - `spec-dock/docs/workflow_spec_authoring.md`
   - `spec-dock/docs/phase_requirement.md`
   - `spec-dock/docs/phase_design.md`
   - `spec-dock/docs/phase_plan.md`
   - `spec-dock/docs/phase_plan_issue.md`
+  - `spec-dock/docs/authoring/issue-plan.md`
 - Keep templates as scaffolds. Use the docs above for authoring guidance, including Issue dependency analysis, `Module Dependency Diagram`, Linux `tree` style file-change planning, and step ordering.
 - Spec authoring mode: shape `requirement.md`, `design.md`, and `plan.md` for the project. Add, remove, merge, reorder, or rewrite template sections when it improves correctness, human understanding, or agent executability. Remove irrelevant placeholders.
+- In spec authoring mode, Issue `plan.md` must satisfy `spec-dock/docs/authoring/issue-plan.md`. Each implementation step needs a `具体テストケース一覧` that uses card-style nested list test cases, not a wide table, with each concrete test case id at the start of the top-level bullet.
+- In spec authoring mode, do not move from requirement to design, design to plan, or plan to implementation until a fresh `spec-reviewer` returns `review_status: pass`; fix findings and re-run a fresh reviewer until pass.
+- Record each `Spec Authoring Gate` in `spec-dock/active/issue/report.md`, including investigation, user questions/answers, reviewer verdict, fixes, and promotion decision.
+- Before invoking reviewer or specialist sub-agents for an active issue, confirm workflow-scoped delegation consent for the current repo/worktree, active issue, session, and named roles. A current user request may grant that scope; record the consent scope and boundary in `spec-dock/active/issue/report.md`.
+- With workflow-scoped delegation consent, invoke required named reviewer / read-only specialist roles autonomously within the active issue scope. Do not ask for per-phase confirmation; do re-confirm before scope expansion, non-named roles, write-capable delegation, destructive operations, external publishing, credentialed access, or browser/private external systems.
+- Reviewer gate states are `passed`, `failed`, `unavailable`, `denied`, `waived`, and `provisional`. Only a fresh `passed` result satisfies a required reviewer gate. `waived` requires explicit user risk acceptance in `report.md`. `provisional` is orchestrator self-check evidence, not a replacement for `spec-reviewer`, `code-reviewer`, or `qa-reviewer`.
+- Degraded mode may support status gathering, local self-check, or alternate verification evidence, but it never satisfies a required reviewer gate, implementation readiness gate, or final quality gate. Reviewer `unavailable`, `denied`, `failed`, stale, missing, waived, or provisional is blocked / incomplete unless an explicit user waiver is recorded where the workflow allows it.
 - In spec authoring mode, use the optional diagram catalog in `spec-dock/docs/phase_design.md` as the authoritative source for diagram choices. Add catalog-listed or project-specific sections only when they clarify the issue.
 - Execution mode: follow the approved issue docs. If the docs are missing required detail or contradict the implementation path, update/review the docs before implementation continues.
-- Do not skip the docs impact resolution step or the final diff review quality gate.
-- Issue execution is not complete unless the active issue is set and confirmed, and `spec-dock/active/issue/requirement.md`, `design.md`, `plan.md`, and `report.md` contain issue-specific content rather than template, placeholder, or effectively blank content.
-- `spec-dock/active/issue/report.md` must record command evidence for required `sync`, `validate`, and review steps, including whether each required step succeeded, passed, or reached approval.
-- Complete status requires the active issue to remain set and confirmed, every required step to be executed, every required `sync` / `validate` step to succeed or pass, and every required review step to reach approval or pass.
-- If any required step is skipped, or executed without a successful, pass, or approved outcome, classify the issue as `blocked` or `incomplete`, record the reason and next action in `spec-dock/active/issue/report.md`, and do not report the issue as complete.
+- Record report-scoped delivery completion evidence in `spec-dock/active/issue/report.md` before running `./spec-dock/scripts/spec-dock issue finish`, because `issue finish` clears active state after lifecycle closure. Final commit hash and post-commit clean evidence are recorded after the final commit as external delivery evidence.
+- Treat `Spec-Locked Closure Index` as the issue-wide coverage ledger, not as a single test-case catalog. Execute and close work through each step's `step closure contract`.
+- Treat each implementation step as a commit unit: `1 implementation step = 1 code-reviewer scope = 1 commit`.
+- Before each implementation step starts, run an `Implementation Delegation Gate` decision and record it in `spec-dock/active/issue/report.md`.
+- Delegation is conditionally mandatory when a step crosses multiple layers, modules, or packages; affects runtime / CLI / infra / templates / shipped scaffold / shared docs; needs existing-pattern or impact analysis; touches integration tests, migration, backward compatibility, filesystem, GitHub, or active state; or is large enough to split into an independent worker scope.
+- Use `delegated` when a sub-agent is used, and record role, scope, request, returned result, and integration outcome. Use `approved-local-execution` only for small single-file changes, mechanical wording changes, clear localized changes, or immediate blocking / tightly coupled work that the main orchestrator should handle; record the no delegation rationale.
+- If sub-agents are unavailable, denied, or blocked by host policy for a required gate, do not continue as degraded success. Record the environment reason, gate state, alternate verification, and next action; classify the issue as blocked / incomplete unless an explicit user waiver is recorded where the workflow allows it.
+- Role selection matrix: `repo-analyst` maps code paths, impact, dependencies, and existing patterns before implementation; `dev-coder` handles bounded implementation steps with a clear write scope; `doc-writer` updates docs / templates / workflow / skill text; `qa-reviewer` owns final test adequacy and integration-test need; `code-reviewer` owns per-step diffs and the issue-wide integrated diff; `spec-reviewer` owns requirement / design / plan / report / implementation / docs alignment.
+- Before implementation starts, stop if any required closure id in `plan.md` is not referenced from a behavior slice `closure ids` / `test ids` list, or if a required closure row has no step-local close condition, verification command, or evidence path.
+- Before implementation starts, stop if any implementation step is missing `具体テストケース一覧`, if concrete test cases are only global / table-only / abstract, or if a test case lacks the standard `前提`, `操作`, `期待結果`, `失敗検出`, and `検証方法` fields. Docs-only or approved-no-op steps must state the test-not-needed reason and alternate verification.
+- Do not change a required closure row, `locked expectation`, `required`, or meaning-bearing `spec link` during implementation without first updating the plan/design and getting re-review.
+- Do not report complete unless every required closure id is closed in `spec-dock/active/issue/report.md` through `Step Contract Closure`, `Test Contract Closure`, and `Closure Coverage`.
+- Record additions, removals, changed rows, intentionally unimplemented rows, and re-review decisions in `Closure Delta`.
+- For every implementation step with changes, run the `code-reviewer` sub-agent on that step diff and iterate fixes / re-review until `review_status: pass`.
+- Implementation delegation does not replace review gates. Even if `dev-coder` or another worker implemented the step, the resulting step diff still requires per-step `code-reviewer` pass.
+- After the step `code-reviewer` pass, commit the step scope before moving to the next implementation step. Prefer `$git-commit-conventional-ja` or an equivalent Japanese multi-line Conventional Commit flow grounded in the staged diff.
+- Do not mix multiple implementation steps in one commit. If the step is too large for one reviewable commit, split the plan step before implementation continues.
+- Use `approved-no-op` only when the step has no diff. Record the no-op reason, checked contracts/files, diff-clean command, and review or read-only confirmation evidence in `spec-dock/active/issue/report.md`.
+- Do not skip the docs impact resolution step or the final quality gate.
+- In `S90 docs impact resolution`, inspect docs / templates / README / workflow / skill / migration notes impact. If docs updates are required, use `doc-writer` for the update and `spec-reviewer` for docs/spec alignment review.
+- In `S99 final quality gate`, run `qa-reviewer`, issue-wide `code-reviewer`, and `spec-reviewer`. Iterate fixes and re-run the failing reviewer until all three pass.
+- `qa-reviewer` owns test adequacy and whether an issue-wide integration test must be added before pass.
+- The final `code-reviewer` owns the integrated issue diff, structure, responsibility boundaries, regression risk, and maintainability. It does not replace per-step code review.
+- `spec-reviewer` owns requirement fulfillment and consistency across requirement, design, plan, report, implementation, tests, and docs.
+- After all final reviewers pass, update the final report ledger with each step closure, final review results, final commit scope, and the post-commit external evidence destination. Then create the final commit and confirm no unintended staged or unstaged changes remain.
+- Delivery completion must be confirmed before `issue finish` while the active issue is still set and confirmable, and `spec-dock/active/issue/requirement.md`, `design.md`, `plan.md`, and `report.md` contain issue-specific content rather than template, placeholder, or effectively blank content.
+- `spec-dock/active/issue/report.md` must record command evidence for required `sync`, `validate`, implementation delegation decisions, per-step code review, step commit / approved-no-op, final QA review, final issue-wide code review, final spec review, and final report ledger / final commit scope before the final commit, including whether each required step succeeded, passed, reached approval, reached `delegated` / `approved-local-execution`, or reached `committed` / `approved-no-op`.
+- Do not run `issue finish` until every required step has been executed, every required `sync` / `validate` step has succeeded or passed, every required review step has reached approval or pass, every implementation step has delegation evidence as `delegated`, `approved-local-execution`, or degraded mode for delegation availability only, every implementation step is `committed` or valid `approved-no-op`, the final report ledger and final commit scope are recorded in `spec-dock/active/issue/report.md`, the final commit is complete, no unintended staged / unstaged changes remain, and the final commit hash plus post-commit clean evidence are recorded in external delivery evidence such as the final response, PR, or issue comment.
+- After `issue finish`, do not require the active issue to remain set. Treat `issue finish` as lifecycle closure / GitHub close / active clear only.
+- If any required step is skipped, or executed without a successful, pass, approved, `committed`, or valid `approved-no-op` outcome, classify the issue as `blocked` or `incomplete`, record the reason and next action in `spec-dock/active/issue/report.md`, and do not report the issue as complete.
 - Treat the issue as `blocked` only when an external dependency, missing permission, unavailable service, or other environment condition prevents the next required action.
 - When blocked, record the reason and next action in `spec-dock/active/issue/report.md`. Include blocker type and impact when applicable.
 - Keep environment blockers separate from product gaps; missing implementation, missing docs updates, or missing evidence are incomplete unless an environment blocker prevents progress.
@@ -33,14 +71,23 @@ description: Leaf skill for issue execution tasks in spec-dock.
 - `spec-dock/docs/reference_sync.md`
 - `spec-dock/docs/reference_github.md`
 - `spec-dock/docs/reference_naming.md`
+- `spec-dock/docs/workflow_spec_authoring.md`
 
 ## Runtime command reminders
 
 - Use runtime command path only: `./spec-dock/scripts/spec-dock ...`
+- Normal issue execution lifecycle:
+  - `./spec-dock/scripts/spec-dock issue start <target>`
+  - `./spec-dock/scripts/spec-dock issue finish`
+- `issue start -f` / `--force` bypasses only the unfinished active issue guard for switching away from another unfinished issue branch. It does not bypass dependency readiness, target validation, or checkout safety.
+- `issue start` from `main` / `master` / `develop` / `staging` or another non-issue branch is allowed; the unfinished guard is for another unfinished active issue branch only.
+- Use direct `active set` only for manual / recovery work. It remains outside the unfinished issue guard.
+- After `issue finish`, avoid running `sync` on the just-finished issue branch when you need active clear to remain clear. `sync` can restore active from branch-derived issue context; move to `main` or another non-issue branch before final sync, or skip post-finish sync.
 - Dependency mutation is command-first:
   - `./spec-dock/scripts/spec-dock deps add --from <issue-id> --to <issue-id>`
   - `./spec-dock/scripts/spec-dock deps remove --from <issue-id> --to <issue-id>`
-  - `./spec-dock/scripts/spec-dock deps check <target> --github`
+  - `./spec-dock/scripts/spec-dock deps check <target>`
 - Keep report evidence aligned with workflow checks:
   - `./spec-dock/scripts/spec-dock validate`
-  - `./spec-dock/scripts/spec-dock sync --github`
+  - `./spec-dock/scripts/spec-dock sync`
+- Use `--no-github` only for explicit cache/local verification with no GitHub calls.

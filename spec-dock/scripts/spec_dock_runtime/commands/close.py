@@ -48,8 +48,9 @@ def _close_args(ns: argparse.Namespace) -> CommandArgs:
 def _run_close(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
     typed = _expect_close_args(args)
     result = use_cases.close_node(CloseNodeRequest(target=typed.target_ref))
+    post_sync_failed = result.post_sync is not None and result.post_sync.failed
     return CommandOutcome(
-        exit_code=0,
+        exit_code=1 if post_sync_failed else 0,
         text=render_close_text(result, target_display=typed.target_display),
     )
 

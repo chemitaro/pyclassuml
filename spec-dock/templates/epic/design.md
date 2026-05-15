@@ -13,117 +13,117 @@ ID: "<EPIC_ID>"
 # <EPIC_ID> <EPIC_TITLE> — 設計（HOW）
 
 ## 全体像
-- target boundary:
+- 対象境界:
   - ...
-- impacted area:
+- 影響領域:
   - ...
-- existing relation:
+- 既存関係:
   - ...
-- parent diagrams referenced:
+- 参照する親 diagram:
   - ...
 
 ## Component / Module View
-- Title:
+- タイトル:
   - ...
-- Question answered:
+- 答える問い:
   - ...
-- Scope:
+- 範囲:
   - ...
-- Excluded details:
+- 含めない詳細:
   - ...
-- Update trigger:
+- 更新条件:
   - ...
 
 ### UML（推奨: component / module）
 ```plantuml
 @startuml
-' component / module diagram
+' component / module diagram（component / module 図）
 @enduml
 ```
 
 ## Package Dependency
-- Title:
+- タイトル:
   - ...
-- Question answered:
+- 答える問い:
   - ...
-- Scope:
+- 範囲:
   - ...
-- Excluded details:
+- 含めない詳細:
   - ...
-- Update trigger:
+- 更新条件:
   - ...
 
 ### UML（推奨: package dependency / package dependency delta）
 ```plantuml
 @startuml
-' package dependency diagram
+' package dependency diagram（package 依存図）
 @enduml
 ```
 
 ## Domain Model（DDD 必要時）
-- ubiquitous language refs:
+- ユビキタス言語の参照:
   - ...
-- aggregate root:
+- 集約ルート:
   - ...
-- entity / value object:
+- エンティティ / 値オブジェクト:
   - ...
-- domain event / policy / specification:
+- ドメインイベント / ポリシー / 仕様:
   - ...
-- invariants:
+- 不変条件:
   - ...
-- diagram metadata:
-  - Title:
+- diagram メタデータ:
+  - タイトル:
     - ...
-  - Question answered:
+  - 答える問い:
     - ...
-  - Scope:
+  - 範囲:
     - ...
-  - Excluded details:
+  - 含めない詳細:
     - persistence schema / full implementation classes
-  - Update trigger:
+  - 更新条件:
     - aggregate / entity / value object / event / invariant が変わるとき
 
 ### UML（任意: domain model / aggregate）
-- N/A: reason
+- N/A: 理由
 
 ## 契約
 ### API（必要時）
 - API-001:
-  - Request:
-  - Response:
-  - Errors:
+  - リクエスト:
+  - レスポンス:
+  - エラー:
 
 ### Event（必要時）
 - EVT-001:
-  - Producer:
-  - Consumer:
-  - Payload:
+  - 生成元:
+  - 利用先:
+  - ペイロード:
 
-### Data boundary
-- SoR:
+### データ境界
+- 正本:
   - ...
-- consistency model:
+- 一貫性モデル:
   - ...
 
 ## データモデル
-- model / table changes:
+- model / table 変更:
   - ...
-- invariants:
+- 不変条件:
   - ...
-- diagram metadata:
-  - Title:
+- diagram メタデータ:
+  - タイトル:
     - ...
-  - Question answered:
+  - 答える問い:
     - ...
-  - Scope:
+  - 範囲:
     - ...
-  - Excluded details:
+  - 含めない詳細:
     - domain model の代替にはしない
-  - Update trigger:
+  - 更新条件:
     - persistence model / migration impact が変わるとき
 
 ### UML（任意: data model）
-- N/A: reason
+- N/A: 理由
 
 ## 主要フロー
 - Flow-A:
@@ -132,79 +132,79 @@ ID: "<EPIC_ID>"
   3. ...
 - Flow-B:
   - ...
-- diagram metadata:
-  - Title:
+- diagram メタデータ:
+  - タイトル:
     - ...
-  - Question answered:
+  - 答える問い:
     - ...
-  - Scope:
+  - 範囲:
     - ...
-  - Excluded details:
+  - 含めない詳細:
     - exhaustive internal call graph
-  - Update trigger:
+  - 更新条件:
     - participant / message / transaction boundary が変わるとき
 
 ### UML（推奨: main sequence）
 ```plantuml
 @startuml
-' main sequence diagram
+' main sequence diagram（主要 sequence 図）
 @enduml
 ```
 
 ## State / Activity（必要時）
 - State:
-  - N/A: reason
+  - N/A: 理由
 - Activity:
-  - N/A: reason
-- diagram metadata:
-  - Title:
+  - N/A: 理由
+- diagram メタデータ:
+  - タイトル:
     - ...
-  - Question answered:
+  - 答える問い:
     - ...
-  - Scope:
+  - 範囲:
     - ...
-  - Excluded details:
+  - 含めない詳細:
     - implementation order
-  - Update trigger:
+  - 更新条件:
     - lifecycle / workflow branch / terminal state が変わるとき
 
 ### UML（任意: state / activity）
-- N/A: reason
+- N/A: 理由
 
 ## 失敗設計
-- failure mode:
+- 失敗モード:
   - ...
-- retry:
+- リトライ:
   - ...
-- idempotency:
+- 冪等性:
   - ...
-- partial failure:
+- 部分失敗:
   - ...
 
 ## 移行戦略
-- migration strategy:
+- 移行戦略:
   - ...
-- dual write/read if needed:
+- 必要時の dual write/read:
   - ...
-- rollback:
+- ロールバック:
   - ...
 
 ## 観測性 / セキュリティ
-- observability:
+- 観測性:
   - ...
-- role / auth:
+- ロール / 認可:
   - ...
-- audit / pii:
+- 監査 / PII:
   - ...
 
 ## テスト戦略
-- Unit:
+- 単体:
   - ...
-- Integration:
+- 統合:
   - ...
 - E2E:
   - ...
-- E-AC mapping:
+- E-AC 対応:
   - E-AC-001 -> ...
 
 ## 関連 ADR

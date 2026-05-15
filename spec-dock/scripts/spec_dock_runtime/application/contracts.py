@@ -20,6 +20,9 @@ from ..domain.models import (
 from ..infra.contracts import StoredMetaRecord
 
 
+POST_MUTATION_FATAL_WARNING_CODES: tuple[str, ...] = ("gh_fetch_failed",)
+
+
 @dataclass(frozen=True)
 class ValidateTreeRequest:
     pass
@@ -93,6 +96,7 @@ class CreateNodeResult:
     node: SpecNode
     created_paths: list[Path]
     warnings: list[str]
+    post_sync: PostMutationSyncOutcome | None = None
 
 
 @dataclass(frozen=True)
@@ -164,6 +168,7 @@ class MutateDepsResult:
     to_id: str
     result: MutateDepsResultKind
     warnings: list[str]
+    post_sync: PostMutationSyncOutcome | None = None
 
 
 class MutateDepsError(RuntimeError):
@@ -187,6 +192,7 @@ class MutateDepsError(RuntimeError):
 @dataclass(frozen=True)
 class CloseNodeRequest:
     target: TargetRef
+    run_post_sync: bool = True
 
 
 @dataclass(frozen=True)
@@ -197,6 +203,38 @@ class CloseNodeResult:
     issue_snapshot: IssueSnapshot
     already_closed: bool
     warnings: list[str]
+    post_sync: PostMutationSyncOutcome | None = None
+
+
+@dataclass(frozen=True)
+class IssueStartRequest:
+    target: TargetRef
+    force: bool
+    issue_limit: int
+
+
+@dataclass(frozen=True)
+class IssueStartResult:
+    target_display: str
+    requested_issue_id: str
+    active_set: ActiveSetResult
+    forced: bool
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class IssueFinishRequest:
+    pass
+
+
+@dataclass(frozen=True)
+class IssueFinishResult:
+    issue_id: str
+    github_issue_number: int
+    already_closed: bool
+    active_cleared: bool
+    warnings: list[str]
+    post_sync: PostMutationSyncOutcome | None = None
 
 
 DeleteTerminalStatus = Literal[
@@ -260,6 +298,7 @@ class DeleteNodeResult:
     recovery_guidance: list[str]
     dependency_scrub_failures: list[DeleteDependencyScrubFailure]
     warnings: list[str]
+    post_sync: PostMutationSyncOutcome | None = None
 
 
 @dataclass(frozen=True)
@@ -374,6 +413,74 @@ class SyncCommandResult:
 
 
 @dataclass(frozen=True)
+class PostMutationSyncOutcome:
+    sync_result: SyncCommandResult | None
+    skipped_reason: str | None = None
+    exception_reason: str | None = None
+    fatal_warning_codes: tuple[str, ...] = POST_MUTATION_FATAL_WARNING_CODES
+    guidance: list[str] = field(default_factory=list)
+
+    @property
+    def warnings(self) -> list[str]:
+        if self.sync_result is None:
+            return []
+        return list(self.sync_result.state.warnings)
+
+    @property
+    def fatal_warnings(self) -> list[str]:
+        return [
+            code
+            for code in self.fatal_warning_codes
+            if any(warning == code or warning.startswith(f"{code}:") for warning in self.warnings)
+        ]
+
+    @property
+    def failed(self) -> bool:
+        if self.exception_reason is not None:
+            return True
+        if self.sync_result is not None and self.sync_result.artifact_failure is not None:
+            return True
+        return bool(self.fatal_warnings)
+
+    @classmethod
+    def skipped(cls, reason: str) -> PostMutationSyncOutcome:
+        return cls(sync_result=None, skipped_reason=reason, guidance=[])
+
+    @classmethod
+    def from_exception(cls, error: Exception) -> PostMutationSyncOutcome:
+        return cls(
+            sync_result=None,
+            exception_reason=str(error),
+            guidance=_post_mutation_sync_guidance("post-mutation sync raised an exception"),
+        )
+
+    @classmethod
+    def from_sync_result(cls, sync_result: SyncCommandResult) -> PostMutationSyncOutcome:
+        guidance: list[str] = []
+        if sync_result.artifact_failure is not None:
+            guidance = _post_mutation_sync_guidance("derived artifacts may be stale or partially written")
+        else:
+            fatal_warnings = [
+                code
+                for code in POST_MUTATION_FATAL_WARNING_CODES
+                if any(warning == code or warning.startswith(f"{code}:") for warning in sync_result.state.warnings)
+            ]
+            if fatal_warnings:
+                guidance = _post_mutation_sync_guidance(
+                    "GitHub issue state fetch was incomplete: " + ", ".join(fatal_warnings)
+                )
+        return cls(sync_result=sync_result, guidance=guidance)
+
+
+def _post_mutation_sync_guidance(reason: str) -> list[str]:
+    return [
+        f"mutation succeeded, but post-mutation sync failed: {reason}",
+        "derived artifacts may be stale or partially written",
+        "run `./spec-dock/scripts/spec-dock sync` to refresh derived artifacts with GitHub live state",
+    ]
+
+
+@dataclass(frozen=True)
 class UseCases:
     create_initiative: Callable[[CreateNodeRequest], CreateNodeResult]
     create_epic: Callable[[CreateNodeRequest], CreateNodeResult]
@@ -396,6 +503,12 @@ class UseCases:
     )
     close_node: Callable[[CloseNodeRequest], CloseNodeResult] = lambda _req: (_ for _ in ()).throw(
         RuntimeError("close_node is not configured")
+    )
+    issue_start: Callable[[IssueStartRequest], IssueStartResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("issue_start is not configured")
+    )
+    issue_finish: Callable[[IssueFinishRequest], IssueFinishResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("issue_finish is not configured")
     )
     doctor: Callable[[DoctorRequest], DoctorResult] = (
         lambda _req: DoctorResult(ok=True, findings=[], warnings=[])

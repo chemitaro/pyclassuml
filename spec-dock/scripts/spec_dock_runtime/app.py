@@ -16,7 +16,7 @@ Design goals:
 - Keep dependencies minimal (stdlib only).
 - Use local-only by default for `new initiative`/`new epic`.
 - Keep GitHub-default behavior for `new issue` (opt out with `--no-github`).
-- Keep `sync --github` optional (GitHub state enrichment only when requested).
+- `sync` reads GitHub issue state by default; use `sync --no-github` only for cache/local opt-out.
 """
 from __future__ import annotations
 
@@ -548,8 +548,8 @@ def _render_context_pack(current: dict[str, Any] | None) -> str:
         lines.append("- `spec-dock/active/issue/README.md`")
     lines.append("")
     lines.append("## Commands")
-    lines.append("- state (local): `./spec-dock/scripts/spec-dock sync`")
-    lines.append("- state (github): `./spec-dock/scripts/spec-dock sync --github`")
+    lines.append("- state (github default): `./spec-dock/scripts/spec-dock sync`")
+    lines.append("- state (cache/local opt-out): `./spec-dock/scripts/spec-dock sync --no-github`")
     lines.append("- validate: `./spec-dock/scripts/spec-dock validate`")
     lines.append("")
 
@@ -1268,7 +1268,7 @@ def _deps_evaluate_v2(
                 warnings.append("gh_fetch_failed")
             _warn(
                 "gh_fetch_failed: failed to fetch GitHub issue states; treating as unknown. "
-                f"Hint: check `gh auth status`, or re-run without --github. Details: {e}"
+                f"Hint: check `gh auth status`, or use --no-github for cache/local state. Details: {e}"
             )
             issue_index = {}
         else:
@@ -1391,7 +1391,7 @@ def _deps_evaluate(
             warnings.append("gh_fetch_failed")
             _warn(
                 "gh_fetch_failed: failed to fetch GitHub issue states; treating as unknown. "
-                f"Hint: check `gh auth status`, or re-run without --github. Details: {e}"
+                f"Hint: check `gh auth status`, or use --no-github for cache/local state. Details: {e}"
             )
             issue_index = {}
         else:

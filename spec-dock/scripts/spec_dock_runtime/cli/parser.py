@@ -50,6 +50,16 @@ def build_parser(registry: CommandRegistry) -> argparse.ArgumentParser:
 
     _bind_leaf(sub.add_parser("delete", help="Delete local spec nodes with safeguards"), registry, "delete")
     _bind_leaf(sub.add_parser("close", help="Close the linked GitHub issue for a node target"), registry, "close")
+    _bind_leaf(
+        sub.add_parser("update", help="Update a managed repo from the upstream spec-dock package"),
+        registry,
+        "update",
+    )
+
+    p_issue = sub.add_parser("issue", help="Run guided issue lifecycle commands")
+    issue_sub = p_issue.add_subparsers(dest="issue_cmd", required=True)
+    _bind_leaf(issue_sub.add_parser("start", help="Set active issue and checkout its branch"), registry, "issue_start")
+    _bind_leaf(issue_sub.add_parser("finish", help="Close active issue and clear active pointers"), registry, "issue_finish")
 
     _bind_leaf(
         sub.add_parser("sync", help="Generate index.json/tree.json (optionally enrich from GitHub)"),

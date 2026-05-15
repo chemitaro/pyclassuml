@@ -1,0 +1,39 @@
+# Allow SpecDock's repo-local command entrypoints.
+#
+# This intentionally allows the entrypoint prefix instead of enumerating
+# subcommands, so newly added SpecDock commands are covered automatically.
+prefix_rule(
+    pattern = [["./spec-dock/scripts/spec-dock", "./spec"]],
+    decision = "allow",
+    justification = "Allow spec-dock managed repo-local command entrypoints for SpecDock workflows.",
+    match = [
+        "./spec-dock/scripts/spec-dock validate",
+        "./spec-dock/scripts/spec-dock sync",
+        "./spec-dock/scripts/spec-dock new future-command --flag value",
+        "./spec validate",
+        "./spec sync",
+        "./spec future-command --flag value",
+    ],
+    not_match = [
+        "spec-dock validate",
+        "uvx --from . spec-dock update .",
+        "./other/scripts/spec-dock validate",
+    ],
+)
+
+# Allow the PR monitor to fetch GitHub PR review data through the fixed
+# read-only wrapper only. Do not allow direct `gh api` as an agent command.
+prefix_rule(
+    pattern = [["./.agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh"]],
+    decision = "allow",
+    justification = "Allow the PR monitor read-only GitHub PR review comment wrapper without exposing arbitrary gh api operations.",
+    match = [
+        "./.agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh --repo owner/repo --pr 13",
+        "./.agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh --repo owner/repo --pr 13 --out /tmp/pr13",
+    ],
+    not_match = [
+        "gh api repos/owner/repo/pulls/13/comments",
+        "curl https://api.github.com/repos/owner/repo/pulls/13/comments",
+        "/srv/mount/.codex/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh --repo owner/repo --pr 13",
+    ],
+)

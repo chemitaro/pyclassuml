@@ -3,15 +3,15 @@
 対象コマンド:
 
 ```bash
-./spec-dock/scripts/spec-dock deps check <target> [--github] [--gh-limit N] [--json]
-./spec-dock/scripts/spec-dock deps check --id <node-id> [--github] [--gh-limit N] [--json]
-./spec-dock/scripts/spec-dock deps check --github-issue <n> [--github] [--gh-limit N] [--json]
+./spec-dock/scripts/spec-dock deps check <target> [--github|--no-github] [--gh-limit N] [--json]
+./spec-dock/scripts/spec-dock deps check --id <node-id> [--github|--no-github] [--gh-limit N] [--json]
+./spec-dock/scripts/spec-dock deps check --github-issue <n> [--github|--no-github] [--gh-limit N] [--json]
 ./spec-dock/scripts/spec-dock deps add --from <node-id> --to <node-id>
 ./spec-dock/scripts/spec-dock deps remove --from <node-id> --to <node-id>
-./spec-dock/scripts/spec-dock active set <target> [--github] [--gh-limit N] [--force|-f] [--checkout]
-./spec-dock/scripts/spec-dock active set --id <node-id> [--github] [--gh-limit N] [--force|-f] [--checkout]
-./spec-dock/scripts/spec-dock active set --github-issue <n> [--github] [--gh-limit N] [--force|-f] [--checkout]
-./spec-dock/scripts/spec-dock sync [--github] [--gh-limit N] [--no-update-active] [--force]
+./spec-dock/scripts/spec-dock active set <target> [--github|--no-github] [--gh-limit N] [--force|-f] [--checkout]
+./spec-dock/scripts/spec-dock active set --id <node-id> [--github|--no-github] [--gh-limit N] [--force|-f] [--checkout]
+./spec-dock/scripts/spec-dock active set --github-issue <n> [--github|--no-github] [--gh-limit N] [--force|-f] [--checkout]
+./spec-dock/scripts/spec-dock sync [--github|--no-github] [--gh-limit N] [--no-update-active] [--force]
 ```
 
 関連:
@@ -108,7 +108,7 @@
 ## 5. downstream boundary note
 
 - `deps check`、`active set`、`validate`、`sync`、`delete` は compiled dependency result を消費する downstream consumer です。
-- 運用では `deps add/remove` の後に `./spec-dock/scripts/spec-dock deps check <target> --github`、`./spec-dock/scripts/spec-dock validate`、`./spec-dock/scripts/spec-dock sync --github` を順に実行して整合を確認します。
+- 運用では `deps add/remove` の後に `./spec-dock/scripts/spec-dock deps check <target>`、`./spec-dock/scripts/spec-dock validate`、`./spec-dock/scripts/spec-dock sync` を順に実行して、標準の GitHub live state で整合を確認します。GitHub を呼ばない cache/local 確認が必要な場合だけ `--no-github` を指定します。
 - この文書は `.meta.json` schema / reader / `deps check` / `deps add/remove` の command contract を固定するもので、downstream parity や hard cutover 完了を意味しません。
 - provider-side のこのファイルが dependency reference の正本であり、dogfooding 側 copy は secondary verification です。
 

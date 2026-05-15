@@ -20,6 +20,7 @@ from .targets import parse_explicit_target_flags
 class DepsCheckArgs(CommandArgs):
     target_ref: TargetRef
     github: bool
+    no_github: bool
     gh_limit: int
     json_output: bool
 
@@ -58,7 +59,9 @@ def _add_deps_check_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--id", help="Explicit node id target (e.g. iss-00123 / epic-local-00001)")
     parser.add_argument("--github-issue", type=int, help="Explicit GitHub issue number target (e.g. 123)")
-    parser.add_argument("--github", action="store_true", help="Fetch GitHub issue states via gh CLI")
+    github_group = parser.add_mutually_exclusive_group()
+    github_group.add_argument("--github", action="store_true", help="Fetch GitHub issue states via gh CLI")
+    github_group.add_argument("--no-github", action="store_true", help="Use cached issue states without calling gh CLI")
     parser.add_argument("--gh-limit", type=int, default=10000, help="gh issue list limit (default: 10000)")
     parser.add_argument("--json", action="store_true", help="Output JSON to stdout only")
 
@@ -87,7 +90,8 @@ def _deps_check_args(ns: argparse.Namespace) -> CommandArgs:
     )
     return DepsCheckArgs(
         target_ref=target_ref,
-        github=bool(getattr(ns, "github", False)),
+        github=not bool(getattr(ns, "no_github", False)),
+        no_github=bool(getattr(ns, "no_github", False)),
         gh_limit=int(getattr(ns, "gh_limit", 10000)),
         json_output=bool(getattr(ns, "json", False)),
     )
@@ -140,7 +144,8 @@ def _run_deps_mutation(*, action: str, args: CommandArgs, use_cases: UseCases) -
         )
     except MutateDepsError as error:
         return CommandOutcome(exit_code=1, text=render_deps_mutation_error_text(error))
-    return CommandOutcome(exit_code=0, text=render_deps_mutation_text(result))
+    post_sync_failed = result.post_sync is not None and result.post_sync.failed
+    return CommandOutcome(exit_code=1 if post_sync_failed else 0, text=render_deps_mutation_text(result))
 
 
 def _expect_deps_check_args(args: CommandArgs) -> DepsCheckArgs:

@@ -32,6 +32,7 @@ Inputs:
 Hard rules:
 - 監視対象は GitHub Actions のみではなく、PR に紐づく全 checks / statuses を対象にする。
 - Codex review は issue comments / inline review comments / review bodies を対象にする。
+- Codex review / PR review comment 取得は repo-relative read-only wrapper だけを使う。direct `gh api`、GitHub API への direct `curl`、GraphQL、`gh pr comment`、`gh pr review`、POST / PATCH / PUT / DELETE 系操作、thread resolve、reply、edit、dismiss、merge、close、label/status 変更へ fallback しない。
 - 永続ファイルに監視状態を書き出さない。時間管理はこの agent の実行コンテキスト内で行う。
 - 一度の失敗で諦めない。GitHub API や gh の一時エラーは短い再試行を許容する。
 - ただし deadline 超過時は必ず終了し、未完了項目を明示する。
@@ -52,8 +53,9 @@ Command guidance:
 - Prefer read-only gh commands first:
   - gh pr view <pr> --repo <repo> --json number,url,headRefOid,reviewDecision,statusCheckRollup
   - gh pr checks <pr> --repo <repo>
-- When `gh pr view --comments` is insufficient or unreliable, reuse the existing helper:
-  - ./.agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh
+- For Codex review / PR review comment data, always use the approved read-only wrapper:
+  - ./.agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh --repo <repo> --pr <pr> --out <tmp-dir>
+- If the wrapper is missing, fails, or lacks required resolved/unresolved thread state, report the limitation as `codex_review` unknown / blocked. Do not request approval or fall back to direct GitHub API calls.
 - Use `date -u +"%Y-%m-%dT%H:%M:%SZ"` to track current time.
 - Use `sleep <seconds>` for waiting.
 

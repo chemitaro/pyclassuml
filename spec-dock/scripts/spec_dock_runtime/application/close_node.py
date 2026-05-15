@@ -11,6 +11,7 @@ from .contracts import CloseNodeRequest, CloseNodeResult, TargetRef
 from .github_issue_targets import normalize_repo_slug
 from .ports import Ports
 from .repo_context import resolve_current_repo_slug
+from .sync_state import post_mutation_sync
 
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
@@ -133,16 +134,21 @@ def close_node(req: CloseNodeRequest, ports: Ports) -> CloseNodeResult:
 
     issue_number = int(node.github_issue_number)
     repo_slug = normalize_repo_slug(node.github_repo_owner, node.github_repo_name) or current_repo_slug
-    snapshot = issue_gateway.issue_view_snapshot(repo_root, issue_number, repo_slug=repo_slug)
-    if str(snapshot.state).strip().upper() == "CLOSED":
+
+    def _result(*, snapshot, already_closed: bool) -> CloseNodeResult:
         return CloseNodeResult(
             node_id=node.id,
             node_kind=node.kind,
             github_issue_number=issue_number,
             issue_snapshot=snapshot,
-            already_closed=True,
+            already_closed=already_closed,
             warnings=[],
+            post_sync=post_mutation_sync(ports) if req.run_post_sync else None,
         )
+
+    snapshot = issue_gateway.issue_view_snapshot(repo_root, issue_number, repo_slug=repo_slug)
+    if str(snapshot.state).strip().upper() == "CLOSED":
+        return _result(snapshot=snapshot, already_closed=True)
 
     try:
         closed_snapshot = issue_gateway.issue_close(repo_root, issue_number, repo_slug=repo_slug)
@@ -152,21 +158,7 @@ def close_node(req: CloseNodeRequest, ports: Ports) -> CloseNodeResult:
         except RuntimeError:
             raise error
         if str(post_failure_snapshot.state).strip().upper() == "CLOSED":
-            return CloseNodeResult(
-                node_id=node.id,
-                node_kind=node.kind,
-                github_issue_number=issue_number,
-                issue_snapshot=post_failure_snapshot,
-                already_closed=True,
-                warnings=[],
-            )
+            return _result(snapshot=post_failure_snapshot, already_closed=True)
         raise error
 
-    return CloseNodeResult(
-        node_id=node.id,
-        node_kind=node.kind,
-        github_issue_number=issue_number,
-        issue_snapshot=closed_snapshot,
-        already_closed=False,
-        warnings=[],
-    )
+    return _result(snapshot=closed_snapshot, already_closed=False)

@@ -19,34 +19,34 @@ ID: "<EPIC_ID>"
   - ...
 
 ## Issue 分割方針
-- slicing principle:
+- 分割原則:
   - ...
-- exceptions:
+- 例外:
   - ...
 
 ## Issue 一覧（順序 / tranche 付き）
 - iss-xxxx-...:
   - 目的:
     - ...
-  - deliverable:
+  - 成果物:
     - ...
   - tranche:
     - ...
   - closes:
     - ...
-  - depends on:
+  - 依存:
     - ...
 - iss-xxxx-...:
   - ...
 
 ## 統合チェックポイント
-- G1 decomposition review:
+- G1 分解レビュー:
   - ...
-- G2 integration readiness:
+- G2 統合準備確認:
   - ...
-- G3 rollout/docs impact:
+- G3 ロールアウト / docs 影響:
   - ...
-- G9 final epic spec review:
+- G9 最終 Epic spec review:
   - ...
 
 ## 品質ゲート
@@ -54,21 +54,21 @@ ID: "<EPIC_ID>"
   - ...
 
 ## ロールアウト / docs impact
-- rollout order:
+- ロールアウト順序:
   - ...
-- contract / docs refresh:
+- 契約 / docs 更新:
   - ...
 
-## Issue readiness contract
+## Issue 準備完了条件
 - Issue に要求する最低条件:
   - ...
 
-## final exit contract
-- E-AC closure:
+## 最終完了条件
+- E-AC 完了:
   - ...
-- integration / rollout complete:
+- 統合 / ロールアウト完了:
   - ...
-- docs impact resolved:
+- docs 影響解決:
   - ...
 
 ## 依存 / ブロッカー

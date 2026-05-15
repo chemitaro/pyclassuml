@@ -33,6 +33,43 @@ ID: "<ISS_ID>"
 <result>
 ```
 
+#### Step Contract Closure
+| step | closure ids | close condition | evidence | result | notes |
+|---|---|---|---|---|---|
+| S01 | tc-001 | ... | ... | pass / approved-no-op / fail / blocked | ... |
+
+#### Test Contract Closure
+| closure id / test id | step | required | evidence level | pre-implementation evidence | verification command | result | notes |
+|---|---|---|---|---|---|---|---|
+| tc-001 | S01 | yes | red-required | ... | ... | pass / approved-no-op / fail / blocked | ... |
+
+- `closure id / test id` は Central index の `id` を指す。別 alias を使う場合は `Closure Delta` で対応を記録する。
+
+#### Closure Coverage
+| closure id | step | verification evidence | result | notes |
+|---|---|---|---|---|
+| tc-001 | S01 | ... | pass / approved-no-op / fail / blocked | ... |
+
+#### Closure Delta
+| change | closure id | test id alias | resolves to closure id | reason | re-review required |
+|---|---|---|---|---|---|
+| none / added / removed / changed / alias-mapped | tc-001 | tc-001 / test-name | tc-001 | ... | yes / no |
+
+#### Implementation Delegation Gate
+| step | decision | required reason | agent role | delegated scope | result | local-execution rationale |
+|---|---|---|---|---|---|---|
+| S01 | delegated / approved-local-execution / degraded mode | multi-layer / shipped scaffold / pattern analysis / integration / large worker scope / none | repo-analyst / dev-coder / doc-writer / N/A | ... | pass / fail / blocked | no delegation rationale / degraded reason |
+
+#### Code Review Gate
+| step | reviewer | review scope | review_status | findings / fixes | re-review count | result |
+|---|---|---|---|---|---|---|
+| S01 | code-reviewer | step diff / tests / docs-report updates | pass / fail | ... | 0 | pass / blocked |
+
+#### Step Commit Gate
+| step | closure state | commit scope | commit hash / final ledger | post-commit clean check | no-op rationale | no-op checked contracts / files | no-op diff-clean command | no-op read-only confirmation |
+|---|---|---|---|---|---|---|---|---|
+| S01 | committed / approved-no-op | ... | <hash or final ledger reference> | `git status --short` -> clean | ... | ... | ... | ... |
+
 #### 変更したファイル
 - `path/to/file1` - ...
 - `path/to/file2` - ...
@@ -55,6 +92,33 @@ ID: "<ISS_ID>"
 - ...
 
 ---
+
+## Final Quality Gate (必須)
+
+### S90 Docs Impact Resolution
+| target | update required | owner | evidence | spec-reviewer result |
+|---|---|---|---|---|
+| docs / templates / README / workflow / skill / migration notes | yes / no | doc-writer / N/A | ... | pass / fail / blocked |
+
+### Final QA Gate
+| reviewer | scope | integration test decision | evidence | result |
+|---|---|---|---|---|
+| qa-reviewer | whole issue test adequacy | added / already sufficient / not applicable | ... | pass / fail / blocked |
+
+### Final Code Review Gate
+| reviewer | scope | findings / fixes | re-review count | result |
+|---|---|---|---|---|
+| code-reviewer | issue-wide integrated diff | ... | 0 | pass / fail / blocked |
+
+### Final Spec Review Gate
+| reviewer | scope | findings / fixes | re-review count | result |
+|---|---|---|---|---|
+| spec-reviewer | requirement / design / plan / report / implementation / tests / docs alignment | ... | 0 | pass / fail / blocked |
+
+### Final Commit
+| final report ledger | final commit scope | post-commit external evidence destination | result |
+|---|---|---|---|
+| ... | ... | final response / PR / issue comment / other external delivery evidence | ready / blocked |
 
 ## 遭遇した問題と解決 (任意)
 - 問題: ...

@@ -11,16 +11,16 @@ ID: "<INIT_ID>"
 
 # <INIT_ID> <INIT_TITLE> — 計画（Roadmap / Epics）
 
-## この計画が達成する Goal / Metric
-- Goal:
+## この計画が達成する目標 / 指標
+- 目標:
   - ...
-- 対象 metric:
+- 対象指標:
   - ...
 
 ## マイルストーン
 - M1:
-  - deliverable:
-  - exit:
+  - 成果物:
+  - 完了条件:
 - M2:
   - ...
 
@@ -28,53 +28,53 @@ ID: "<INIT_ID>"
 - epic-xxxx-...:
   - 目的:
     - ...
-  - deliverable:
+  - 成果物:
     - ...
-  - metric link:
+  - 指標との対応:
     - ...
-  - depends on:
+  - 依存:
     - ...
 - epic-xxxx-...:
   - ...
 
 ## 順序と理由
-- sequencing rationale:
+- 順序の根拠:
   - ...
-- parallelizable:
+- 並列化できるもの:
   - ...
 
 ## 意思決定ゲート
-- G1 strategy review:
+- G1 戦略レビュー:
   - ...
-- G2 milestone readiness:
+- G2 マイルストーン準備確認:
   - ...
-- G3 governance/docs impact:
+- G3 ガバナンス / docs 影響:
   - ...
-- G9 final initiative plan review:
+- G9 最終 Initiative 計画レビュー:
   - ...
 
 ## 指標レビュー計画
-- review timing:
+- レビュー時期:
   - ...
-- dashboard / source:
+- dashboard / 情報源:
   - ...
 
 ## ロールアウト計画
-- rollout window:
+- ロールアウト時期:
   - ...
-- release / communication:
+- リリース / 周知:
   - ...
 
-## Epic readiness contract
+## Epic 準備完了条件
 - Epic に要求する最低条件:
   - ...
 
-## final exit contract
-- milestone exit:
+## 最終完了条件
+- マイルストーン完了:
   - ...
-- success metrics reviewed:
+- 成功指標レビュー:
   - ...
-- remaining follow-up ownership:
+- 残 follow-up の担当:
   - ...
 
 ## 依存 / ブロッカー

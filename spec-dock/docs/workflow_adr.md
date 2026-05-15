@@ -68,11 +68,11 @@ runtime command（scope を明示）:
 ADR で Issue 間依存の追加/削除を採用した場合は、次の command-first contract で反映します。
 
 ```bash
-./spec-dock/scripts/spec-dock deps check <target> --github
+./spec-dock/scripts/spec-dock deps check <target>
 ./spec-dock/scripts/spec-dock deps add --from <issue-id> --to <issue-id>
 ./spec-dock/scripts/spec-dock deps remove --from <issue-id> --to <issue-id>
 ./spec-dock/scripts/spec-dock validate
-./spec-dock/scripts/spec-dock sync --github
+./spec-dock/scripts/spec-dock sync
 ```
 
 ## 4. 品質ゲート（ADR）

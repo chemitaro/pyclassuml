@@ -9,6 +9,7 @@ Initiative は投資単位です。
 
 関連:
 - 総合: [guide.md](guide.md)
+- 仕様書作成: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Epic: [workflow_epic.md](workflow_epic.md)
 - GitHub 連携: [reference_github.md](reference_github.md)
 - 共通 phase playbook: [phase_requirement.md](phase_requirement.md), [phase_design.md](phase_design.md), [phase_plan.md](phase_plan.md)
@@ -40,6 +41,7 @@ Initiative は投資単位です。
 - `requirement.md`: 投資理由、成功条件、スコープ
 - `design.md`: 方針、境界、依存、リスク
 - `plan.md`: Epic 分解、順序、ブロッカー。shared axiom は `phase_plan.md`、Initiative 固有の書き方は `phase_plan_initiative.md`
+- Requirement / design / plan の phase promotion は `workflow_spec_authoring.md` を正本にし、各 artifact ごとに fresh `spec-reviewer` の `review_status: pass` まで次 phase へ進めない
 - `discussions/`: `new doc {adr|disc|research|note} --initiative <initiative-id> --title "..."` で、この initiative の `discussions/` 配下に timestamp-prefixed original を作成する。標準形は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md`。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
 - shared な書き方は `phase_*.md`、lifecycle / governance と Initiative 固有の分解判断はこの workflow を正本とする
 
@@ -56,6 +58,10 @@ Initiative は投資単位です。
 - plan:
   - Epic への分解方針がある
   - 大まかな順序とブロッカーが見える
+- authoring:
+  - requirement / design / plan の各 promotion gate が `Spec Authoring Gate` として `report.md` に記録されている
+  - scope / success metric / Epic 分解に影響する未確認事項が残っていない
+  - plan gate pass 後に Epic 分解へ進む
 
 ## 仕上げ
 

@@ -24,3 +24,9 @@
 - 各ノードの子スコープ配下には canonical guidance への `rules.md` symlink が含まれます（例: `epics/rules.md`, `issues/rules.md`, `discussions/rules.md`）。`rules.md` は入口/ナビゲーション用です。
 - 作成/運用ルールの正本は `spec-dock/docs/rules/**` です。runtime command はサポートされた実行経路です。
 - 新規ノードにはテンプレ由来の `README.md` は生成されません。
+
+更新:
+- 導入済み repo の managed files/docs/templates/scripts/skills は repo root から `./spec-dock/scripts/spec-dock update [path]` で更新します。
+- `path` 省略時の target は current directory です。別 repo を更新する場合は `./spec-dock/scripts/spec-dock update /path/to/project` のように明示します。
+- runtime update は installer update の wrapper です。内部では固定 upstream `git+https://github.com/chemitaro/spec-dock` に対して `uvx --no-cache --from git+https://github.com/chemitaro/spec-dock spec-dock update <target>` を実行します。
+- runtime update は `init --force` ではなく、自動 migration tool でもありません。legacy / incompatible workspace は手動 normalize または rebuild が必要な場合があります。

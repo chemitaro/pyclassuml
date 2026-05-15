@@ -21,8 +21,11 @@
 
 ### 1.2 ブランチ命名（checkout 後の正規化）
 
+- `issue start <target>`
+- `issue start <target> -f`
 - `active set <target> --checkout`
   - デフォルト（`active set <target>`）は no-checkout のため、ブランチ操作は行いません
+  - `issue start` は issue node 専用です。initiative / epic / issue の target kind を問わないのは `active set <target> --checkout` のみです
 
 ---
 
@@ -159,18 +162,20 @@ validation / allocation の扱い:
 
 ---
 
-## 5. `active set --checkout` のブランチ命名（日本語ブランチを避ける）
+## 5. `issue start` / `active set --checkout` のブランチ命名（日本語ブランチを避ける）
 
 ### 5.1 目的
 
-`active set --checkout` では、ブランチ名を **ASCII かつ git 的に妥当**な形式へ寄せます。  
+`issue start` と `active set --checkout` では、ブランチ名を **ASCII かつ git 的に妥当**な形式へ寄せます。
 これにより、非ASCII名や不正ref名による運用トラブルを避けます。
 
 ### 5.2 対象
 
-- `active set <target> --checkout` を明示した場合のみ
-- target の node 種別（initiative / epic / issue）や GitHub 紐づき有無は問いません
-- `--checkout` を付けない場合は **ブランチ操作しません**
+- `issue start <target>` / `issue start <target> -f`
+  - issue node のみを受け付けます
+- `active set <target> --checkout` を明示した場合
+  - target の node 種別（initiative / epic / issue）や GitHub 紐づき有無は問いません
+- `active set` で `--checkout` を付けない場合は **ブランチ操作しません**
 
 ### 5.3 望ましいブランチ名（desired）
 

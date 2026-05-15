@@ -7,6 +7,7 @@ from typing import Literal
 from ..application.contracts import (
     CreateDiscussionDocRequest,
     CreateNodeRequest,
+    CreateNodeResult,
     UseCases,
 )
 from ..presentation.cli_text import render_new_doc_text, render_new_node_text
@@ -249,7 +250,7 @@ def _run_new_initiative(args: CommandArgs, use_cases: UseCases) -> CommandOutcom
             text,
             "spec-dock: (info) creating GitHub issue via gh",
         )
-    return CommandOutcome(exit_code=0, text=text)
+    return CommandOutcome(exit_code=_post_sync_exit_code(result), text=text)
 
 
 def _run_new_epic(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
@@ -274,7 +275,7 @@ def _run_new_epic(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
             text,
             "spec-dock: (info) creating GitHub issue via gh",
         )
-    return CommandOutcome(exit_code=0, text=text)
+    return CommandOutcome(exit_code=_post_sync_exit_code(result), text=text)
 
 
 def _run_new_issue(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
@@ -298,7 +299,7 @@ def _run_new_issue(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
             text,
             "spec-dock: (info) creating GitHub issue via gh",
         )
-    return CommandOutcome(exit_code=0, text=text)
+    return CommandOutcome(exit_code=_post_sync_exit_code(result), text=text)
 
 
 def _run_new_doc(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
@@ -321,6 +322,10 @@ def _prepend_stderr(text: CliText, line: str) -> CliText:
         stderr_lines=[line, *list(text.stderr_lines)],
         warnings=list(text.warnings),
     )
+
+
+def _post_sync_exit_code(result: CreateNodeResult) -> int:
+    return 1 if result.post_sync is not None and result.post_sync.failed else 0
 
 
 def _command_error(message: str) -> CommandOutcome:

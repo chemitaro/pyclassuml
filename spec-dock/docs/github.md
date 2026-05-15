@@ -36,32 +36,24 @@ gh issue create --title "<title>" --body "<body>"
 ./spec-dock/scripts/spec-dock new issue --epic 124 --title "..." --github-issue 123
 ```
 
-### 1.3 Issue ブランチ checkout（`active set <github_issue_number>`）
+### 1.3 Issue ブランチ checkout（`issue start <github_issue_number>`）
 
-GitHub Issue 番号から **ブランチ作成/checkout → active 設定 → sync** まで一括で行えます。
-
-```bash
-./spec-dock/scripts/spec-dock active set 123
-```
-
-内部的に実行されるコマンド（概要）:
+GitHub Issue 番号から **active issue 設定 → ブランチ作成/checkout** を一括で行えます。通常の Issue 実行では `issue start` を primary path として使います。
 
 ```bash
-gh issue develop 123 --name work/iss-00123 --checkout
+./spec-dock/scripts/spec-dock issue start 123
 ```
 
 注意:
 - 安全のため、**未コミット/未追跡の変更がある場合はエラーで中断**します（作業を保護するため）
 - 仕様ツリー内に `github.issue_number == 123` のノードが存在しない場合もエラーになります
+- `issue start` は issue node のみを対象にします。initiative / epic を checkout する manual / recovery 作業では `active set <target> --checkout` を明示してください
 
 補足:
-- `active set iss-00123` のようにノードIDで直接指定した場合でも、そのノードが GitHub Issue に紐づいていれば checkout します（initiative/epic/issue 共通）。
-- ブランチ名は日本語タイトルを使わず、`work/<node-id>` 形式を使います（例: `work/iss-00123`, `work/epic-00123`, `work/init-00123`）。
-- `work/<node-id>` が linked branch として既にある場合は、その既存 branch の checkout を優先します。
-- linked branch に `work/<node-id>` が無い場合は、`gh issue develop --name work/<node-id> --checkout` で作成します。
-- linked branch に legacy ブランチ（例: `gh-issue-123`）しか無い場合は、その legacy を一時 checkout してノードを解決し、最終的に `work/<node-id>` へ移行します（legacy が複数ある場合は非決定的なためエラー）。
-- `gh issue develop --name ...` が使えない環境では、互換のため `gh issue checkout` / `gh issue develop --checkout` にフォールバックします。
-- 互換フォールバックが使われた場合、最終的な branch 名は `gh` の挙動に依存するため `work/<node-id>` と一致しない可能性があります。
+- `issue start --id iss-00123` のように issue node ID で直接指定できます。
+- `active set iss-00123 --checkout` は同じ checkout 命名 contract を使いますが、unfinished issue guard を持たない manual / recovery 用の low-level command です。
+- ブランチ名は日本語タイトルを使わず、`<node-id>-<slug>` 形式を使います（例: `iss-00123-add-refresh-token`）。
+- desired branch が既にある場合は、その既存 branch の checkout を優先します。
 
 ## 2) 「どのリポジトリに作るか」はどう決まるか
 

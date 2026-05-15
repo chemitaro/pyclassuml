@@ -11,9 +11,9 @@ ID: "<INIT_ID>"
 # <INIT_ID> <INIT_TITLE> — 要件定義（WHAT / WHY）
 
 ## 目的（Outcome）
-- Primary:
+- 主目的:
   - ...
-- Secondary:
+- 副目的:
   - ...
 
 ## 背景と Why now
@@ -27,28 +27,28 @@ ID: "<INIT_ID>"
   - ...
 
 ## 成功指標
-- Metric-001:
-  - Baseline:
-  - Target:
+- 指標-001:
+  - 現在値:
+  - 目標値:
   - 計測方法:
   - 判定時期:
-- Metric-002:
+- 指標-002:
   - ...
 
 ## スコープ
-- MUST:
+- 必須:
   - ...
-- MUST NOT:
+- 禁止:
   - ...
-- OUT OF SCOPE:
+- 対象外:
   - ...
 
 ## 境界
-- Always:
+- 常に行う:
   - ...
-- Ask:
+- 判断が必要:
   - ...
-- Never:
+- 行わない:
   - ...
 
 ## ステークホルダー / 影響範囲

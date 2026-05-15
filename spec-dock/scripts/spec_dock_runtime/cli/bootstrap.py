@@ -15,6 +15,8 @@ from ..application.contracts import UseCases
 from ..application.import_node import import_epic as application_import_epic
 from ..application.import_node import import_initiative as application_import_initiative
 from ..application.import_node import import_issue as application_import_issue
+from ..application.issue_lifecycle import issue_finish as application_issue_finish
+from ..application.issue_lifecycle import issue_start as application_issue_start
 from ..application.mutate_deps import mutate_deps as application_mutate_deps
 from ..application.ports import Ports
 from ..application.set_active import clear_active as application_clear_active
@@ -242,6 +244,8 @@ def build_runtime(specdock_dir: Path, *, repo_root: Path | None = None) -> Boots
         mutate_deps=lambda req: application_mutate_deps(req, ports),
         delete_node=lambda req: application_delete_node(req, ports),
         close_node=lambda req: application_close_node(req, ports),
+        issue_start=lambda req: application_issue_start(req, ports),
+        issue_finish=lambda req: application_issue_finish(req, ports),
         validate_tree=lambda req: application_validate_tree(req, ports),
         doctor=lambda req: application_doctor(req, ports),
     )

@@ -13,8 +13,11 @@ from ..application.contracts import (
     DepsCheckResult,
     DoctorResult,
     ImportNodeResult,
+    IssueFinishResult,
+    IssueStartResult,
     MutateDepsError,
     MutateDepsResult,
+    PostMutationSyncOutcome,
     SyncCommandResult,
     ValidationResult,
 )
@@ -74,6 +77,34 @@ def _rel_path_for_output(path_text: str) -> str:
     return path_text
 
 
+def _post_sync_stdout_line(outcome: PostMutationSyncOutcome | None, *, label: str) -> str | None:
+    if outcome is None:
+        return None
+    if outcome.failed:
+        return None
+    if outcome.skipped_reason is not None:
+        return f"spec-dock: skipped ({label} auto-sync) reason={outcome.skipped_reason}"
+    return f"spec-dock: ok ({label} auto-sync)"
+
+
+def _post_sync_stderr_lines(
+    outcome: PostMutationSyncOutcome | None,
+    *,
+    label: str,
+    target: str,
+) -> list[str]:
+    if outcome is None or not outcome.failed:
+        return []
+    return [f"spec-dock: failed ({label} auto-sync) {target}", *outcome.guidance]
+
+
+def _post_sync_warnings(
+    warnings: list[str],
+    outcome: PostMutationSyncOutcome | None,
+) -> list[str]:
+    return [*warnings, *list(outcome.warnings if outcome else [])]
+
+
 def render_new_node_text(result: CreateNodeResult) -> CliText:
     node = result.node
     rel = _rel_path_for_output(node.path.as_posix())
@@ -91,7 +122,19 @@ def render_new_node_text(result: CreateNodeResult) -> CliText:
             "spec-dock: ok (new issue) "
             f"id={node.id} epic={node.epic_id} initiative={node.initiative_id} path={rel}{gh}"
         )
-    return CliText(stdout_lines=[line], stderr_lines=[], warnings=list(result.warnings))
+    stdout_lines = [line]
+    post_sync_line = _post_sync_stdout_line(result.post_sync, label=f"new {node.kind}")
+    if post_sync_line is not None:
+        stdout_lines.append(post_sync_line)
+    return CliText(
+        stdout_lines=stdout_lines,
+        stderr_lines=_post_sync_stderr_lines(
+            result.post_sync,
+            label=f"new {node.kind}",
+            target=f"id={node.id}",
+        ),
+        warnings=_post_sync_warnings(list(result.warnings), result.post_sync),
+    )
 
 
 def render_new_doc_text(result: CreateDiscussionDocResult) -> CliText:
@@ -171,15 +214,23 @@ def render_deps_check_text(result: DepsCheckResult) -> CliText:
 
 
 def render_deps_mutation_text(result: MutateDepsResult) -> CliText:
+    stdout_lines = [
+        (
+            f"spec-dock: ok (deps {result.action}) "
+            f"from={result.from_id} to={result.to_id} result={result.result}"
+        )
+    ]
+    post_sync_line = _post_sync_stdout_line(result.post_sync, label=f"deps {result.action}")
+    if post_sync_line is not None:
+        stdout_lines.append(post_sync_line)
     return CliText(
-        stdout_lines=[
-            (
-                f"spec-dock: ok (deps {result.action}) "
-                f"from={result.from_id} to={result.to_id} result={result.result}"
-            )
-        ],
-        stderr_lines=[],
-        warnings=list(result.warnings),
+        stdout_lines=stdout_lines,
+        stderr_lines=_post_sync_stderr_lines(
+            result.post_sync,
+            label=f"deps {result.action}",
+            target=f"from={result.from_id} to={result.to_id}",
+        ),
+        warnings=_post_sync_warnings(list(result.warnings), result.post_sync),
     )
 
 
@@ -247,16 +298,59 @@ def render_active_clear_text(result: ActiveClearResult) -> CliText:
 
 def render_close_text(result: CloseNodeResult, *, target_display: str) -> CliText:
     state = str(result.issue_snapshot.state).strip().upper() or "UNKNOWN"
+    stdout_lines = [
+        (
+            "spec-dock: ok (close) "
+            f"target={target_display} node={result.node_id} kind={result.node_kind} "
+            f"github=#{result.github_issue_number} state={state} already_closed={'true' if result.already_closed else 'false'}"
+        )
+    ]
+    post_sync_line = _post_sync_stdout_line(result.post_sync, label="close")
+    if post_sync_line is not None:
+        stdout_lines.append(post_sync_line)
     return CliText(
-        stdout_lines=[
-            (
-                "spec-dock: ok (close) "
-                f"target={target_display} node={result.node_id} kind={result.node_kind} "
-                f"github=#{result.github_issue_number} state={state} already_closed={'true' if result.already_closed else 'false'}"
-            )
-        ],
-        stderr_lines=[],
-        warnings=list(result.warnings),
+        stdout_lines=stdout_lines,
+        stderr_lines=_post_sync_stderr_lines(result.post_sync, label="close", target=f"target={target_display}"),
+        warnings=_post_sync_warnings(list(result.warnings), result.post_sync),
+    )
+
+
+def render_issue_start_text(result: IssueStartResult) -> CliText:
+    selection = result.active_set.selection
+    ini = selection.initiative_id or "(none)"
+    epic = selection.epic_id or "(none)"
+    issue = selection.issue_id or "(none)"
+    stdout_lines = [
+        (
+            "spec-dock: ok (issue start) "
+            f"target={result.target_display} initiative={ini} epic={epic} issue={issue}"
+        )
+    ]
+    if result.active_set.branch is not None:
+        stdout_lines.append(f"spec-dock: ok (issue checkout) branch={result.active_set.branch.desired}")
+    return CliText(stdout_lines=stdout_lines, stderr_lines=[], warnings=list(result.warnings))
+
+
+def render_issue_finish_text(result: IssueFinishResult) -> CliText:
+    stdout_lines = [
+        (
+            "spec-dock: ok (issue finish) "
+            f"issue={result.issue_id} github=#{result.github_issue_number} state=CLOSED "
+            f"active_cleared={'true' if result.active_cleared else 'false'} "
+            f"already_closed={'true' if result.already_closed else 'false'}"
+        )
+    ]
+    post_sync_line = _post_sync_stdout_line(result.post_sync, label="issue finish")
+    if post_sync_line is not None:
+        stdout_lines.append(post_sync_line)
+    return CliText(
+        stdout_lines=stdout_lines,
+        stderr_lines=_post_sync_stderr_lines(
+            result.post_sync,
+            label="issue finish",
+            target=f"issue={result.issue_id}",
+        ),
+        warnings=_post_sync_warnings(list(result.warnings), result.post_sync),
     )
 
 
@@ -285,6 +379,34 @@ def _delete_validation_reasons_payload(result: DeleteNodeResult) -> list[dict[st
         }
         for reason in result.validation_reasons
     ]
+
+
+def _delete_post_sync_payload(result: DeleteNodeResult) -> dict[str, object] | None:
+    outcome = result.post_sync
+    if outcome is None:
+        return None
+    artifact_failure = None
+    if outcome.sync_result is not None and outcome.sync_result.artifact_failure is not None:
+        artifact_failure = {
+            "status": outcome.sync_result.artifact_failure.status,
+            "reason": outcome.sync_result.artifact_failure.reason,
+        }
+    if outcome.failed:
+        status = "failed"
+    elif outcome.skipped_reason is not None:
+        status = "skipped"
+    else:
+        status = "success"
+    return {
+        "status": status,
+        "failed": outcome.failed,
+        "skipped_reason": outcome.skipped_reason,
+        "exception_reason": outcome.exception_reason,
+        "fatal_warnings": list(outcome.fatal_warnings),
+        "warnings": list(outcome.warnings),
+        "artifact_failure": artifact_failure,
+        "recovery_guidance": list(outcome.guidance),
+    }
 
 
 def _build_delete_json_payload(result: DeleteNodeResult) -> dict[str, object]:
@@ -339,7 +461,7 @@ def _build_delete_json_payload(result: DeleteNodeResult) -> dict[str, object]:
             ],
         }
     # `ok`
-    return {
+    payload = {
         "status": status,
         "target_id": result.target_id,
         "deleted_node_ids": list(result.deleted_node_ids),
@@ -347,6 +469,10 @@ def _build_delete_json_payload(result: DeleteNodeResult) -> dict[str, object]:
         "remote_close": _delete_remote_close_payload(result),
         "active_restore_result": result.active_restore_result,
     }
+    post_sync = _delete_post_sync_payload(result)
+    if post_sync is not None:
+        payload["post_sync"] = post_sync
+    return payload
 
 
 def render_delete_text(result: DeleteNodeResult, *, json_output: bool) -> CliText:
@@ -358,10 +484,18 @@ def render_delete_text(result: DeleteNodeResult, *, json_output: bool) -> CliTex
         )
 
     if result.status == "ok":
+        stdout_lines = [f"spec-dock: ok (delete) target={result.target_id}"]
+        post_sync_line = _post_sync_stdout_line(result.post_sync, label="delete")
+        if post_sync_line is not None:
+            stdout_lines.append(post_sync_line)
         return CliText(
-            stdout_lines=[f"spec-dock: ok (delete) target={result.target_id}"],
-            stderr_lines=[],
-            warnings=list(result.warnings),
+            stdout_lines=stdout_lines,
+            stderr_lines=_post_sync_stderr_lines(
+                result.post_sync,
+                label="delete",
+                target=f"target={result.target_id}",
+            ),
+            warnings=_post_sync_warnings(list(result.warnings), result.post_sync),
         )
     return CliText(
         stdout_lines=[],

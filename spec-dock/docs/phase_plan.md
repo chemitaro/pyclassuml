@@ -7,6 +7,7 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 関連:
 - 全体像: [guide.md](guide.md)
 - Scope workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
+- Spec authoring workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Scope plan playbook: [phase_plan_initiative.md](phase_plan_initiative.md), [phase_plan_epic.md](phase_plan_epic.md), [phase_plan_issue.md](phase_plan_issue.md)
 
 ## phase contract
@@ -54,6 +55,7 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 ## shared entry checklist
 
 - `requirement.md` と `design.md` が reviewer 承認レベルにある
+- `requirement.md` と `design.md` が `workflow_spec_authoring.md` の promotion gate を pass している
 - この plan が扱う単位を明確にした
 - 依存、ブロッカー、外部制約を露出した
 - 分割案や順序案の比較が必要なら `disc` に逃がすと決めた
@@ -66,7 +68,9 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - 依存とブロッカーが plan に露出している
 - gate と exit が plan に反映されている
 - `plan.md` と必要な `disc` / `research` / `adr` を束で渡せる
+- fresh `spec-reviewer` が plan を requirement / design と照合し、`review_status: pass` を返している
 - reviewer が「この計画で次へ進める」と判断できる
+- `report.md` の `Spec Authoring Gate` に調査、ヒアリング、review、修正、promotion evidence が残っている
 
 ## diagram guidance
 
@@ -83,7 +87,7 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - Issue:
   - 推奨:
     - step dependency graph
-    - AC / EC / constraint / expected tests の test matrix
+    - Spec-Locked Closure Index（AC / EC / constraint / step-local closure contract の仕様ロック索引）
     - rollback map
 - review:
   - 図表の依存関係が本文の順序・depends on・gate と一致している

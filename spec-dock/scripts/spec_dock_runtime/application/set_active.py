@@ -238,8 +238,8 @@ def _build_context_pack_text(manifest: ActiveManifest) -> str:
         lines.append("- `spec-dock/active/issue/README.md`")
     lines.append("")
     lines.append("## Commands")
-    lines.append("- state (local): `./spec-dock/scripts/spec-dock sync`")
-    lines.append("- state (github): `./spec-dock/scripts/spec-dock sync --github`")
+    lines.append("- state (github default): `./spec-dock/scripts/spec-dock sync`")
+    lines.append("- state (cache/local opt-out): `./spec-dock/scripts/spec-dock sync --no-github`")
     lines.append("- validate: `./spec-dock/scripts/spec-dock validate`")
     lines.append("")
     return "\n".join(lines) + "\n"

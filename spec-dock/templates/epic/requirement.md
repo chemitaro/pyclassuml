@@ -12,64 +12,64 @@ ID: "<EPIC_ID>"
 # <EPIC_ID> <EPIC_TITLE> — 要件定義（WHAT / WHY）
 
 ## 目的（Initiative との紐づき）
-- initiative goal / metric:
+- Initiative 目標 / 指標:
   - ...
 - この epic が提供する能力:
   - ...
 
 ## ユースケース
-- happy path:
+- 正常系:
   - ...
-- exception / operation scenario:
+- 例外 / 運用シナリオ:
   - ...
 
-## Epic requirements
+## Epic 要件
 - E-RQ-001:
   - ...
 - E-RQ-002:
   - ...
 
-## Epic acceptance criteria
+## Epic 受け入れ条件
 - E-AC-001:
-  - Given:
-  - When:
-  - Then:
+  - 前提:
+  - 操作:
+  - 期待結果:
   - 観測点:
 - E-AC-002:
   - ...
 
 ## スコープ
-- MUST:
+- 必須:
   - ...
-- MUST NOT:
+- 禁止:
   - ...
-- OUT OF SCOPE:
+- 対象外:
   - ...
 
 ## 境界
-- Always:
+- 常に行う:
   - ...
-- Ask:
+- 判断が必要:
   - ...
-- Never:
+- 行わない:
   - ...
 
 ## 非機能要件
-- performance:
+- 性能:
   - ...
-- reliability / consistency:
+- 信頼性 / 一貫性:
   - ...
-- security:
+- セキュリティ:
   - ...
-- operations:
+- 運用:
   - ...
 
 ## 依存 / 影響範囲
-- impacted components:
+- 影響する component:
   - ...
-- external dependency:
+- 外部依存:
   - ...
-- compatibility:
+- 互換性:
   - ...
 
 ## 未確定事項

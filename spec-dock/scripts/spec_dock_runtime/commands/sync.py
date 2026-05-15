@@ -12,6 +12,7 @@ from .contracts import CommandArgs, CommandOutcome, CommandSpec
 @dataclass(frozen=True)
 class SyncArgs(CommandArgs):
     github: bool
+    no_github: bool
     gh_limit: int
     no_update_active: bool
     force: bool
@@ -28,7 +29,9 @@ def command_specs() -> dict[str, CommandSpec]:
 
 
 def _add_sync_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--github", action="store_true", help="Fetch GitHub issue states via gh CLI")
+    github_group = parser.add_mutually_exclusive_group()
+    github_group.add_argument("--github", action="store_true", help="Fetch GitHub issue states via gh CLI")
+    github_group.add_argument("--no-github", action="store_true", help="Use cached issue states without calling gh CLI")
     parser.add_argument("--gh-limit", type=int, default=10000, help="gh issue list limit (default: 10000)")
     parser.add_argument(
         "--no-update-active",
@@ -44,7 +47,8 @@ def _add_sync_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _sync_args(ns: argparse.Namespace) -> CommandArgs:
     return SyncArgs(
-        github=bool(getattr(ns, "github", False)),
+        github=not bool(getattr(ns, "no_github", False)),
+        no_github=bool(getattr(ns, "no_github", False)),
         gh_limit=int(getattr(ns, "gh_limit", 10000)),
         no_update_active=bool(getattr(ns, "no_update_active", False)),
         force=bool(getattr(ns, "force", False)),

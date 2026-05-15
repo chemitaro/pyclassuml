@@ -96,7 +96,7 @@ Issueは単独で「要件→設計→計画→実装→報告」まで完結す
 
 ```bash
 ./spec-dock/scripts/spec-dock sync
-./spec-dock/scripts/spec-dock sync --github
+./spec-dock/scripts/spec-dock sync --no-github
 ```
 
 - `spec-dock/.agent/tree.json`（人間向けのネスト表示）
@@ -105,20 +105,28 @@ Issueは単独で「要件→設計→計画→実装→報告」まで完結す
 
 詳細: `reference_sync.md`
 
-### 5.2 いま作業する対象の固定（active）
+### 5.2 いま作業する対象の固定（issue start / issue finish / active）
 
 ```bash
+./spec-dock/scripts/spec-dock issue start 123          # primary path（checkout + active）
+./spec-dock/scripts/spec-dock issue start iss-00123
+./spec-dock/scripts/spec-dock issue finish
+
 ./spec-dock/scripts/spec-dock active show
-./spec-dock/scripts/spec-dock active set 123          # GitHub issue number（checkout + active + sync）
-./spec-dock/scripts/spec-dock active set iss-00123     # node id（issue）
-./spec-dock/scripts/spec-dock active set epic-00123    # node id（epic）
-./spec-dock/scripts/spec-dock active set init-00123    # node id（initiative）
+./spec-dock/scripts/spec-dock active set 123          # GitHub issue number（active only / no-checkout）
+./spec-dock/scripts/spec-dock active set 123 --checkout
+./spec-dock/scripts/spec-dock active set iss-00123    # node id（issue）
+./spec-dock/scripts/spec-dock active set epic-00123   # node id（epic）
+./spec-dock/scripts/spec-dock active set init-00123   # node id（initiative）
 ./spec-dock/scripts/spec-dock active clear
 ```
 
+- 通常の issue execution の開始/終了は `issue start <target>` / `issue finish` を primary lifecycle path とする。
+- `issue start` は unfinished active issue branch 上で別 issue を始めようとした場合だけ default で block する。
+- `active set` は manual / recovery / low-level path として維持する。unfinished active issue guard の対象外であり、必要時だけ direct に使う。
+- `active set <target>` のデフォルトは active only / no-checkout。ブランチ移動が必要な場合だけ `active set <target> --checkout` を使う。通常の issue 開始では `issue start` を使う。
 - `active` は生成物（gitignore）で、**「いま触る対象」の入口**だけを提供する。
 - エージェントは `spec-dock/active/context-pack.md` を入口にする。
-- GitHub Issue に紐づくノード（`github.issue_number` があるノード）を `active set` した場合、`active set` は checkout も行う。
 - active が未設定のレイヤーは placeholder（`spec-dock/system/active-none/**`）へ向く。
   - placeholder は編集対象外（best-effortで read-only）
 
@@ -133,14 +141,15 @@ Issueは単独で「要件→設計→計画→実装→報告」まで完結す
 ## 5.4 依存変更（Issue 間）
 
 ```bash
-./spec-dock/scripts/spec-dock deps check <target> --github
+./spec-dock/scripts/spec-dock deps check <target>
 ./spec-dock/scripts/spec-dock deps add --from <issue-id> --to <issue-id>
 ./spec-dock/scripts/spec-dock deps remove --from <issue-id> --to <issue-id>
 ./spec-dock/scripts/spec-dock validate
-./spec-dock/scripts/spec-dock sync --github
+./spec-dock/scripts/spec-dock sync
 ```
 
 - Issue 依存の canonical storage は node metadata の top-level `depends_on` です（詳細は `reference_deps.md`）。
+- GitHub を呼ばない cache/local 確認が必要な場合だけ、`deps check` / `sync` / `active set` に `--no-github` を指定します。
 - metadata の手編集を current/fallback 運用にせず、command-first で更新してください。
 
 ## 6. 典型的な落とし穴（防止策）

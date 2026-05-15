@@ -5,21 +5,22 @@
 v2 では、日常運用（initiative/epic/issue/doc の作成、active 切り替え、sync/validate）は
 このディレクトリ内の **ローカルスクリプト**で実行します。
 
-- `new initiative` / `new epic` はデフォルトで local-only です（`gh` は呼びません）。
-- `new issue` はデフォルトで GitHub Issue を作成します（`--no-github` で local-only）。
+- `new initiative` / `new epic` / `new issue` はデフォルトで GitHub Issue を作成します。
+- 既存 current-repo Issue へ紐づける場合は `--github-issue <n>` を使います。
+- `--no-github` は互換 option として残っていますが、node creation の成功経路ではなく contract error で reject されます。
 - discussion docs は `new doc <type>` のみを使います（`type=adr|disc|research|note`）。
 - `new/import {initiative,epic,issue}` と `new doc <type>` の `--slug` は kebab-case が必要です（詳細は `spec-dock/docs/reference_naming.md`）。
 
 ## 使い方（例）
 
 ```bash
-# 新規作成（initiative/epic はデフォルト local-only）
-./spec-dock/scripts/spec-dock new initiative --title "Auth platform"                    # id=init-local-00001
-./spec-dock/scripts/spec-dock new epic --initiative 1 --title "JWT auth"               # id=epic-local-00001
+# 新規作成（デフォルトで GitHub Issue を作成）
+./spec-dock/scripts/spec-dock new initiative --title "Auth platform"                    # id=init-00101
+./spec-dock/scripts/spec-dock new epic --initiative 101 --title "JWT auth"             # id=epic-00201
+./spec-dock/scripts/spec-dock new issue --epic 201 --title "Add refresh token"         # id=iss-00301
 
-# issue はデフォルトで GitHub Issue を作成
-./spec-dock/scripts/spec-dock new issue --epic 1 --title "Add refresh token"           # id=iss-00123
-./spec-dock/scripts/spec-dock new issue --no-github --epic 1 --title "Add refresh token" # id=iss-local-00001
+# 既存 current-repo GitHub Issue へリンクする
+./spec-dock/scripts/spec-dock new issue --epic 201 --github-issue 302 --title "Rotate refresh token"
 
 # discussion docs（timestamp-prefixed filename）
 ./spec-dock/scripts/spec-dock new doc adr --issue iss-00123 --title "Token rotation"    # 20260329t123456z-adr-...
@@ -30,11 +31,10 @@ v2 では、日常運用（initiative/epic/issue/doc の作成、active 切り�
 # active（現在作業中）を設定
 ./spec-dock/scripts/spec-dock active set 123
 ./spec-dock/scripts/spec-dock active set iss-00123 --checkout
-./spec-dock/scripts/spec-dock active set iss-local-00001
 
 # 状態集計を生成
 ./spec-dock/scripts/spec-dock sync
-./spec-dock/scripts/spec-dock sync --github
+./spec-dock/scripts/spec-dock sync --no-github
 
 # 構造チェック
 ./spec-dock/scripts/spec-dock validate

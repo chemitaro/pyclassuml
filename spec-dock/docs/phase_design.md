@@ -5,6 +5,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 
 関連:
 - 全体像: [guide.md](guide.md)
+- Spec authoring workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Scope workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
 - 議論資料の置き方と命名: 対象 scope 配下の `discussions/rules.md`, [reference_naming.md](reference_naming.md)
 
@@ -45,12 +46,13 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 2. 既存実装 / 既存 docs / 既存 ADR を調べる
 3. 比較や下調べは `research` / `disc` に分離する
 4. 必要ならヒアリングし、反映前に docs に整理する
-5. `design.md` を固めて reviewer loop を回す
+5. `design.md` を固めて fresh `spec-reviewer` loop を `review_status: pass` まで回す
 6. 関連 docs を束ねて plan へ handoff する
 
 ## entry checklist
 
 - `requirement.md` が reviewer 承認レベルにある
+- `requirement.md` が `workflow_spec_authoring.md` の requirement gate を pass している
 - design で閉じる論点と、先にヒアリング / 追加調査が要る論点を分けた
 - 既存実装、既存 docs、既存 ADR を見て、採用候補の既存パターンを把握した
 - ヒアリング前に docs へ残す前提を整理した
@@ -313,6 +315,10 @@ agent はこの一覧から、設計上の誤読を減らすものだけを選�
 ## review / handoff gate
 
 この節は shared minimum gate です。通過後も scope 固有 gate は対応する `workflow_*.md` に追加で従います。
+
+- fresh `spec-reviewer` が design を requirement と照合し、`review_status: pass` を返している
+- requirement 不足が見つかった場合は design で補わず、requirement gate へ戻している
+- `report.md` の `Spec Authoring Gate` に調査、ヒアリング、review、修正、promotion evidence が残っている
 
 - requirement の主要論点に対応する設計の置き場がある
 - 境界、契約、依存関係分析、観測性、テスト戦略のうち必要なものが抜けていない

@@ -22,6 +22,7 @@ from .contracts import (
 )
 from .github_issue_targets import normalize_repo_slug
 from .ports import Ports
+from .sync_state import post_mutation_sync
 
 _NUM_RE = re.compile(r"^[0-9]+$")
 _SCOPED_ISSUE_REF_RE = re.compile(
@@ -234,7 +235,7 @@ def _build_partial_failure_recovery_guidance(
     guidance = [
         restore_guidance,
         "run `./spec-dock/scripts/spec-dock validate` to verify local tree and active pointers",
-        "run `./spec-dock/scripts/spec-dock sync --github` to refresh derived issue/dependency artifacts",
+        "run `./spec-dock/scripts/spec-dock sync` to refresh derived issue/dependency artifacts with GitHub live state",
     ]
     if dependency_scrub_failures:
         guidance.append(
@@ -1332,4 +1333,5 @@ def delete_node(req: DeleteNodeRequest, ports: Ports) -> DeleteNodeResult:
         recovery_guidance=[],
         dependency_scrub_failures=[],
         warnings=warnings,
+        post_sync=post_mutation_sync(ports),
     )

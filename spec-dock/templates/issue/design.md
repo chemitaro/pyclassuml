@@ -14,18 +14,18 @@ ID: "<ISS_ID>"
 
 > このテンプレートは最小 scaffold です。プロジェクトの目的、作業内容、人間の理解しやすさ、エージェントの実行可能性に合わせて、項目は追加・削除・統合・並べ替えてよい。
 
-## Parent Diagram References
-- Epic diagrams:
+## 親 Diagram 参照
+- Epic diagram:
   - ...
-- Initiative diagrams:
+- Initiative diagram:
   - ...
-- reused decisions:
+- 再利用する決定:
   - ...
 
 ## 目的・制約
 - 目的:
   - ...
-- MUST / MUST NOT:
+- 必須 / 禁止:
   - ...
 - 非交渉制約:
   - ...
@@ -53,35 +53,35 @@ ID: "<ISS_ID>"
   - ...
 
 ## 依存関係分析
-- module dependency:
+- module 依存:
   - ...
-- class dependency（必要時）:
+- class 依存（必要時）:
   - ...
-- function dependency（必要時）:
+- function 依存（必要時）:
   - ...
-- file dependency:
+- file 依存:
   - ...
-- upstream / prerequisite:
+- 上流 / 前提:
   - ...
-- downstream / dependent:
+- 下流 / 依存先:
   - ...
 - 実装起点:
   - 依存の少ないもの / 先に固定すべき interface / 先に通すべき test を書く
-- sequencing implications:
+- 順序への影響:
   - plan では upstream / prerequisite から順に step を組む
 
 ## Module Dependency Diagram
-- Title:
+- タイトル:
   - ...
-- Question answered:
+- 答える問い:
   - どの module / class / file / function の依存方向を固定し、どこから実装を始めるか
-- Scope:
+- 範囲:
   - ...
-- Excluded details:
+- 含めない詳細:
   - exhaustive call graph / 全 method / 全 import は描かない
-- Update trigger:
+- 更新条件:
   - 依存方向、責務境界、実装起点、変更対象 module が変わるとき
-- Diagram:
+- 図:
   - 下の `plantuml` block を更新する
 
 ### UML（原則: module dependency / package dependency delta）
@@ -91,64 +91,64 @@ top to bottom direction
 ' show module / class / file / function dependencies that affect implementation order
 ' do not copy Initiative/Epic diagrams
 
-rectangle "replace-with-module-a" as A
-rectangle "replace-with-module-b" as B
+rectangle "対象module-a" as A
+rectangle "対象module-b" as B
 A --> B : depends_on
 @enduml
 ```
 
 ## Local Diagram Delta（必要時）
-- changed boundary / responsibility / interaction:
-  - N/A: reason
+- 変更する境界 / 責務 / 相互作用:
+  - N/A: 理由
 
 ## インターフェース契約
 - API / function / protocol / data boundary:
   - ...
 
 ## Sequence Delta（必要時）
-- changed interaction:
-  - N/A: reason
+- 変更する相互作用:
+  - N/A: 理由
 - retry / transaction / external API / queue:
   - ...
 - UML:
-  - N/A: reason
+  - N/A: 理由
 
 ## Domain Model Delta（必要時）
-- parent model refs:
+- 親 model 参照:
   - ...
-- aggregate / entity / value object changes:
-  - N/A: reason
-- domain event / policy / specification changes:
+- aggregate / entity / value object 変更:
+  - N/A: 理由
+- domain event / policy / specification 変更:
   - ...
-- invariant changes:
+- 不変条件の変更:
   - ...
 - UML:
-  - N/A: reason
+  - N/A: 理由
 
 ## クラス / インターフェース詳細設計（必要時）
 - Class / Interface:
   - ...
-- responsibility:
+- 責務:
   - ...
-- collaboration:
+- 連携:
   - ...
 - UML:
-  - N/A: reason
+  - N/A: 理由
 
 ## ディレクトリ / ファイル変更計画
 ```text
 .
 |-- src/
 |   |-- package/
-|   |   |-- new_module.py        # Add: purpose; depends on: ...
-|   |   |-- existing_module.py   # Modify: purpose; depends on: ...
-|   |   `-- renamed_module.py    # Move/Rename from: src/package/old_module.py; purpose
+|   |   |-- new_module.py        # 追加: 目的; 依存: ...
+|   |   |-- existing_module.py   # 変更: 目的; 依存: ...
+|   |   `-- renamed_module.py    # 移動/rename 元: src/package/old_module.py; 目的
 |   `-- tests/
-|       `-- test_new_module.py   # Add/Modify: purpose; depends on: src/package/new_module.py
+|       `-- test_new_module.py   # 追加/変更: 目的; 依存: src/package/new_module.py
 |-- docs/
-|   `-- reference.md             # Read only: purpose
+|   `-- reference.md             # 読取のみ: 目的
 `-- legacy/
-    `-- obsolete_file.py         # Delete: purpose; depends on: replacement ready
+    `-- obsolete_file.py         # 削除: 目的; 依存: 代替準備完了
 ```
 
 ## 要件 → 設計マッピング
@@ -157,9 +157,9 @@ A --> B : depends_on
 - constraint -> ...
 
 ## テスト戦略
-- Unit:
+- 単体:
   - ...
-- Integration:
+- 統合:
   - ...
 - E2E / manual:
   - ...

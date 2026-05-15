@@ -45,6 +45,7 @@ from .contracts import (
     ActiveUpdateOutcome,
     ArtifactWriteFailure,
     ArtifactWriteResult,
+    PostMutationSyncOutcome,
     SyncCommandResult,
     SyncRequest,
     SyncStateResult,
@@ -784,3 +785,24 @@ def sync_after_import(ports: Ports) -> SyncCommandResult:
         update_active_from_branch=False,
     )
     return _sync_impl(req, ports, active_manifest_mode="no_migrate")
+
+
+def sync_after_mutation(ports: Ports) -> SyncCommandResult:
+    req = SyncRequest(
+        force=False,
+        github_enabled=True,
+        issue_limit=10000,
+        update_active_from_branch=False,
+    )
+    return _sync_impl(req, ports, active_manifest_mode="no_migrate")
+
+
+def post_mutation_sync(ports: Ports) -> PostMutationSyncOutcome:
+    try:
+        return PostMutationSyncOutcome.from_sync_result(sync_after_mutation(ports))
+    except Exception as error:
+        return PostMutationSyncOutcome.from_exception(error)
+
+
+def skipped_post_mutation_sync(reason: str) -> PostMutationSyncOutcome:
+    return PostMutationSyncOutcome.skipped(reason)

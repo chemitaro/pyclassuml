@@ -4,6 +4,7 @@
 
 ```bash
 ./spec-dock/scripts/spec-dock sync [--github] [--gh-limit N] [--no-update-active] [--force]
+./spec-dock/scripts/spec-dock sync --no-github [--no-update-active] [--force]
 ```
 
 関連:
@@ -15,7 +16,7 @@
 
 `sync` はローカル SSOT（`spec-dock/initiatives/**/.meta.json`）を走査し、v2 の観測点を生成します（git 管理しない）。
 `meta.json`（レガシー名）はサポート対象外で、検出時はエラー停止します（`.meta.json` へ手動移行してください）。
-依存更新は `./spec-dock/scripts/spec-dock deps add/remove/check` を使い、実行後は `./spec-dock/scripts/spec-dock validate` と `./spec-dock/scripts/spec-dock sync --github` で整合を確認します。
+依存更新は `./spec-dock/scripts/spec-dock deps add/remove/check` を使い、実行後は `./spec-dock/scripts/spec-dock validate` と `./spec-dock/scripts/spec-dock sync` で GitHub live state を含めて整合を確認します。
 
 `.agent/`（機械向け）:
 - `spec-dock/.agent/index-all.json`（全ノード）
@@ -79,16 +80,19 @@ deps 構造エラー（未解決参照 / self / cycle / descendant依存 / schem
 削除ではなく上書きにすることで、stale 参照を防ぎます。
 `--force` 実行後に active を更新したい場合は、`./spec-dock/scripts/spec-dock active set <target>` を使って明示更新してください。
 
-## 5. `--github` とスナップショット
+## 5. GitHub default と `--no-github`
 
-`sync --github`:
+`sync` / `sync --github`:
 - `gh issue list` の読み取り結果で issue status を enrich（OPEN/CLOSED -> open/done）
+- `--github` は後方互換 flag で、flag なしの `sync` と同じ GitHub enabled mode です
 
-`sync`（`--github` なし）:
+`sync --no-github`:
 - GitHubへアクセスしない
 - 既存スナップショットを使う場合は `index-all.json` を優先し、無ければ `index.json` へ fallback
 - どちらも無ければ issue status は `unknown`
 - この `index-all.json -> index.json` は issue status 補完のための runtime 内部 fallback であり、agent-facing の通常読取順ではない
+
+`--github` と `--no-github` は同時に指定できません。
 
 ## 6. active更新
 
@@ -132,10 +136,10 @@ alt update_active (default)
   Script -> Script: infer active (best-effort)
 end
 
-alt --github
+alt default / --github
   Script -> GH: gh issue list ...
   Script -> Script: enrich statuses
-else local snapshot mode
+else --no-github
   Script -> Script: use index-all -> index snapshot
 end
 

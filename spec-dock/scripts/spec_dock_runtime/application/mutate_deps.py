@@ -12,6 +12,7 @@ from ..infra.contracts import StoredMetaRecord
 from .contracts import MutateDepsError, MutateDepsRequest, MutateDepsResult
 from .ports import Ports
 from .repo_context import resolve_current_repo_slug
+from .sync_state import post_mutation_sync, skipped_post_mutation_sync
 
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
@@ -159,6 +160,7 @@ def mutate_deps(req: MutateDepsRequest, ports: Ports) -> MutateDepsResult:
                 to_id=to_node.id,
                 result="unchanged",
                 warnings=[],
+                post_sync=skipped_post_mutation_sync("unchanged"),
             )
 
         if from_node.id == to_node.id:
@@ -202,4 +204,5 @@ def mutate_deps(req: MutateDepsRequest, ports: Ports) -> MutateDepsResult:
         to_id=to_node.id,
         result="updated",
         warnings=[],
+        post_sync=post_mutation_sync(ports),
     )

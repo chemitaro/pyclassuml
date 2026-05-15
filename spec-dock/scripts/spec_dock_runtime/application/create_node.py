@@ -34,6 +34,7 @@ from .contracts import (
 )
 from .ports import Ports
 from .repo_context import require_current_repo_slug, resolve_current_repo_slug, split_repo_slug
+from .sync_state import post_mutation_sync
 
 _META_FILENAME = ".meta.json"
 _DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "note")
@@ -1570,7 +1571,7 @@ def create_node_core(
 
     if result is None:
         raise RuntimeError("create failed without result")
-    return result
+    return replace(result, post_sync=post_mutation_sync(ports))
 
 
 def create_initiative(req: CreateNodeRequest, ports: Ports) -> CreateNodeResult:

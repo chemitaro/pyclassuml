@@ -23,12 +23,12 @@ ID: "<INIT_ID>"
 - ...
 
 ## 指標の状況（Success metrics） (必須)
-- Metric 1:
+- 指標 1:
   - Baseline:
   - Target:
   - Current/Actual:
   - 判断（達成/未達/未判定）:
-- Metric 2:
+- 指標 2:
   - ...
 
 ## 変更点/差分（Planとの差分） (任意)

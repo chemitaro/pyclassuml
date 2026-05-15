@@ -11,11 +11,13 @@
 ## 1. 前提（どのリポジトリが対象になるか）
 
 spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略するわけではありません。  
-`import` / `active set` / deps check / sync の `gh issue view` 系では repo slug が分かっている場合に `--repo owner/repo` を付け、same-repo URL import でも current repo を明示して読み取ります。  
+`import` / `issue start` / `issue finish` / `active set` / deps check / sync の `gh issue view` 系では repo slug が分かっている場合に `--repo owner/repo` を付け、same-repo URL import でも current repo を明示して読み取ります。
 一方で `gh issue create` / `gh issue list` は repo root を `cwd` にして実行し、対象リポジトリ解決は **`gh` の通常解釈**に委ねます。
 
 補足:
-- `spec-dock update` は managed files/docs/templates/scripts/skills を refresh しますが、old workspace の in-place migration は保証しません
+- `./spec-dock/scripts/spec-dock update [path]` は GitHub を更新しない repo-local self-update path です。target 省略時は current directory を更新し、明示 path を渡すとその managed repo を更新します
+- runtime update は installer update の wrapper で、固定 upstream `git+https://github.com/chemitaro/spec-dock` を `uvx --no-cache --from git+https://github.com/chemitaro/spec-dock spec-dock update <target>` として実行します。arbitrary package source / cache option / `--force` は公開しません
+- update は managed files/docs/templates/scripts/skills を refresh しますが、`init --force` ではなく、old workspace の in-place migration も保証しません
 - dependency metadata の canonical storage は `.meta.json` top-level `depends_on` であり、追加/削除/確認は `./spec-dock/scripts/spec-dock deps add/remove/check` の command-first mutation を使います（詳細: `reference_deps.md`）
 - legacy `meta.json`（旧名）、partial linkage、current-repo mismatch などの old contract 不整合は、`update` で吸収されず current create / import / validate / sync が reject / fail-fast しうる
 - その場合は auto-migrate を期待せず、手動で normalize するか workspace を rebuild してください
@@ -40,7 +42,12 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
   - `issue` / `epic` / `initiative` のいずれを target にしても child へ cascade close しません
   - remote mutation は close-only です。GitHub side delete は扱いません
   - close command 自体は local tree / docs / generated artifacts を直接更新しません
-  - close 後の local `done` 観測は `./spec-dock/scripts/spec-dock sync --github` の既存経路に委ねます
+  - close 後の local `done` 観測は `./spec-dock/scripts/spec-dock sync` の GitHub live state 経路に委ねます
+- `issue finish` は active issue lifecycle の通常終了 command です
+  - `./spec-dock/scripts/spec-dock issue finish` を受け付けます
+  - active issue の linked GitHub issue を close し、already-closed も success として扱います
+  - `issue finish` is lifecycle closure only: it closes or confirms the linked GitHub issue and clears active state, but it does not guarantee commit, push, PR, merge, validate, test, or review completion; delivery completion still requires separate evidence in tests, reviews, reports, and PR/merge workflow.
+  - active state は close / already-closed の確認成功後にだけ解除されます
 - `delete` は local spec node を削除し、linked GitHub Issue があれば close-only で扱います
   - top-level command として `./spec-dock/scripts/spec-dock delete <target> --yes` / `--id <node-id> --yes` / `--github-issue <n> --yes` を受け付けます
   - `issue` target は leaf delete を行い、linked GitHub issue は local delete 前に close します
@@ -48,7 +55,7 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
   - `--force` は active conflict / dependency boundary conflict override に限定され、GitHub side delete を有効にするものではありません
   - remote mutation は close-only です。GitHub side delete は扱いません
   - remote close failure や subtree metadata validation failure 時は local delete を開始しません
-  - local delete 後の derived artifact 追随は `./spec-dock/scripts/spec-dock sync --github` と `./spec-dock/scripts/spec-dock validate` の責務です
+  - local delete 後の derived artifact 追随は `./spec-dock/scripts/spec-dock sync` と `./spec-dock/scripts/spec-dock validate` の責務です
 
 ### 読み取りだけ（非交渉）
 
@@ -63,6 +70,7 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 ### GitHub を呼ばない（ローカルのみ）
 
 - `new {initiative,epic,issue} --github-issue <n>` は「既存番号へリンク」するだけで、GitHub Issue は作りません（`gh` を呼びません）
+- `./spec-dock/scripts/spec-dock update [path]` は `gh` を呼びません。固定 upstream の installer update を `uvx --no-cache` で呼び出し、managed files/docs/templates/scripts/skills を更新します
 - 生成される `epics/rules.md` / `issues/rules.md` / `discussions/rules.md` は `spec-dock/docs/rules/**` への symlink です。`rules.md` は入口/ナビゲーション用で、ルールの正本は `spec-dock/docs/rules/**` にあります。runtime command はサポートされた実行経路です
 
 ## 3. `import` の URL 入力に関する注意（事故防止）
@@ -78,7 +86,15 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 - canonical でない URL-like target（例: `git@github.com:owner/repo/issues/123`）は reject します
 - current repo を検証できない場合（origin 未設定 / GitHub 以外の remote）は、canonical URL import を fail-closed で reject します
 
-## 4. `active set` と checkout（安全装置）
+## 4. `issue start` / `active set` と checkout（安全装置）
+
+通常の issue execution 開始は `issue start` を primary path とし、`active set` は manual / recovery path として残します。
+
+- `issue start <target>` は issue node を解決して active set と checkout を一操作で行います
+- `issue start` は unfinished active issue branch 上で別 issue を start しようとした場合だけ default で block します
+- `issue start -f` / `--force` は unfinished active issue guard だけを bypass します。依存未解決や dirty worktree など他の safety check は bypass しません
+- `main` / `master` / `develop` / `staging` や non-issue branch からの `issue start` は block しません
+- `issue start` の block message では `issue finish`、`issue start <target> -f`、manual `active set` の次アクションを案内します
 
 `active set` は target を active として固定します。
 
@@ -86,6 +102,7 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 - 後方互換として `active set <target>` は維持されます
 - explicit form として `active set --id <node-id>` / `active set --github-issue <n>` も使えます
 - checkout は `active set <target> --checkout` を明示したときだけ実行します
+- `active set` は direct manual / recovery command であり、unfinished active issue guard の対象外です
 - target 解決はローカル node（`.meta.json`）を優先し、未解決なら checkout/active 変更なしで失敗します
 - `--checkout` 時に作業ツリーが dirty の場合は安全のため checkout を中断します
 - `--checkout` を伴う場合、ブランチ名は `<id>-<slug>`（不適合なら `<id>`）へ正規化されます（非ASCIIブランチ名を避ける）。詳細は [reference_naming.md](reference_naming.md) を参照してください。
@@ -99,7 +116,7 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 - `close --github-issue <n>`: explicit GitHub issue target
 - `close` は target node を解決した上で、その node に linked された `github.issue_number` だけを close します
 - local directory / docs / generated artifacts / active pointers は close command で直接変更しません
-- local state を GitHub の `CLOSED` へ追随させるのは `sync --github` の責務です
+- local state を GitHub の `CLOSED` へ追随させるのは GitHub default の `sync` の責務です
 
 ## 4.6 `delete` の target syntax と safety boundary
 
@@ -115,7 +132,7 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 - parent recursive delete では subtree 内 linked GitHub issue 群を close-only で扱い、1 件でも remote close に失敗した場合は local subtree removal を開始しません
 - GitHub side delete は扱いません。remote side は常に close-only です
 - partial failure 時は structured status / payload で deleted / remaining node ids、dependency scrub failures、retry guidance を返します
-- delete 後の docs / generated artifacts / local done 観測は `sync --github` と `validate` で確認します
+- delete 後の docs / generated artifacts / local done 観測は `sync` と `validate` で確認します
 
 ## 5. `github.issue_number` のリンクと一意性（重要）
 

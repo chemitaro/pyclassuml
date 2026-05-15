@@ -9,6 +9,7 @@ Epic は設計の背骨です。
 
 関連:
 - 総合: [guide.md](guide.md)
+- 仕様書作成: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Initiative: [workflow_initiative.md](workflow_initiative.md)
 - Issue: [workflow_issue.md](workflow_issue.md)
 - GitHub 連携: [reference_github.md](reference_github.md)
@@ -42,6 +43,7 @@ Epic は設計の背骨です。
 - `requirement.md`: 期待する価値、受け入れ条件、非機能、スコープ
 - `design.md`: 契約、移行、観測性、リスク
 - `plan.md`: Issue 分割、依存順、品質ゲート。shared axiom は `phase_plan.md`、Epic 固有の書き方は `phase_plan_epic.md`
+- Requirement / design / plan の phase promotion は `workflow_spec_authoring.md` を正本にし、各 artifact ごとに fresh `spec-reviewer` の `review_status: pass` まで次 phase へ進めない
 - `discussions/`: `new doc {adr|disc|research|note} --epic <epic-id> --title "..."` で、この epic の `discussions/` 配下に timestamp-prefixed original を作成する。標準形は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md`。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
 - shared な書き方は `phase_*.md`、lifecycle / governance と Epic 固有の分割判断はこの workflow を正本とする
 
@@ -58,6 +60,10 @@ Epic は設計の背骨です。
 - plan:
   - Issue へ分割できている
   - 依存順が現実的
+- authoring:
+  - requirement / design / plan の各 promotion gate が `Spec Authoring Gate` として `report.md` に記録されている
+  - scope / acceptance criteria / Issue 分割に影響する未確認事項が残っていない
+  - plan gate pass 後に Issue 分割へ進む
 
 ## 仕上げ
 
