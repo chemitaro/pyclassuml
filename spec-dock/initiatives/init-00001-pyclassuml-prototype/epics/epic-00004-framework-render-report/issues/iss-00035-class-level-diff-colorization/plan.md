@@ -305,8 +305,8 @@ ID: "iss-00035"
   - `uv run --with pytest pytest -q`
   - `./spec-dock/scripts/spec-dock validate`
   - `git diff --check`
-  - `test ! -e uv.lock`
-  - `rg --files | rg '[A-Z]'` を確認し、既存 uppercase 以外を増やしていないことを報告する。
+  - `git ls-files uv.lock` と `git status --short uv.lock` を確認し、tracked existing lockfile を変更していないことを報告する。
+  - `rg --files | rg '[A-Z]'` を確認し、既存 uppercase path 以外を増やしていないことを報告する。
 - final QA gate:
   - reviewer: qa-reviewer
   - pass 条件: reviewer pass。必要なら先に integration test を追加する。

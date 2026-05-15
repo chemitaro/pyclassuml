@@ -912,6 +912,41 @@ def test_diff_class_decorations_marks_added_file_class_as_diff_added() -> None:
     assert decorations == ((added_id, "DiffAdded"),)
 
 
+def test_diff_class_decorations_marks_outer_and_inner_classes_in_added_file_as_diff_added() -> None:
+    outer_id = "pkg/new.py:Outer"
+    inner_id = "pkg/new.py:Outer.Inner"
+    decorations = diff_app._diff_class_decorations(
+        (
+            ChangedFileEntry(
+                "pkg/new.py",
+                "added",
+                current_changed_line_ranges=(ChangedLineRange(start=1, end=3),),
+            ),
+        ),
+        (
+            ParsedModule(
+                Path("pkg/new.py"),
+                classes=(outer_id, inner_id),
+                class_spans=(
+                    ClassSpan(outer_id, 1, 3),
+                    ClassSpan(inner_id, 2, 3),
+                ),
+            ),
+        ),
+        ModuleIndex(
+            module_by_path={},
+            project_relative_file_to_module={Path("pkg/new.py"): Path("pkg/new.py")},
+            class_to_module={outer_id: Path("pkg/new.py"), inner_id: Path("pkg/new.py")},
+            seed_project_relative_paths=(),
+            import_candidate_paths={},
+        ),
+        SelectedClasses(class_ids=(outer_id, inner_id)),
+        base_class_ids_by_path={Path("pkg/new.py"): frozenset()},
+    )
+
+    assert decorations == ((outer_id, "DiffAdded"), (inner_id, "DiffAdded"))
+
+
 def test_diff_class_decorations_marks_current_only_class_in_modified_file_as_diff_added() -> None:
     existing_id = "pkg/models.py:Existing"
     added_id = "pkg/models.py:NewlyAdded"
@@ -1167,6 +1202,24 @@ def test_diff_base_inventory_failure_emits_warning_and_no_fabricated_decoration(
     assert "warning:diff_classification_base_read_unavailable:" in result.stdout_text
     assert "DiffAdded" not in class_declaration(output, "Model")
     assert "DiffChanged" not in class_declaration(output, "Model")
+
+
+def test_diff_classification_ignores_non_python_changed_files(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 1\n")
+    write_file(repo / "README.md", "# base\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "models.py", "class Model:\n    value = 2\n")
+    write_file(repo / "README.md", "# changed\n\nnot: python: syntax:\n")
+
+    result = run_diff(diff_request(repo, output=Path("mixed.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "mixed.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert "diff_classification_base_parse_unavailable" not in result.stdout_text
+    assert "<<DiffChanged>>" in class_declaration(output, "Model")
 
 
 def test_head_current_parse_failure_emits_warning_and_no_fabricated_decoration(tmp_path: Path) -> None:

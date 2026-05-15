@@ -133,17 +133,21 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
         parse_result.parsed_modules,
         parse_result.module_index,
     )
+    classification_entries = _classification_changed_entries(
+        vcs_collection.collection.entries,
+        parse_result.module_index,
+    )
     current_classification_snapshot = _current_parsed_modules_for_diff_classification(
         request,
         context,
         config,
-        vcs_collection.collection.entries,
+        classification_entries,
         parse_result.parsed_modules,
     )
-    base_class_inventory = _base_class_ids_by_current_path(request, context, vcs_collection.collection.entries)
+    base_class_inventory = _base_class_ids_by_current_path(request, context, classification_entries)
     diagnostics = (*diagnostics, *current_classification_snapshot.diagnostics, *base_class_inventory.diagnostics)
     class_decorations = _diff_class_decorations(
-        vcs_collection.collection.entries,
+        classification_entries,
         parse_result.parsed_modules,
         parse_result.module_index,
         selection_result.selected_classes,
@@ -151,7 +155,7 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
             request,
             context,
             config,
-            vcs_collection.collection.entries,
+            classification_entries,
         ),
         base_class_inventory.class_ids_by_path,
         classification_parsed_modules=current_classification_snapshot.parsed_modules,
@@ -205,6 +209,17 @@ def _project_relative_changed_paths(collection: ChangedFileCollection) -> tuple[
     return tuple(Path(entry.current_project_relative_path) for entry in collection.entries)
 
 
+def _classification_changed_entries(
+    changed_entries: tuple[ChangedFileEntry, ...],
+    module_index: ModuleIndex,
+) -> tuple[ChangedFileEntry, ...]:
+    return tuple(
+        entry
+        for entry in changed_entries
+        if Path(entry.current_project_relative_path) in module_index.project_relative_file_to_module
+    )
+
+
 def _diff_class_decorations(
     changed_entries: tuple[ChangedFileEntry, ...],
     parsed_modules: tuple[ParsedModule, ...],
@@ -236,15 +251,7 @@ def _diff_class_decorations(
             selected_spans = tuple(
                 class_span for class_span in parsed_module.class_spans if class_span.class_id in selected_class_ids
             )
-            if entry.current_changed_line_ranges:
-                current_lines = current_file_lines_by_path.get(changed_file, ())
-                for changed_range in entry.current_changed_line_ranges:
-                    added_class_ids.update(
-                        class_span.class_id
-                        for class_span in _innermost_changed_class_spans(selected_spans, changed_range, current_lines)
-                    )
-            else:
-                added_class_ids.update(class_span.class_id for class_span in selected_spans)
+            added_class_ids.update(class_span.class_id for class_span in selected_spans)
             continue
         if base_class_ids is not None:
             current_only_spans = tuple(

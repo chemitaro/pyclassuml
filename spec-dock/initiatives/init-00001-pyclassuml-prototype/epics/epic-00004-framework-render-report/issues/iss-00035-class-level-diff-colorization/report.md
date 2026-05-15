@@ -65,8 +65,8 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | S02-review-fix-2 | tc-s02-001, tc-s02-005 | HEAD diff の分類用 current class inventory を HEAD blob に揃える | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q` -> 73 passed | pass | code-reviewer P2 対応。worktree-only class が前方に挿入されても誤色付けしない |
 | S02-review-fix-3 | tc-s02-head-current-state | HEAD diff の decorator deletion 判定用 lines も HEAD blob に揃える | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py -q` -> 73 passed | pass | code-reviewer P2 対応。hunk ranges, class spans, current lines を同一 snapshot に統一 |
 | S03 | tc-s03-001, tc-s03-002, tc-s03-003 | renderer が `DiffAdded` 水色 style と `DiffChanged` 緑 style を決定的に出力する | `uv run --with pytest pytest tests/render/test_document.py tests/app/test_diff.py -q` -> 75 passed | pass | generate/no-diff unaffected は existing no-style tests と final gate で再確認 |
-| S04-review-fix | EC-004, tc-s02-head-current-state | unsafe base/current classification failure を warning diagnostic にし、snapshot fallback を避ける | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py tests/render/test_document.py -q` -> 102 passed | pass | spec-reviewer P1 と code-reviewer P2 対応 |
-| S99-final-gate | all | final validation と workflow artifact closure | `uv run --with pytest pytest -q` -> 401 passed; `./spec-dock/scripts/spec-dock validate` -> ok; `git diff --check` -> clean; `git status --short --branch` -> branch only | pass | root README/docs absent; uv.lock is tracked existing file |
+| S04-review-fix | EC-004, tc-s02-head-current-state | unsafe base/current classification failure を warning diagnostic にし、snapshot fallback を避ける | `uv run --with pytest pytest tests/vcs/test_diff_file_collect.py tests/app/test_diff.py tests/render/test_document.py -q` -> 102 passed; follow-up app slice -> 52 passed | pass | spec-reviewer P1 と code-reviewer P2 対応。tracked added nested containing class と non-Python diff entry P2 も解消 |
+| S99-final-gate | all | final validation と workflow artifact closure | targeted slice -> 155 passed; full pytest -> 403 passed; `./spec-dock/scripts/spec-dock validate` -> ok; `git diff --check` -> clean; `git ls-files uv.lock` -> tracked; `git status --short uv.lock` -> clean | pass | root README/docs absent; `uv.lock` is tracked existing and unchanged; uppercase paths are existing README/AGENTS paths only |
 
 #### Test Contract Closure
 | closure id / test id | step | required | evidence level | pre-implementation evidence | verification command | result | notes |
@@ -123,6 +123,8 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | final pre-fix | spec-reviewer | completed workflow artifacts and EC closure | fail | P1 report final gate missing; P1 unsafe classification diagnostics missing | 0 | fixed in S04/report update |
 | final pre-fix | code-reviewer | full branch code review | pass | P2 HEAD dirty-worktree independence and unsafe fallback noted | 0 | addressed in S04 where in scope |
 | final post-S04 | spec-reviewer | S04 EC-004 and final artifact closure | fail | P1 S99 evidence missing; P2 plan traceability missing | 0 | fixed in final report/plan update |
+| final post-S04 | code-reviewer | full branch code review | pass | P2 tracked added nested containing class; P2 non-Python raw VCS entry warning | 0 | fixed in final implementation follow-up |
+| final post-S04 | qa-reviewer | final QA review | fail | environment-only `Too many open files`; no implementation findings | 0 | local validation commands passed; rerun pending after file descriptor pressure reduced |
 
 #### Step Commit Gate
 | step | closure state | commit scope | commit hash / final ledger | post-commit clean check | no-op rationale | no-op checked contracts / files | no-op diff-clean command | no-op read-only confirmation |
@@ -132,7 +134,8 @@ spec-dock: ok (issue checkout) branch=iss-00035-class-level-diff-colorization
 | S02 | committed | `src/pyclassuml/app/diff.py`, `tests/app/test_diff.py`, report | 58086d3 | clean before S03 | N/A | N/A | N/A | N/A |
 | S03 | committed | `src/pyclassuml/render/document.py`, render/app tests, report | 51948a3 | clean before S04 | N/A | N/A | N/A | N/A |
 | S04-review-fix | committed | `src/pyclassuml/app/diff.py`, `tests/app/test_diff.py`, report | b2cbfda | clean before final artifact update | N/A | N/A | N/A | N/A |
-| final artifact update | pending | `plan.md`, `report.md` | pending | pending | N/A | N/A | N/A | N/A |
+| final artifact update | committed | `plan.md`, `report.md` | 3f228ec | clean before final follow-up | N/A | N/A | N/A | N/A |
+| final follow-up | pending | `src/pyclassuml/app/diff.py`, `tests/app/test_diff.py`, `plan.md`, `report.md` | pending | pending | N/A | N/A | N/A | N/A |
 
 #### 変更したファイル
 - `spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00004-framework-render-report/issues/iss-00035-class-level-diff-colorization/requirement.md` - class-level diff colorization 要件へ具体化。
