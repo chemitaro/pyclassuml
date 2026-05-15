@@ -128,6 +128,7 @@ def parse_target_set(
 
     project_root = context.project_root.resolve()
     package_root = context.package_root.resolve()
+    import_roots = tuple(import_root.resolve() for import_root in context.import_roots)
     seed_files = tuple(sorted({_resolve_path(path) for path in target_set.seed_files}))
     seed_project_relative_paths = tuple(_project_relative(path, project_root) for path in seed_files)
 
@@ -168,7 +169,7 @@ def parse_target_set(
         parsed_by_path[source_path] = parsed_module
 
         for import_ref in _extract_import_refs(tree):
-            candidates = tuple(_candidate_paths(import_ref, source_path, project_root))
+            candidates = tuple(_candidate_paths(import_ref, source_path, import_roots))
             accepted: list[Path] = []
             for candidate in candidates:
                 if is_ignored(candidate, project_root, (*DEFAULT_IGNORE, *config.ignore)):
@@ -1332,18 +1333,23 @@ def _class_reference_sort_key(reference: ClassReference) -> tuple[str, str, str,
 def _candidate_paths(
     import_ref: _ImportRef,
     source_path: Path,
-    project_root: Path,
+    import_roots: tuple[Path, ...],
 ) -> Iterable[Path]:
-    bases = _import_base_parts(import_ref, source_path, project_root)
-    candidate_parts: set[tuple[str, ...]] = set()
-    if bases:
-        candidate_parts.add(bases)
-    for name in import_ref.names:
-        if name:
-            candidate_parts.add((*bases, *name.split(".")))
+    seen: set[Path] = set()
+    for import_root in import_roots:
+        bases = _import_base_parts(import_ref, source_path, import_root)
+        candidate_parts: set[tuple[str, ...]] = set()
+        if bases:
+            candidate_parts.add(bases)
+        for name in import_ref.names:
+            if name:
+                candidate_parts.add((*bases, *name.split(".")))
 
-    for parts in sorted(candidate_parts):
-        yield from _existing_python_candidates(project_root, parts)
+        for parts in sorted(candidate_parts):
+            for candidate in _existing_python_candidates(import_root, parts):
+                if candidate not in seen:
+                    seen.add(candidate)
+                    yield candidate
 
 
 def _import_base_parts(

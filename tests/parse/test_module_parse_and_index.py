@@ -26,12 +26,19 @@ def write_file(path: Path, text: str) -> Path:
     return path.resolve()
 
 
-def context(project_root: Path, *, package_root: Path | None = None, scope_root: Path | None = None) -> ExecutionContext:
+def context(
+    project_root: Path,
+    *,
+    package_root: Path | None = None,
+    scope_root: Path | None = None,
+    import_roots: tuple[Path, ...] = (),
+) -> ExecutionContext:
     return ExecutionContext(
         execution_cwd=project_root.resolve(),
         project_root=project_root.resolve(),
         package_root=(package_root or project_root).resolve(),
         scope_root=(scope_root or project_root).resolve(),
+        import_roots=tuple(path.resolve() for path in import_roots),
     )
 
 
@@ -1365,6 +1372,28 @@ def test_import_candidates_are_parsed_recursively_and_indexed_deterministically(
         dependency_b.relative_to(project): Path("pkg/b.py"),
         dependency_c.relative_to(project): Path("pkg/sub/c.py"),
         seed.relative_to(project): Path("pkg/a.py"),
+    }
+
+
+def test_import_candidates_use_package_import_root_when_project_root_is_monorepo(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    backend = repo / "backend"
+    seed = write_file(backend / "app" / "service.py", "from shared.models import User\nclass Service: pass\n")
+    dependency = write_file(backend / "shared" / "models.py", "class User: pass\n")
+
+    result = parse_target_set(
+        target_set(seed),
+        context(repo, package_root=backend, scope_root=backend, import_roots=(backend, repo)),
+        AnalysisConfig(),
+    )
+
+    assert result.diagnostics == ()
+    assert [module.module_path for module in result.parsed_modules] == [
+        Path("backend/app/service.py"),
+        Path("backend/shared/models.py"),
+    ]
+    assert result.module_index.import_candidate_paths == {
+        "from shared.models import User": (dependency.relative_to(repo),),
     }
 
 

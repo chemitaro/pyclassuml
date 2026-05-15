@@ -112,14 +112,15 @@ def collect_diff_files(
 
     base_ref = request.cli_options.diff.base_ref if request.cli_options.diff is not None else ""
     diagnostics: list[Diagnostic] = []
+    vcs_root = context.vcs_root
 
     try:
-        _ensure_git_repository(context.project_root)
-        _verify_base_ref(context.project_root, base_ref)
-        entries = _tracked_entries(context.project_root, base_ref, config.diff_current_state)
+        _ensure_git_repository(vcs_root)
+        _verify_base_ref(vcs_root, base_ref)
+        entries = _tracked_entries(vcs_root, context.project_root, base_ref, config.diff_current_state)
 
         if config.diff_current_state is DiffCurrentState.WORKING_TREE and config.diff_include_untracked:
-            entries.extend(_untracked_entries(context.project_root))
+            entries.extend(_untracked_entries(vcs_root, context.project_root))
         elif config.diff_current_state is DiffCurrentState.HEAD and config.diff_include_untracked:
             diagnostics.append(
                 Diagnostic(
@@ -164,25 +165,83 @@ def _verify_base_ref(project_root: Path, base_ref: str) -> None:
         raise VcsDiffError("invalid_base_ref", f"base ref is not a valid Git revision: {base_ref}")
 
 
-def _tracked_entries(project_root: Path, base_ref: str, current_state: DiffCurrentState) -> list[ChangedFileEntry]:
+def _tracked_entries(
+    vcs_root: Path,
+    project_root: Path,
+    base_ref: str,
+    current_state: DiffCurrentState,
+) -> list[ChangedFileEntry]:
     args = ["diff", "--relative", "--name-status", "-z", "--find-renames", base_ref]
     if current_state is DiffCurrentState.HEAD:
         args.append("HEAD")
-    args.extend(("--", "."))
-    result = _run_git(project_root, tuple(args))
+    args.extend(("--", _git_pathspec(vcs_root, project_root)))
+    result = _run_git(vcs_root, tuple(args))
     entries = _parse_name_status(result.stdout)
     return [
-        _entry_with_current_changed_line_ranges(project_root, base_ref, current_state, entry)
+        _project_relative_entry(
+            _entry_with_current_changed_line_ranges(vcs_root, base_ref, current_state, entry),
+            vcs_root,
+            project_root,
+        )
         for entry in entries
+        if _entry_is_under_project(entry, vcs_root, project_root)
     ]
 
 
-def _untracked_entries(project_root: Path) -> list[ChangedFileEntry]:
-    result = _run_git(project_root, ("ls-files", "-z", "--others", "--exclude-standard", "--", "."))
+def _untracked_entries(vcs_root: Path, project_root: Path) -> list[ChangedFileEntry]:
+    result = _run_git(
+        vcs_root,
+        ("ls-files", "-z", "--others", "--exclude-standard", "--", _git_pathspec(vcs_root, project_root)),
+    )
     return [
-        ChangedFileEntry(current_project_relative_path=path, change_kind="added")
+        ChangedFileEntry(
+            current_project_relative_path=_project_relative_vcs_path(path, vcs_root, project_root),
+            change_kind="added",
+        )
         for path in _decode_nul_paths(result.stdout)
     ]
+
+
+def _git_pathspec(vcs_root: Path, project_root: Path) -> str:
+    try:
+        relative = project_root.resolve().relative_to(vcs_root.resolve())
+    except ValueError:
+        return "."
+    return "." if relative == Path(".") else relative.as_posix()
+
+
+def _entry_is_under_project(entry: ChangedFileEntry, vcs_root: Path, project_root: Path) -> bool:
+    return _vcs_relative_path_is_under_project(entry.current_project_relative_path, vcs_root, project_root)
+
+
+def _vcs_relative_path_is_under_project(relative_path: str, vcs_root: Path, project_root: Path) -> bool:
+    try:
+        (vcs_root / relative_path).resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _project_relative_vcs_path(relative_path: str, vcs_root: Path, project_root: Path) -> str:
+    return (vcs_root / relative_path).resolve().relative_to(project_root.resolve()).as_posix()
+
+
+def _project_relative_entry(entry: ChangedFileEntry, vcs_root: Path, project_root: Path) -> ChangedFileEntry:
+    previous_path = (
+        _project_relative_vcs_path(entry.previous_project_relative_path, vcs_root, project_root)
+        if entry.previous_project_relative_path is not None
+        else None
+    )
+    return ChangedFileEntry(
+        current_project_relative_path=_project_relative_vcs_path(
+            entry.current_project_relative_path,
+            vcs_root,
+            project_root,
+        ),
+        change_kind=entry.change_kind,
+        previous_project_relative_path=previous_path,
+        current_changed_line_ranges=entry.current_changed_line_ranges,
+    )
 
 
 def _run_git(

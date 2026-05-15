@@ -66,13 +66,20 @@ def request(repo: Path, *, base_ref: str = "base") -> CommandRequest:
     )
 
 
-def context(repo: Path, *, project_root: Path | None = None, scope_root: Path | None = None) -> ExecutionContext:
+def context(
+    repo: Path,
+    *,
+    project_root: Path | None = None,
+    scope_root: Path | None = None,
+    vcs_root: Path | None = None,
+) -> ExecutionContext:
     resolved_project_root = (project_root or repo).resolve()
     return ExecutionContext(
         execution_cwd=repo.resolve(),
         project_root=resolved_project_root,
         package_root=resolved_project_root,
         scope_root=(scope_root or resolved_project_root).resolve(),
+        vcs_root=(vcs_root or resolved_project_root).resolve(),
     )
 
 
@@ -333,7 +340,7 @@ def test_name_status_parse_failure_returns_git_diff_parse_failure(monkeypatch, t
     monkeypatch.setattr(
         diff_collect,
         "_tracked_entries",
-        lambda project_root, base_ref, current_state: diff_collect._parse_name_status(b"X\0file.py\0"),
+        lambda vcs_root, project_root, base_ref, current_state: diff_collect._parse_name_status(b"X\0file.py\0"),
     )
 
     result = collect_diff_files(request(repo), context(repo), config())
@@ -350,7 +357,7 @@ def test_name_status_decode_failure_returns_git_diff_parse_failure(monkeypatch, 
     monkeypatch.setattr(
         diff_collect,
         "_tracked_entries",
-        lambda project_root, base_ref, current_state: diff_collect._parse_name_status(b"A\0\xff\0"),
+        lambda vcs_root, project_root, base_ref, current_state: diff_collect._parse_name_status(b"A\0\xff\0"),
     )
 
     result = collect_diff_files(request(repo), context(repo), config())
@@ -421,6 +428,30 @@ def test_nested_project_root_working_tree_returns_project_relative_paths_only(tm
     )
 
 
+def test_vcs_root_can_differ_from_project_root_for_monorepo_diff(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    project = repo / "packages" / "app"
+    write_file(repo / "outside.py", "outside before\n")
+    write_file(project / "inside.py", "inside before\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+
+    write_file(repo / "outside.py", "outside after\n")
+    write_file(project / "inside.py", "inside after\n")
+    write_file(project / "inside_untracked.py", "inside untracked\n")
+
+    result = collect_diff_files(
+        request(repo),
+        context(repo, project_root=project, vcs_root=repo),
+        config(include_untracked=True),
+    )
+
+    assert assert_success(result) == (
+        ChangedFileEntry("inside.py", "modified"),
+        ChangedFileEntry("inside_untracked.py", "added"),
+    )
+
+
 def test_nested_project_root_head_returns_project_relative_paths_only(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     project = repo / "packages" / "app"
@@ -453,7 +484,7 @@ def test_entries_are_deduped_by_current_path_and_sorted(monkeypatch, tmp_path: P
     monkeypatch.setattr(
         diff_collect,
         "_tracked_entries",
-        lambda project_root, base_ref, current_state: [
+        lambda vcs_root, project_root, base_ref, current_state: [
             ChangedFileEntry("z.py", "modified"),
             ChangedFileEntry("a.py", "added"),
             ChangedFileEntry("z.py", "renamed", "old_z.py"),

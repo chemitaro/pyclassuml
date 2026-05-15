@@ -263,12 +263,21 @@ def _build_execution_context(
             FailureReason.INVALID_PATH_OR_CONTAINMENT,
         )
 
+    import_roots = _default_import_roots(project_root, package_root)
     return ExecutionContext(
         execution_cwd=execution_cwd,
         project_root=project_root,
         package_root=package_root,
         scope_root=scope_root,
+        vcs_root=project_root,
+        import_roots=import_roots,
     )
+
+
+def _default_import_roots(project_root: Path, package_root: Path) -> tuple[Path, ...]:
+    if package_root == project_root:
+        return (project_root,)
+    return (package_root, project_root)
 
 
 def _build_analysis_config(

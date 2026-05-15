@@ -292,6 +292,28 @@ include_untracked = false
     assert config.diff_include_untracked is True
 
 
+def test_package_root_is_preferred_import_root_for_monorepo_context(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    backend = repo / "backend"
+    backend.mkdir(parents=True)
+
+    context, _ = assert_success(
+        resolve_context(
+            diff_request(
+                repo,
+                project_root=repo,
+                package_root=Path("backend"),
+                scope_root=Path("backend"),
+            )
+        )
+    )
+
+    assert context.project_root == repo.resolve()
+    assert context.package_root == backend.resolve()
+    assert context.vcs_root == repo.resolve()
+    assert context.import_roots == (backend.resolve(), repo.resolve())
+
+
 def test_cli_diff_unset_include_untracked_uses_config_before_default(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()

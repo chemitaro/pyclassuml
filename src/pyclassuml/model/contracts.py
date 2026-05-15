@@ -254,11 +254,22 @@ class ExecutionContext:
     project_root: Path
     package_root: Path
     scope_root: Path
+    vcs_root: Path | None = None
+    import_roots: tuple[Path, ...] = ()
 
     def __post_init__(self) -> None:
         for field_name in ("execution_cwd", "project_root", "package_root", "scope_root"):
             if not isinstance(getattr(self, field_name), Path):
                 raise ValueError(f"{field_name} must be Path")
+        vcs_root = self.project_root if self.vcs_root is None else self.vcs_root
+        if not isinstance(vcs_root, Path):
+            raise ValueError("vcs_root must be Path")
+        import_roots = tuple(self.import_roots) or (self.project_root,)
+        for import_root in import_roots:
+            if not isinstance(import_root, Path):
+                raise ValueError("import_roots must contain Path values")
+        object.__setattr__(self, "vcs_root", vcs_root)
+        object.__setattr__(self, "import_roots", import_roots)
 
 
 @dataclass(frozen=True)
