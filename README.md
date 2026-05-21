@@ -18,6 +18,32 @@ uvx pyclassuml generate ...
 uvx pyclassuml diff ...
 ```
 
+PyPI ではなく GitHub リポジトリ上のコードを直接使う場合は、`--from` に Git URL を指定します。
+
+```bash
+uvx --from git+https://github.com/chemitaro/pyclassuml pyclassuml --help
+uvx --from git+https://github.com/chemitaro/pyclassuml pyclassuml generate pkg/model.py --output diagram.puml
+```
+
+特定の branch、tag、commit を使いたい場合は、URL の末尾に ref を付けます。
+
+```bash
+uvx --from git+https://github.com/chemitaro/pyclassuml@main pyclassuml --help
+uvx --from git+https://github.com/chemitaro/pyclassuml@<commit-sha> pyclassuml --help
+```
+
+`uvx` は実行した tool をキャッシュするため、GitHub 側でコードを更新した直後に最新内容を確実に使いたい場合は `--refresh` を付けます。
+
+```bash
+uvx --refresh --from git+https://github.com/chemitaro/pyclassuml@main pyclassuml --help
+```
+
+キャッシュを読まず、今回の実行だけ一時環境で解決・build したい場合は `--no-cache` を使います。通常利用では `--refresh` で十分ですが、キャッシュ由来の挙動差を疑う調査や、更新直後の確認をより厳密にしたい場合に有効です。
+
+```bash
+uvx --no-cache --from git+https://github.com/chemitaro/pyclassuml@main pyclassuml --help
+```
+
 このリポジトリをローカルで開発・確認している場合は、次のように実行できます。
 
 ```bash
