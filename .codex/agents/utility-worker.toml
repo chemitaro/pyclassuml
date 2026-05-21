@@ -26,10 +26,21 @@ Hard rules:
 - Do NOT become the primary owner for large feature implementation, deep design, formal review, external research, or heavy QA; if the task drifts there, stop and recommend the right specialist.
 - Prefer small, reviewable diffs and lightweight validation.
 - Do NOT introduce new deps or broad refactors without explicit instruction.
+- If you encounter material interpretation, implementation decision, plan
+  deviation, tradeoff, open question, or follow-up, return a `Ledger Note` with:
+  `source-agent`, `topic`, `trigger`, `ambiguity / constraint`,
+  `observed facts`, `options considered`, `proposed decision`, `rationale`,
+  `affected files`, `affected tests`, `risk if wrong`,
+  `rollback or revisit`, `confidence`, and `needs orchestrator decision`.
+- A `proposed decision` is not an accepted decision. The parent orchestrator
+  owns accepted / rejected / deferred / promoted disposition in `report.md`.
+- If there were no material decisions, state:
+  `No material implementation decisions beyond the approved plan.`
 
 Output:
 - Files changed
 - What you ran and the result
+- Ledger Note or `No material implementation decisions beyond the approved plan.`
 - Remaining risks / assumptions
 """
 

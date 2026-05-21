@@ -37,9 +37,10 @@ from .repo_context import require_current_repo_slug, resolve_current_repo_slug, 
 from .sync_state import post_mutation_sync
 
 _META_FILENAME = ".meta.json"
-_DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "note")
+_CREATABLE_DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "interview", "scratch")
+_RETIRED_DISCUSSION_DOC_TYPES = ("note",)
 _DISCUSSION_DOC_FILENAME_RE = re.compile(
-    r"^(?P<ts>[0-9]{8}t[0-9]{6}z)(?:-(?P<nn>0[1-9]|[1-9][0-9]))?-(?P<doc_type>adr|disc|research|note)-"
+    r"^(?P<ts>[0-9]{8}t[0-9]{6}z)(?:-(?P<nn>0[1-9]|[1-9][0-9]))?-(?P<doc_type>adr|disc|research|interview|scratch|note)-"
     r"(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
 )
 _CREATE_LOCK_DIRNAME = ".runtime"
@@ -336,6 +337,7 @@ def _preflight_discussion_duplicate_guard(
     *,
     specdock_dir: Path,
 ) -> None:
+    _normalize_discussion_doc_inputs(req)
     lock_path = _resolve_create_lock_path(specdock_dir)
     if lock_path.exists():
         return
@@ -1022,8 +1024,13 @@ def _resolve_scope_node(req: CreateDiscussionDocRequest, graph: SpecGraph) -> Sp
 
 def _normalize_discussion_doc_inputs(req: CreateDiscussionDocRequest) -> tuple[str, str, str]:
     doc_type = str(req.doc_type).strip().lower()
-    if doc_type not in _DISCUSSION_DOC_TYPES:
-        allowed = ", ".join(_DISCUSSION_DOC_TYPES)
+    if doc_type in _RETIRED_DISCUSSION_DOC_TYPES:
+        raise RuntimeError(
+            "Discussion doc type 'note' is retired for new documents; "
+            "use 'scratch' for new raw capture docs. Existing note artifacts remain valid."
+        )
+    if doc_type not in _CREATABLE_DISCUSSION_DOC_TYPES:
+        allowed = ", ".join(_CREATABLE_DISCUSSION_DOC_TYPES)
         raise RuntimeError(f"Unknown discussion doc type: {doc_type} (allowed: {allowed})")
 
     title = str(req.title).strip()
@@ -1169,6 +1176,10 @@ def plan_discussion_doc(
         "<DISC_TITLE>": title,
         "<RESEARCH_ID>": doc_id,
         "<RESEARCH_TITLE>": title,
+        "<INTERVIEW_ID>": doc_id,
+        "<INTERVIEW_TITLE>": title,
+        "<SCRATCH_ID>": doc_id,
+        "<SCRATCH_TITLE>": title,
         "<NOTE_ID>": doc_id,
         "<NOTE_TITLE>": title,
         "<SCOPE_ID>": scope.id,

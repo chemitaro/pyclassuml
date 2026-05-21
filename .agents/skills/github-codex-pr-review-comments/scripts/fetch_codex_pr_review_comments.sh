@@ -91,6 +91,7 @@ mkdir -p "$out_dir"
 fetch_rest_array() {
   local endpoint="$1"
   local out_file="$2"
+  local raw_file="${out_file}.raw"
 
   # This wrapper intentionally does not accept method, endpoint, body, jq, or
   # GraphQL input from callers. `gh api` is constrained to fixed REST GET calls.
@@ -101,8 +102,16 @@ fetch_rest_array() {
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "$endpoint" \
-    --jq 'add' \
-    >"$out_file"
+    >"$raw_file"
+
+  jq '
+    if type == "array" and ((.[0] // null) | type) == "array" then
+      add // []
+    else
+      .
+    end
+  ' "$raw_file" >"$out_file"
+  rm -f "$raw_file"
 }
 
 issue_comments_json="${out_dir}/issue_comments.json"

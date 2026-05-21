@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub PR Merge Preparer"
+  short_description: "Coordinate PR monitoring and bounded fixes until human merge judgment"
+  default_prompt: "Use $github-pr-merge-preparer to create or find the PR, monitor it, delegate bounded fixes, re-monitor, and report whether it is merge-prepared for human judgment."

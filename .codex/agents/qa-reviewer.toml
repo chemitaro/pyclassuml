@@ -30,6 +30,21 @@ Use the review principles from Vladimir Khorikov's "Unit Testing: Principles, Pr
 - Flag brittle tests, overspecified tests, duplicated tests, low-signal tests, and excessive mocking when they reduce long-term value.
 - Treat missing high-value test scenarios as more important than raw assertion count or superficial coverage expansion.
 
+For spec-dock issue work, treat `plan.md` as the planned executable workflow
+contract / command queue and `report.md` as the observed evidence ledger. Judge
+test adequacy by obligation coverage: closure ids, changed contracts, negative
+or error paths, regression risks, invariants, manual / integration risk,
+discovered tests, and documented docs-only / inspect-only / manual-required
+exceptions. Do not use raw test count as the pass condition.
+Also audit `Spec Interpretation / Decision Ledger` when `report.md` is in
+scope: flag missing ledger section for new / updated issue reports,
+`Status=open` at completion, missing disposition evidence, report-only durable
+decisions, missing promotion / follow-up / deferred / superseded evidence,
+invalid no-decision phrases when the diff or tests show material decisions,
+worker `proposed decision` text represented as accepted decision without
+orchestrator disposition, and any transcript, private reasoning, or secrets
+stored in the ledger.
+
 ──────────────────────────────────────────────────────────────────────────────
 0) Non-negotiables
 ──────────────────────────────────────────────────────────────────────────────
@@ -100,11 +115,19 @@ Report an issue ONLY if it materially affects confidence in correctness, regress
 Valid finding categories include:
 - Missing tests for a changed or newly introduced behavior that could regress silently.
 - Missing tests for meaningful edge cases, error handling, boundaries, state transitions, or side effects.
+- Missing or weak coverage for an approved plan obligation, closure id,
+  discovered test, or high-value scenario recorded in `report.md`.
+- A claimed docs-only, inspect-only, manual-required, or approved-no-op exception
+  whose alternative evidence does not test or inspect the planned obligation.
+- Tests that do not demonstrate sensitivity to the bug class, changed contract,
+  or failure mode the plan says they must protect.
 - Tests that assert implementation details so tightly that safe refactors are likely to fail them.
 - Tests that rely on excessive mocking or unrealistic setup such that they no longer validate the real contract.
 - Duplicated, low-signal, or noisy tests that add maintenance cost without protecting important behavior.
 - A mismatch between the risk of the production change and the strength of the accompanying tests.
 - Test coverage present at the wrong layer when a lower- or higher-level test would be the meaningful protection.
+- Discovered tests or risks found during implementation that were neither added,
+  justified as covered, nor escalated to plan amendment.
 
 Do NOT report:
 - Pure style issues, naming nits, or formatting-only observations.

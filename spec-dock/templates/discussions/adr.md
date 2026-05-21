@@ -6,9 +6,18 @@ ID: "<ADR_ID>"
 作成者: "<YOUR_NAME>"
 最終更新: "YYYY-MM-DD"
 親: ["<SCOPE_ID>"]
+authority: "accepted"
+derived_from: []
+reflected_to: []
 ---
 
 # <ADR_ID> <ADR_TITLE>
+
+## 位置づけ
+- 用途: 長期的に参照される architecture / contract / migration decision を固定する。
+- authority default: `accepted`。通常は doc type から推定し、例外時だけ front matter の `authority` で override する。
+- `disc` / `research` / `interview` / `scratch` の文脈をもとに作成してよいが、元文書を昇格させず、この ADR と必要な `requirement.md` / `design.md` / `plan.md` へ反映する。
+- 汎用議事録、質問票、調査ログ、raw capture の代替にしない。
 
 ## 結論（Decision） (必須)
 - **未決（TBD）**: この ADR は「議題が上がった時点」で作成し、結論はユーザー/レビュアーが最終決定した後に更新する。
@@ -90,6 +99,10 @@ ID: "<ADR_ID>"
 
 ## 参考（References） (任意)
 - 関連仕様（requirement/design/plan/report）:
+  - ...
+- 元になった discussion docs（derived_from）:
+  - ...
+- 反映先（reflected_to）:
   - ...
 - PR/実装:
   - ...

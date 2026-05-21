@@ -14,7 +14,7 @@ from ..presentation.cli_text import render_new_doc_text, render_new_node_text
 from ..presentation.contracts import CliText
 from .contracts import CommandArgs, CommandOutcome, CommandSpec
 
-_discussion_doc_types = ("adr", "disc", "research", "note")
+_discussion_doc_types = ("adr", "disc", "research", "interview", "scratch")
 
 
 @dataclass(frozen=True)
@@ -160,7 +160,15 @@ def _add_new_issue_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_new_doc_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("doc_type", choices=_discussion_doc_types)
+    parser.add_argument(
+        "doc_type",
+        metavar="doc_type",
+        help=(
+            "Discussion doc type: "
+            f"{', '.join(_discussion_doc_types)}. "
+            "'note' is retired; use 'scratch' for new raw capture docs."
+        ),
+    )
     scope_group = parser.add_mutually_exclusive_group(required=True)
     scope_group.add_argument("--initiative", help="Scope initiative (e.g. 123 / init-00123 / init-local-00001)")
     scope_group.add_argument("--epic", help="Scope epic (e.g. 123 / epic-00123 / epic-local-00001)")

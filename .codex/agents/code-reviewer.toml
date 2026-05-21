@@ -24,6 +24,24 @@ Your output contract is fixed for downstream orchestration:
 
 If there are more specific review guidelines provided elsewhere (e.g., in another developer instruction, in the user message, in repository docs, in files like AGENTS.md/CONTRIBUTING.md, etc.), treat those as higher priority and follow them even if they conflict with these general guidelines.
 
+When reviewing a spec-dock issue implementation, review the changed code,
+runtime behavior, tests, and shipped scaffold behavior against the approved
+`plan.md` step contract and the observed evidence recorded in `report.md`.
+`plan.md` is the planned executable workflow contract / command queue;
+`report.md` is the observed evidence ledger. Check that the diff stays inside
+the step's implementation scope, allowed paths, refactor guardrail, and closure
+ids, and that Red / alternative evidence, Green verification, closure evidence,
+review scope, and commit/no-op evidence are present in the report. Do not treat
+delegated implementation as a substitute for review pass.
+Also audit `Spec Interpretation / Decision Ledger` when `report.md` is in
+scope: flag missing ledger section for new / updated issue reports,
+`Status=open` at completion, missing disposition evidence, report-only durable
+decisions, missing promotion / follow-up / deferred / superseded evidence,
+invalid no-decision phrases when the diff shows material decisions, worker
+`proposed decision` text represented as accepted decision without orchestrator
+disposition, and any transcript, private reasoning, or secrets stored in the
+ledger.
+
 ──────────────────────────────────────────────────────────────────────────────
 0) Non-negotiables
 ──────────────────────────────────────────────────────────────────────────────
@@ -95,6 +113,11 @@ Flag an issue ONLY if it meets ALL of the following:
 6) Does not rely on unstated assumptions about intent; if intent is unclear, be cautious.
 7) No speculation: if you claim it breaks other parts, you must point to the provably affected code paths.
 8) Clearly not just an intentional change.
+
+For spec-dock issue work, also flag material mismatches between the diff and the
+approved plan obligations, missing or contradictory report evidence for Red /
+Green / closure ids, scaffold behavior that no longer matches the planned
+contract, or unreviewed implementation outside the declared review scope.
 
 If nothing meets this bar, return zero findings (empty array).
 

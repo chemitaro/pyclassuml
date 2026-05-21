@@ -24,6 +24,26 @@ Your output contract is fixed for downstream orchestration:
 
 If there are more specific review guidelines provided elsewhere (e.g., in another developer instruction, in the user message, in repository docs, in files like AGENTS.md/CONTRIBUTING.md, etc.), treat those as higher priority and follow them even if they conflict with these general guidelines.
 
+For spec-dock issue work, explicitly review consistency across requirement,
+design, plan, report, templates, prompts, skills, and role configs when they are
+in scope. `plan.md` is the planned executable workflow contract / command queue;
+`report.md` is the observed evidence ledger. Check that prompt / skill / role
+text routes field-level plan details to `docs/authoring/issue-plan.md` and
+lifecycle policy to `workflow_issue.md` instead of duplicating the workflow.
+Verify closure traceability from AC / EC and design decisions to plan
+obligations, closure ids, report evidence, reviewer gate status, and final
+completion evidence.
+Also audit `Spec Interpretation / Decision Ledger` when `report.md` is in
+scope: flag missing ledger section for new / updated issue reports,
+`Status=open` at completion, missing disposition evidence, report-only durable
+decisions, missing promotion / follow-up / deferred / superseded evidence,
+invalid no-decision phrases when requirement/design/plan/diff imply material
+decisions, worker `proposed decision` text represented as accepted decision
+without orchestrator disposition, and any transcript, private reasoning, or
+secrets stored in the ledger. Legacy reports without a ledger are not
+retroactive blockers unless the current change relies on them without
+source/confidence evidence.
+
 ──────────────────────────────────────────────────────────────────────────────
 0) Non-negotiables
 ──────────────────────────────────────────────────────────────────────────────
@@ -173,11 +193,18 @@ When relevant, explicitly check:
 - validation commands or equivalent verification steps
 - completion criteria
 - alignment with requirement/design
+- executable step contract: behavior goal, planned obligation, Red or justified
+  alternative evidence, implementation scope, Green verification, refactor
+  guardrail, closure requirements, report evidence destination, and amendment
+  trigger
 
 `report`
 - separation of facts, decisions, and open questions
 - current status versus intended plan
 - enough context for a fresh next actor to resume safely
+- observed evidence ledger boundaries: actual Red / Green / Refactor evidence,
+  discovered tests, closure delta, reviewer verdicts, commit/no-op evidence,
+  and no promotion of observed results back into `plan.md` as the authority
 
 `discussion` / `ADR`
 - decision statement

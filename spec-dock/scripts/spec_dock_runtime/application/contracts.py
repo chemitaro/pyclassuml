@@ -120,7 +120,7 @@ class ImportNodeResult:
 
 @dataclass(frozen=True)
 class CreateDiscussionDocRequest:
-    doc_type: Literal["adr", "disc", "research", "note"]
+    doc_type: Literal["adr", "disc", "research", "interview", "scratch", "note"]
     scope_node_id: str
     title: str
     slug: str | None

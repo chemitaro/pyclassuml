@@ -14,7 +14,7 @@
 
 - `new {initiative,epic,issue}`
 - `import {initiative,epic,issue}`
-- `new doc <type>`（`type = adr|disc|research|note`）
+- `new doc <type>`（current catalog: `scratch` / `interview` / `research` / `disc` / `adr`）
 
 補足:
 - `new doc <type>` は explicit basename / `doc_id` override（`--id` / `--seq` など）を提供しません。
@@ -87,7 +87,8 @@
 
 ### 4.1 doc family と保存先
 
-- discussion doc family は `adr|disc|research|note` です。
+- new creation の discussion doc family は `scratch` / `interview` / `research` / `disc` / `adr` です。
+- `note` は retired です。既存 `note` artifact は grandfathered として validation 対象に残りますが、新規作成 catalog ではありません。
 - original/source file は、対象 Initiative / Epic / Issue ノード配下の `discussions/` に作成されます。
 - ADR も original は常に `discussions/` 配下です。mirror / sync があっても original location は変わりません。
 
@@ -106,14 +107,16 @@ same-second collision 形:
 - `nn = 01..99`
   - 同一 `discussions/` directory 内で同じ秒を共有した discussion doc family collision を解消する suffix です
   - suffix が必要ないときは付けません
-- `kind = adr|disc|research|note`
+- `kind = scratch|interview|research|disc|adr`
+- grandfathered existing `note` filenames may also appear in validation.
 - `slug` は kebab-case です
 
 例:
 - `20260329t123456z-adr-token-rotation.md`
 - `20260329t123456z-disc-api-options.md`
 - `20260329t123456z-01-research-benchmark-summary.md`
-- `20260329t123456z-02-note-kickoff-memo.md`
+- `20260329t123456z-02-interview-rollout-policy.md`
+- `20260329t123456z-scratch-kickoff-memo.md`
 
 ### 4.3 `doc_id` と filename stem の境界
 
@@ -141,6 +144,7 @@ collision 形の `doc_id`:
 legacy sequential docs は grandfathered only です。
 
 - 例: `001-adr-token-rotation.md`, `002-disc-api-options.md`
+- 既存 `001-note-kickoff-memo.md` や timestamp `*-note-*.md` も grandfathered artifact として扱います。
 - 強制的 backward compatibility を維持するために legacy naming へ戻したり、新規 doc で legacy sequence basename を優先したりはしません
 - 既存 legacy file は自動 rename しません
 - 新 contract で新規作成するときに legacy sequential basename を再利用しません

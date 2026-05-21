@@ -11,7 +11,7 @@ runtime command の現行 contract は `./spec-dock/scripts/spec-dock ...` で�
 - `phase_*.md`: shared phase playbook（共通の作り方）
 - `phase_plan_<scope>.md`: scope 固有の plan authoring rule
 - `reference_*.md`: GitHub / naming / deps / sync などの参照仕様
-- `discussions/`: 調査、議論、メモ、ADR の置き場
+- `discussions/`: raw capture、ヒアリング、調査、議論、ADR の作業面
 
 phase playbook:
 - [phase_requirement.md](phase_requirement.md)
@@ -34,6 +34,7 @@ phase playbook:
 - Epic: 設計の背骨。契約、移行、観測性、Issue 分割を持つ
 - Issue: 実装の最小単位。active issue を起点に behavior-slice based execution contract で完了する
 - ADR: 後続へ残る意思決定。initiative / epic / issue の任意 scope に紐づく
+- discussion docs: 思考、知識、未確定情報を外部化する補助 artifact。文書そのものを正本へ昇格させず、必要な文脈だけを `adr` / `requirement.md` / `design.md` / `plan.md` へ反映する
 
 親子関係:
 
@@ -42,6 +43,29 @@ Initiative
 └── Epic
     └── Issue
 ```
+
+## discussion docs catalog
+
+current catalog は `scratch` / `interview` / `research` / `disc` / `adr` です。
+
+| type | lifecycle | authority default | 使う場面 |
+|---|---|---:|---|
+| `scratch` | capture | `raw` | 未整理の発話、観察、思考、会話ログ、下書きを低摩擦に置く |
+| `interview` | elicitation | `raw` | 人間から目的、制約、期待、判断基準、未決事項を引き出す |
+| `research` | research | `synthesized` | 検証可能な事実、仕様、実装、先例、外部制約を確認する |
+| `disc` | framing | `proposed` | 集まった情報から論点、評価軸、選択肢、合意点を整理する |
+| `adr` | decision | `accepted` | 長期的な判断、理由、影響、見直し条件を固定する |
+
+通常は doc type から authority を推定します。例外時だけ front matter の `authority` で override し、全 artifact で明示必須にはしません。`derived_from` / `reflected_to` は任意 metadata として、元になった discussion docs と反映先を追うために使えます。
+
+`note` は新規作成 catalog から retired されています。軽量メモと raw capture の境界が曖昧で `scratch` と役割が重複するため、未整理の記録先を `scratch` に一本化します。これは raw capture type の重複を避け、選択時の認知的曖昧さを減らすためです。既存 `note` artifact は grandfathered として壊さず、以後の raw capture は `scratch` に置きます。
+
+reflection rules:
+- `scratch`: 事実確認が必要なら `research`、論点整理が必要なら `disc`、人間判断が必要なら `interview`、長期判断なら `adr` を新規作成する。
+- `interview`: 回答は `requirement.md` / `design.md` / `plan.md` / `adr` の反映先を明示する。回答が新しい論点や調査を生む場合は `disc` / `research` へつなぐ。
+- `research`: 調査結果が比較を必要とする場合は `disc`、長期判断を支える場合は `adr` へつなぐ。
+- `disc`: 合意内容は authoritative docs へ反映する。長期的・横断的・不可逆寄りの判断は新しい `adr` を作成する。
+- `adr`: 決定内容を `requirement.md` / `design.md` / `plan.md` へ織り込み、必要な follow-up を残す。
 
 ## 生成物と SSOT
 

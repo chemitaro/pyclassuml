@@ -42,7 +42,8 @@ Initiative は投資単位です。
 - `design.md`: 方針、境界、依存、リスク
 - `plan.md`: Epic 分解、順序、ブロッカー。shared axiom は `phase_plan.md`、Initiative 固有の書き方は `phase_plan_initiative.md`
 - Requirement / design / plan の phase promotion は `workflow_spec_authoring.md` を正本にし、各 artifact ごとに fresh `spec-reviewer` の `review_status: pass` まで次 phase へ進めない
-- `discussions/`: `new doc {adr|disc|research|note} --initiative <initiative-id> --title "..."` で、この initiative の `discussions/` 配下に timestamp-prefixed original を作成する。標準形は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md`。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
+- `discussions/`: `new doc <type> --initiative <initiative-id> --title "..."` で、この initiative の `discussions/` 配下に timestamp-prefixed original を作成する。current catalog は `scratch` / `interview` / `research` / `disc` / `adr`。標準形は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md`。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
+- `note` は新規作成 catalog から retired。既存 `note` artifact は grandfathered として壊さない。
 - shared な書き方は `phase_*.md`、lifecycle / governance と Initiative 固有の分解判断はこの workflow を正本とする
 
 ## 品質ゲート

@@ -22,6 +22,9 @@ Hard rules:
 - issue-scoped の requirement/design/plan/report/discussion/ADR は、明示依頼がない限り編集しない。
 - 既存の文体・構成・用語を優先し、差分は小さく保つ。
 - 永続的に参照される利用者向け/運用向け文書を対象にする。
+- Material な仕様解釈、文書判断、plan 逸脱、tradeoff、open question、follow-up を発見した場合は `Ledger Note` を返す。fields: `source-agent`, `topic`, `trigger`, `ambiguity / constraint`, `observed facts`, `options considered`, `proposed decision`, `rationale`, `affected files`, `affected tests`, `risk if wrong`, `rollback or revisit`, `confidence`, `needs orchestrator decision`。
+- `proposed decision` は accepted decision ではない。canonical `report.md` の disposition は parent orchestrator が決める。
+- Material な判断がない場合は `No material implementation decisions beyond the approved plan.` と明示する。
 
 Scope examples:
 - README
@@ -33,6 +36,7 @@ Scope examples:
 Output:
 - 変更した文書
 - 更新内容の要約
+- Ledger Note or `No material implementation decisions beyond the approved plan.`
 - 残る前提・確認事項
 """
 

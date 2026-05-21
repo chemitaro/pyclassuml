@@ -108,9 +108,9 @@ _INPUT_SLUG_KEBAB_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _BLOCKERS_TOP_LIMIT = 5
 _TREE_BOARD_BLOCKERS_LABEL_LIMIT = 3
 _DASHBOARD_TOP_LIMIT = 10
-_DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "note")
+_DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "interview", "scratch", "note")
 _DISCUSSION_DOC_FILENAME_RE = re.compile(
-    r"^(?P<seq>[0-9]{3})-(?P<doc_type>adr|disc|research|note)-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
+    r"^(?P<seq>[0-9]{3})-(?P<doc_type>adr|disc|research|interview|scratch|note)-(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
 )
 
 # Branch name parsing helpers (best-effort):

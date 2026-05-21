@@ -33,7 +33,7 @@ scope 固有の lifecycle / governance は `workflow_initiative.md` / `workflow_
 1. 対象 scope と既存 node を確認する。
 2. 対象 artifact に対応する `docs/authoring/<scope>-<phase>.md` がある場合は最初に読む。
 3. 対象 scope の `workflow_*.md` と phase playbook を読む。
-4. 調査結果、仮説、選択肢、質問を必要に応じて `discussions/` に分離する。
+4. 調査結果、仮説、選択肢、質問を必要に応じて `discussions/` に分離する。raw capture は `scratch`、人間への質問は `interview`、事実調査は `research`、論点整理は `disc`、長期判断は `adr` を使う。
 5. 対象 artifact を更新する。
 6. fresh `spec-reviewer` を起動し、対象 artifact と upstream artifact を review する。
 7. `fail` なら修正し、fresh `spec-reviewer` で再レビューする。
@@ -81,4 +81,4 @@ scope 固有の lifecycle / governance は `workflow_initiative.md` / `workflow_
 - fixes: 指摘に対する修正要約
 - promotion: 次 phase へ進めるか、`blocked` / `incomplete` の reason と next action
 
-長い調査、比較、ヒアリング transcript は `discussions/` に分離してよい。ただし `report.md` には判断に必要な要約と参照を残す。
+長い調査、比較、ヒアリング transcript は `discussions/` に分離してよい。ただし `report.md` には判断に必要な要約と参照を残す。discussion docs は未確定情報の作業面なので、確定させる内容は新しい `adr`、または `requirement.md` / `design.md` / `plan.md` へ反映する。
