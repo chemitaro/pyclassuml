@@ -21,7 +21,8 @@ ID: "iss-00036"
 
 ## 実装サマリー
 - S01 CLI / model no-base contract を実装済み。
-- S02 以降の VCS resolver、app/report integration、README、final quality gate は未着手。
+- S02 VCS resolved-base resolver を実装済み。
+- S03 以降の app/report integration、README、final quality gate は未着手。
 
 ## 実装記録（セッションログ）
 
@@ -164,7 +165,71 @@ spec-dock: ok (new issue auto-sync)
 #### Step Commit Gate
 | step | review scope | step reviewer verdict | commit scope | closure state | commit evidence | post-commit clean check |
 |---|---|---|---|---|---|---|
-| S01 | S01 target files | code-reviewer pass | S01 implementation/tests plus report evidence | pending commit | pending | pending |
+| S01 | S01 target files | code-reviewer pass | S01 implementation/tests plus report evidence | committed | `3010c1a` | `git status --short` clean after commit |
+
+### 2026-05-22 - S02 VCS resolved-base resolver
+
+#### 対象
+- Step: S02
+- Closure id: tc-002, tc-003, tc-004, tc-005, tc-006, tc-007, tc-008
+- 対象ファイル:
+  - `src/pyclassuml/vcs/diff_collect.py`
+  - `tests/vcs/test_diff_file_collect.py`
+
+#### Implementation Delegation Gate
+| step | decision | delegated role | scope | allowed changes | forbidden changes | required verification | result |
+|---|---|---|---|---|---|---|---|
+| S02 | delegated | dev-coder | VCS resolved-base resolver | S02 target files only | CLI/model/report/docs changes, Git mutation commands, checkout-based implementation | `uv run pytest tests/vcs/test_diff_file_collect.py` or environment-equivalent targeted pytest | pass |
+
+#### Worker Result
+| step | worker summary | changed files | verification result | unresolved risks | ledger note |
+|---|---|---|---|---|---|
+| S02 | explicit/no-base resolved base、candidate order、default branch self、initial commit fallback、fallback diagnostic、no-commit failure を実装 | S02 target files | VCS targeted pytest passed via `/private/tmp` uv cache workaround | app/report transport remains S03 | No material implementation decisions beyond the approved plan. |
+
+#### Red/Green/Refactor Evidence
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| S02 | red | temp Git repo tests for tc-002〜tc-008 detect missing resolver | test-first run failed with 7 failures and 26 passes | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/vcs/test_diff_file_collect.py` | pass | failures included missing `base_resolution` and no-base `None` handling |
+| S02 | green | S02 targeted tests pass | 33 targeted tests passed | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/vcs/test_diff_file_collect.py` | pass | parent re-run confirmed |
+| S02 | static | whitespace / diff hygiene | no diff check errors | `git diff --check` | pass | parent re-run confirmed |
+| S02 | refactor | helper extraction stays inside `diff_collect.py` | resolver helpers kept in VCS module only | diff inspection | pass | no cross-module abstraction |
+
+#### Step Contract Closure
+| step | closure id | close condition | evidence | result |
+|---|---|---|---|---|
+| S02 | tc-002, tc-003, tc-004, tc-005, tc-006, tc-007, tc-008 | S02 targeted tests pass and code-reviewer passes | targeted pytest 33 passed; code-reviewer `review_status: pass` | pass |
+
+#### Test Contract Closure
+| closure id | step | evidence level | pre-implementation evidence | verification command | result |
+|---|---|---|---|---|---|
+| tc-002 | S02 | red-required | explicit-base tests failed before resolver update | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/vcs/test_diff_file_collect.py` | pass |
+| tc-003 | S02 | red-required | no-base merge-base test failed before resolver update | same as above | pass |
+| tc-004 | S02 | red-required | initial fallback test failed before resolver update | same as above | pass |
+| tc-005 | S02 | red-required | default branch self test failed before resolver update | same as above | pass |
+| tc-006 | S02 | red-required | no-commit failure test failed before resolver update | same as above | pass |
+| tc-007 | S02 | red-required | untracked/project-boundary no-base test failed before resolver update | same as above | pass |
+| tc-008 | S02 | red-required | candidate precedence test failed before resolver update | same as above | pass |
+
+#### Closure Coverage
+| closure id | locked expectation | covering tests | result |
+|---|---|---|---|
+| tc-002 | explicit base uses provided ref and invalid explicit base never falls back | `test_explicit_base_sets_authoritative_base_resolution`, `test_invalid_explicit_base_does_not_fallback` | pass |
+| tc-003 | no-base feature branch resolves default merge-base | `test_no_base_feature_branch_resolves_default_branch_merge_base` | pass |
+| tc-004 | no usable candidate falls back to initial commit object with metadata | `test_no_base_without_usable_candidate_uses_initial_commit_fallback` | pass |
+| tc-005 | current default branch skips probing and preserves slashful branch comparison | `test_no_base_current_slashful_default_branch_uses_initial_commit_fallback` | pass |
+| tc-006 | no commit repository fails fast | `test_no_base_no_commit_repository_fails_fast` | pass |
+| tc-007 | no-base preserves untracked and project/scope boundaries | `test_no_base_preserves_untracked_and_project_boundaries` | pass |
+| tc-008 | candidate order skips missing/duplicate refs and continues after merge-base failure | `test_no_base_candidate_order_skips_missing_duplicates_and_merge_base_failures` | pass |
+
+#### Reviewer Gate Status
+| gate name | reviewer role | freshness | state | evidence | risk acceptance |
+|---|---|---|---|---|---|
+| S02 step review | code-reviewer | fresh after S02 diff | passed | findings empty; `review_status: pass` | none |
+
+#### Step Commit Gate
+| step | review scope | step reviewer verdict | commit scope | closure state | commit evidence | post-commit clean check |
+|---|---|---|---|---|---|---|
+| S02 | S02 target files | code-reviewer pass | S02 implementation/tests plus report evidence | pending commit | pending | pending |
 
 ## Final Quality Gate (必須)
 

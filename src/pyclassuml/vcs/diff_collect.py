@@ -11,6 +11,7 @@ from pyclassuml.model import (
     CommandRequest,
     Diagnostic,
     DiagnosticSeverity,
+    DiffBaseResolution,
     DiffCurrentState,
     ExecutionContext,
     FailureReason,
@@ -72,12 +73,15 @@ class ChangedFileEntry:
 @dataclass(frozen=True)
 class ChangedFileCollection:
     entries: tuple[ChangedFileEntry, ...]
+    base_resolution: DiffBaseResolution
 
     def __post_init__(self) -> None:
         entries = tuple(self.entries)
         for entry in entries:
             if not isinstance(entry, ChangedFileEntry):
                 raise ValueError("entries must contain ChangedFileEntry values")
+        if not isinstance(self.base_resolution, DiffBaseResolution):
+            raise ValueError("base_resolution must be DiffBaseResolution")
         object.__setattr__(self, "entries", entries)
 
 
@@ -110,14 +114,22 @@ def collect_diff_files(
 ) -> VcsDiffCollection:
     """Collect project-root-relative changed files without scope filtering."""
 
-    base_ref = request.cli_options.diff.base_ref if request.cli_options.diff is not None else ""
+    base_ref = request.cli_options.diff.base_ref if request.cli_options.diff is not None else None
     diagnostics: list[Diagnostic] = []
     vcs_root = context.vcs_root
 
     try:
         _ensure_git_repository(vcs_root)
-        _verify_base_ref(vcs_root, base_ref)
-        entries = _tracked_entries(vcs_root, context.project_root, base_ref, config.diff_current_state)
+        base_resolution = _resolve_base_ref(vcs_root, base_ref)
+        if base_resolution.resolution_kind == "initial_commit_fallback":
+            diagnostics.append(_initial_commit_fallback_diagnostic(base_resolution.resolved_base_ref))
+
+        entries = _tracked_entries(
+            vcs_root,
+            context.project_root,
+            base_resolution.resolved_base_ref,
+            config.diff_current_state,
+        )
 
         if config.diff_current_state is DiffCurrentState.WORKING_TREE and config.diff_include_untracked:
             entries.extend(_untracked_entries(vcs_root, context.project_root))
@@ -134,7 +146,10 @@ def collect_diff_files(
             )
 
         return VcsDiffCollection(
-            collection=ChangedFileCollection(entries=_dedupe_and_sort(entries)),
+            collection=ChangedFileCollection(
+                entries=_dedupe_and_sort(entries),
+                base_resolution=base_resolution,
+            ),
             diagnostics=tuple(diagnostics),
         )
     except VcsDiffError as exc:
@@ -204,6 +219,138 @@ def _verify_base_ref(project_root: Path, base_ref: str) -> None:
     result = _run_git(project_root, ("rev-parse", "--verify", base_ref), check=False)
     if result.returncode != 0:
         raise VcsDiffError("invalid_base_ref", f"base ref is not a valid Git revision: {base_ref}")
+
+
+def _resolve_base_ref(vcs_root: Path, requested_base_ref: str | None) -> DiffBaseResolution:
+    if requested_base_ref is not None:
+        _verify_base_ref(vcs_root, requested_base_ref)
+        return DiffBaseResolution(
+            requested_base_ref=requested_base_ref,
+            resolved_base_ref=requested_base_ref,
+            resolution_kind="explicit_base",
+            candidate_ref=None,
+        )
+
+    _verify_head_commit(vcs_root)
+    if _current_branch_is_default_branch(vcs_root):
+        return _initial_commit_base_resolution(vcs_root)
+
+    for candidate_ref in _default_branch_candidates(vcs_root):
+        result = _run_git(vcs_root, ("merge-base", candidate_ref, "HEAD"), check=False)
+        if result.returncode == 0:
+            resolved_base = _decode_single_git_line(result.stdout, "merge-base")
+            return DiffBaseResolution(
+                requested_base_ref=None,
+                resolved_base_ref=resolved_base,
+                resolution_kind="default_branch_merge_base",
+                candidate_ref=candidate_ref,
+            )
+    return _initial_commit_base_resolution(vcs_root)
+
+
+def _verify_head_commit(vcs_root: Path) -> None:
+    result = _run_git(vcs_root, ("rev-parse", "--verify", "HEAD^{commit}"), check=False)
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace")
+        raise VcsDiffError("git_diff_read_failure", f"Git repository has no HEAD commit: {stderr}")
+
+
+def _current_branch_is_default_branch(vcs_root: Path) -> bool:
+    current_branch = _current_branch_name(vcs_root)
+    if current_branch is None:
+        return False
+
+    origin_head_target = _origin_head_target(vcs_root)
+    if origin_head_target is not None:
+        return current_branch == _remote_default_branch_name(origin_head_target)
+
+    return current_branch in {"main", "develop", "master"}
+
+
+def _current_branch_name(vcs_root: Path) -> str | None:
+    result = _run_git(vcs_root, ("symbolic-ref", "--quiet", "--short", "HEAD"), check=False)
+    if result.returncode != 0:
+        return None
+    return _decode_single_git_line(result.stdout, "symbolic-ref HEAD")
+
+
+def _origin_head_target(vcs_root: Path) -> str | None:
+    result = _run_git(vcs_root, ("symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"), check=False)
+    if result.returncode != 0:
+        return None
+    return _decode_single_git_line(result.stdout, "origin/HEAD")
+
+
+def _default_branch_candidates(vcs_root: Path) -> tuple[str, ...]:
+    raw_candidates = []
+    origin_head_target = _origin_head_target(vcs_root)
+    if origin_head_target is not None:
+        raw_candidates.append(_remote_candidate_ref(origin_head_target))
+    raw_candidates.extend(("origin/main", "origin/develop", "origin/master", "main", "develop", "master"))
+
+    candidates = []
+    seen = set()
+    for candidate in raw_candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _ref_exists(vcs_root, candidate):
+            candidates.append(candidate)
+    return tuple(candidates)
+
+
+def _remote_candidate_ref(origin_head_target: str) -> str:
+    if origin_head_target.startswith("refs/remotes/"):
+        return origin_head_target.removeprefix("refs/remotes/")
+    return origin_head_target
+
+
+def _remote_default_branch_name(origin_head_target: str) -> str:
+    candidate = _remote_candidate_ref(origin_head_target)
+    if candidate.startswith("origin/"):
+        return candidate.removeprefix("origin/")
+    return candidate
+
+
+def _ref_exists(vcs_root: Path, ref: str) -> bool:
+    result = _run_git(vcs_root, ("rev-parse", "--verify", ref), check=False)
+    return result.returncode == 0
+
+
+def _initial_commit_base_resolution(vcs_root: Path) -> DiffBaseResolution:
+    result = _run_git(vcs_root, ("rev-list", "--max-parents=0", "HEAD"), check=False)
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace")
+        raise VcsDiffError("git_diff_read_failure", f"Git initial commit could not be resolved: {stderr}")
+    initial_commit = _decode_single_git_line(result.stdout, "initial commit")
+    return DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref=initial_commit,
+        resolution_kind="initial_commit_fallback",
+        candidate_ref=None,
+    )
+
+
+def _initial_commit_fallback_diagnostic(resolved_base_ref: str) -> Diagnostic:
+    return Diagnostic(
+        severity=DiagnosticSeverity.WARNING,
+        code="diff_base_initial_commit_fallback",
+        message=(
+            "No-base diff could not resolve a branch-start base from default branch candidates; "
+            f"using initial commit object {resolved_base_ref} as the resolved base. "
+            "Specify --base <ref> to choose an explicit base."
+        ),
+        origin_seam=OriginSeam.VCS,
+        recoverability=Recoverability.DEGRADED_OUTPUT,
+        failure_reason=None,
+    )
+
+
+def _decode_single_git_line(output: bytes, subject: str) -> str:
+    lines = [line for line in output.decode("utf-8", errors="replace").splitlines() if line]
+    if not lines:
+        raise VcsDiffError("git_diff_read_failure", f"Git {subject} output was empty")
+    return lines[0]
 
 
 def _tracked_entries(
