@@ -20,8 +20,8 @@ ID: "iss-00036"
 | D-002 | resolved | compatibility | user / orchestrator | `--base` 指定時の既存挙動と新しい default behavior の関係 | `--base` の意味変更; `--merge-base` 追加; `--base` 指定時は既存互換 | `--base <ref>` 指定時は既存どおり `<ref>` 自体を base にする | 既存利用者の command と mental model を壊さないため | promoted_to_requirement | `requirement.md` AC-002 | none |
 
 ## 実装サマリー
-- 未実装。
-- この report は issue 作成時点の仕様判断と、今後の実装 evidence 保存先を初期化する。
+- S01 CLI / model no-base contract を実装済み。
+- S02 以降の VCS resolver、app/report integration、README、final quality gate は未着手。
 
 ## 実装記録（セッションログ）
 
@@ -110,6 +110,61 @@ spec-dock: ok (new issue auto-sync)
 |---|---|---|
 | requirement/design/plan readiness | pass | spec-reviewer passes recorded above |
 | implementation closure | pending | S01-S99 not executed |
+
+### 2026-05-22 - S01 CLI / model no-base contract
+
+#### 対象
+- Step: S01
+- Closure id: tc-001
+- 対象ファイル:
+  - `src/pyclassuml/cli/bind.py`
+  - `src/pyclassuml/model/contracts.py`
+  - `src/pyclassuml/model/__init__.py`
+  - `tests/cli/test_bind.py`
+  - `tests/model/test_contracts.py`
+
+#### Implementation Delegation Gate
+| step | decision | delegated role | scope | allowed changes | forbidden changes | required verification | result |
+|---|---|---|---|---|---|---|---|
+| S01 | delegated | dev-coder | CLI / model no-base contract | S01 target files only | VCS resolver, app/report behavior, README, unrelated DTO changes | `uv run pytest tests/cli/test_bind.py tests/model/test_contracts.py` or environment-equivalent targeted pytest | pass |
+
+#### Worker Result
+| step | worker summary | changed files | verification result | unresolved risks | ledger note |
+|---|---|---|---|---|---|
+| S01 | `--base` optional bind、`DiffOptions.base_ref=None`、`DiffBaseResolution` DTO/export、`CommandResult.diff_base_resolution` を実装 | S01 target files | targeted pytest passed via `/private/tmp` uv cache workaround | VCS resolver / app-report / README remain S02+ | No material implementation decisions beyond the approved plan. |
+
+#### Red/Green/Refactor Evidence
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| S01 | red | no-base bind / DTO export tests detect missing contract | test-first run failed with `ImportError: cannot import name 'DiffBaseResolution'` | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/cli/test_bind.py tests/model/test_contracts.py` | pass | literal `uv run pytest ...` is blocked by uv cache permission on `/Volumes/990p2t/.cache/uv/sdists-v9/.git` |
+| S01 | green | S01 targeted tests pass | 36 targeted tests passed | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/cli/test_bind.py tests/model/test_contracts.py` | pass | parent re-run confirmed |
+| S01 | static | whitespace / diff hygiene | no diff check errors | `git diff --check` | pass | parent re-run confirmed |
+| S01 | refactor | bounded tidy after green | no additional tidy needed | worker inspection | pass | no unrelated model reshaping |
+
+#### Step Contract Closure
+| step | closure id | close condition | evidence | result |
+|---|---|---|---|---|
+| S01 | tc-001 | S01 targeted tests pass and code-reviewer passes | targeted pytest 36 passed; code-reviewer `review_status: pass` | pass |
+
+#### Test Contract Closure
+| closure id | step | evidence level | pre-implementation evidence | verification command | result |
+|---|---|---|---|---|---|
+| tc-001 | S01 | red-required | `DiffBaseResolution` import failure after test-first change | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/cli/test_bind.py tests/model/test_contracts.py` | pass |
+
+#### Closure Coverage
+| closure id | locked expectation | covering tests | result |
+|---|---|---|---|
+| tc-001 | no-base diff is valid input and explicit base remains a non-empty string | `tests/cli/test_bind.py`, `tests/model/test_contracts.py` | pass |
+
+#### Reviewer Gate Status
+| gate name | reviewer role | freshness | state | evidence | risk acceptance |
+|---|---|---|---|---|---|
+| S01 step review | code-reviewer | fresh after S01 diff | passed | findings empty; `review_status: pass` | none |
+
+#### Step Commit Gate
+| step | review scope | step reviewer verdict | commit scope | closure state | commit evidence | post-commit clean check |
+|---|---|---|---|---|---|---|
+| S01 | S01 target files | code-reviewer pass | S01 implementation/tests plus report evidence | pending commit | pending | pending |
 
 ## Final Quality Gate (必須)
 

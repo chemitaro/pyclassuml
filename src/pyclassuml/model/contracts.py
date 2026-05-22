@@ -26,6 +26,9 @@ _MEMBER_KINDS = frozenset({"field", "method"})
 _MEMBER_VISIBILITIES = frozenset({"public", "protected", "private"})
 _RELATION_TYPES = frozenset({"inherits", "realizes", "composition", "aggregation", "association", "uses"})
 _ANNOTATION_SHAPES = frozenset({"direct", "optional", "union", "collection", "mapping_value"})
+_DIFF_BASE_RESOLUTION_KINDS = frozenset(
+    {"explicit_base", "default_branch_merge_base", "initial_commit_fallback"}
+)
 
 
 class CommandName(str, Enum):
@@ -124,9 +127,21 @@ def _ensure_optional_string(value: object, field_name: str) -> None:
         raise ValueError(f"{field_name} must be str or None")
 
 
+def _ensure_optional_non_empty_string(value: object, field_name: str) -> None:
+    if value is not None:
+        _ensure_non_empty_string(value, field_name)
+
+
 def _ensure_non_empty_strings(values: tuple[object, ...], field_name: str) -> None:
     for value in values:
         _ensure_non_empty_string(value, field_name)
+
+
+def _ensure_diff_base_resolution_kind(value: object) -> None:
+    if value not in _DIFF_BASE_RESOLUTION_KINDS:
+        raise ValueError(
+            "resolution_kind must be one of: explicit_base, default_branch_merge_base, initial_commit_fallback"
+        )
 
 
 def _ensure_member_kind(value: object) -> None:
@@ -182,14 +197,14 @@ class GenerateOptions:
 
 @dataclass(frozen=True)
 class DiffOptions:
-    base_ref: str
+    base_ref: str | None
     current_state: DiffCurrentState
     include_untracked: bool
     current_state_cli_provided: bool = True
     include_untracked_cli_provided: bool = True
 
     def __post_init__(self) -> None:
-        _ensure_non_empty_string(self.base_ref, "base_ref")
+        _ensure_optional_non_empty_string(self.base_ref, "base_ref")
         _ensure_enum(self.current_state, DiffCurrentState, "current_state")
         if not isinstance(self.include_untracked, bool):
             raise ValueError("include_untracked must be bool")
@@ -197,6 +212,20 @@ class DiffOptions:
             raise ValueError("current_state_cli_provided must be bool")
         if not isinstance(self.include_untracked_cli_provided, bool):
             raise ValueError("include_untracked_cli_provided must be bool")
+
+
+@dataclass(frozen=True)
+class DiffBaseResolution:
+    requested_base_ref: str | None
+    resolved_base_ref: str
+    resolution_kind: str
+    candidate_ref: str | None = None
+
+    def __post_init__(self) -> None:
+        _ensure_optional_non_empty_string(self.requested_base_ref, "requested_base_ref")
+        _ensure_non_empty_string(self.resolved_base_ref, "resolved_base_ref")
+        _ensure_diff_base_resolution_kind(self.resolution_kind)
+        _ensure_optional_non_empty_string(self.candidate_ref, "candidate_ref")
 
 
 @dataclass(frozen=True)
@@ -646,6 +675,7 @@ class CommandResult:
     summary: RunSummary
     diagnostics: tuple[Diagnostic, ...]
     exit_code: int
+    diff_base_resolution: DiffBaseResolution | None = None
 
     def __post_init__(self) -> None:
         if self.artifact_path is not None and not isinstance(self.artifact_path, Path):
@@ -655,6 +685,8 @@ class CommandResult:
         diagnostics = _as_tuple(self.diagnostics)
         _ensure_diagnostics(diagnostics, "diagnostics")
         _ensure_non_negative_int(self.exit_code, "exit_code")
+        if self.diff_base_resolution is not None and not isinstance(self.diff_base_resolution, DiffBaseResolution):
+            raise ValueError("diff_base_resolution must be DiffBaseResolution or None")
         object.__setattr__(self, "diagnostics", diagnostics)
 
 
@@ -675,6 +707,7 @@ __all__ = [
     "Diagnostic",
     "DiagnosticCode",
     "DiagnosticSeverity",
+    "DiffBaseResolution",
     "DiffCurrentState",
     "DiffOptions",
     "DiagramModel",

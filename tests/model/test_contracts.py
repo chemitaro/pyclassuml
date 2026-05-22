@@ -18,6 +18,7 @@ from pyclassuml.model import (
     DependencyGraph,
     Diagnostic,
     DiagnosticSeverity,
+    DiffBaseResolution,
     DiffCurrentState,
     DiffOptions,
     DiagramModel,
@@ -533,11 +534,13 @@ def test_command_option_absence_rules() -> None:
     assert CommandOptions(
         command=CommandName.DIFF,
         diff=DiffOptions(
-            base_ref="main",
+            base_ref=None,
             current_state=DiffCurrentState.WORKING_TREE,
             include_untracked=True,
         ),
     )
+
+    assert DiffOptions(base_ref="main", current_state=DiffCurrentState.HEAD, include_untracked=False)
 
     with pytest.raises(ValueError):
         DiffOptions(base_ref="", current_state=DiffCurrentState.HEAD, include_untracked=False)
@@ -559,6 +562,61 @@ def test_command_option_absence_rules() -> None:
             current_state=DiffCurrentState.WORKING_TREE,
             include_untracked=False,
             include_untracked_cli_provided="yes",
+        )
+
+
+def test_diff_base_resolution_contract_is_public_and_validated() -> None:
+    resolution = DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref="abc123",
+        resolution_kind="default_branch_merge_base",
+        candidate_ref="origin/main",
+    )
+    result = CommandResult(
+        artifact_path=Path("diff.puml"),
+        summary=RunSummary(),
+        diagnostics=(),
+        exit_code=0,
+        diff_base_resolution=resolution,
+    )
+
+    assert result.diff_base_resolution is resolution
+    assert DiffBaseResolution(
+        requested_base_ref="origin/main",
+        resolved_base_ref="origin/main",
+        resolution_kind="explicit_base",
+        candidate_ref=None,
+    )
+    assert DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref="abc123",
+        resolution_kind="initial_commit_fallback",
+        candidate_ref=None,
+    )
+
+    for field, value in (
+        ("requested_base_ref", ""),
+        ("resolved_base_ref", ""),
+        ("resolution_kind", "upstream"),
+        ("candidate_ref", ""),
+    ):
+        kwargs = {
+            "requested_base_ref": None,
+            "resolved_base_ref": "abc123",
+            "resolution_kind": "default_branch_merge_base",
+            "candidate_ref": None,
+        }
+        kwargs[field] = value
+        with pytest.raises(ValueError):
+            DiffBaseResolution(**kwargs)
+
+    with pytest.raises(ValueError):
+        CommandResult(
+            artifact_path=None,
+            summary=RunSummary(),
+            diagnostics=(),
+            exit_code=0,
+            diff_base_resolution="not-a-resolution",
         )
 
 
