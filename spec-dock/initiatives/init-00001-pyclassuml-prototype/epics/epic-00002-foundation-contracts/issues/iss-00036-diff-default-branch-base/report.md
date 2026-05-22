@@ -392,14 +392,14 @@ spec-dock: ok (new issue auto-sync)
 ### Final Commit Gate
 | scope | evidence | result |
 |---|---|---|
-| issue implementation, tests, docs, report | pending | pending |
+| issue implementation, tests, docs, report | S01 `3010c1a`, S02 `a2f86ff`, S03 `9256f36`, S90 `43e9c66`, S99 `c5a9a0c`; final PR evidence commit hash and post-commit clean check are recorded as external delivery evidence after this report update | pass |
 
 ### PR Delivery Gate
 | pr url | selected base | base-resolution source | conflict handling | draft/ready decision | head branch | head sha | issue linkage | push result | existing/new PR decision | result |
 |---|---|---|---|---|---|---|---|---|---|---|
-| pending | pending | pending | pending | pending | pending | pending | #36 | pending | pending | pending |
+| https://github.com/chemitaro/pyclassuml/pull/37 | `main` | repository default branch; no `branch.*.gh-merge-base` and no existing PR | no base conflict; mergeable at monitor time | ready PR because local final gates passed | `iss-00036-diff-default-branch-base` | `c5a9a0c771a799b653280a7cf63cfa86955b3498` at PR creation; final evidence commit head is recorded externally after push | #36 | branch pushed to origin and PR created | new PR created | pass |
 
 ### Merge Preparation Gate
 | pr url | checks | codex review | open review comments | unresolved blockers | result |
 |---|---|---|---|---|---|
-| pending | pending | pending | pending | pending | pending |
+| https://github.com/chemitaro/pyclassuml/pull/37 | required checks: 0; non-required `validate` x2 success; latest monitored head matched `c5a9a0c771a799b653280a7cf63cfa86955b3498` at monitor time | no Codex review comments or bodies | none reported by monitor | none; PR open, ready, mergeable, merge state clean | pass; final evidence commit post-push monitor is recorded externally |
