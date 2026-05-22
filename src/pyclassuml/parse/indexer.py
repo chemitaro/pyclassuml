@@ -242,7 +242,7 @@ def _extract_import_refs(tree: ast.AST) -> tuple[_ImportRef, ...]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             refs.extend(
-                _ImportRef(text=alias.name, module=alias.name, names=(), level=0)
+                _ImportRef(text=_format_import_alias(alias), module=alias.name, names=(), level=0)
                 for alias in node.names
             )
         elif isinstance(node, ast.ImportFrom):
@@ -255,6 +255,12 @@ def _extract_import_refs(tree: ast.AST) -> tuple[_ImportRef, ...]:
                 text = f"{text} import {', '.join(rendered_names)}"
             refs.append(_ImportRef(text=text, module=module, names=names, level=node.level))
     return tuple(sorted(refs, key=lambda ref: ref.text))
+
+
+def _format_import_alias(alias: ast.alias) -> str:
+    if alias.asname is None:
+        return alias.name
+    return f"{alias.name} as {alias.asname}"
 
 
 def _format_import_from_alias(alias: ast.alias) -> str:

@@ -19,8 +19,9 @@ ID: "iss-00040"
 - S01 は実装済みで、tc-001 の Red/Green evidence を記録済み。
 - S01 code-reviewer gate は再レビューで pass 済み。P2 の status cleanup はこの report 更新で対応した。
 - S02 は実装済みで、tc-002 / tc-003 の Red/Green evidence を記録済み。code-reviewer gate は pass 済み。
-- S03 は実装済みで、tc-004 / tc-005 / tc-006 の Red/Green evidence を記録済み。code-reviewer gate は未実施。
-- S04 以降の実装、final quality gate、PR gate は未実施。
+- S03 は実装済みで、tc-004 / tc-005 / tc-006 の Red/Green evidence を記録済み。code-reviewer gate は pass 済み。
+- S04 は実装済みで、tc-007 / tc-008 の Red/Green evidence を記録済み。code-reviewer gate は未実施。
+- Final quality gate、PR gate は未実施。
 
 ## Spec Interpretation / Decision Ledger
 
@@ -28,7 +29,7 @@ ID: "iss-00040"
 |---|---|---|---|---|---|---|---|---|---|---|
 | D-001 | resolved | scope | user / investigation | 直接依存 relation 欠落の調査結果を report ではなく research/scratch にまとめるべきという指摘 | report に詳細を置く; research に移し report は参照だけにする | 詳細調査は issue discussions の research artifact に置き、report は作業ログと反映先参照に留める | report は observed evidence ledger であり、調査本文の一次整理は research の責務に合う | applied | `discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` | requirement/design/plan 作成時に research を参照 |
 | D-002 | resolved | implementation-detail | dev-coder / parent | S02 で同一 method 内の複数 direct-use evidence が既存 `_ordered_class_references()` の dedupe で潰れうる | method name only; semantic expression owner; method name + AST source position | method body dependency evidence の `reference_owner` は `{method}@{lineno}:{col_offset}` とする | schema 追加なしで distinct evidence と deterministic ordering を保てる。`reference_owner` は user-facing contract ではなく diagnostics / evidence identity 用の issue-local detail | applied | S02 parse tests, parent inspection, code-reviewer pass with P2 disposition cleanup | なし。将来 semantic owner が必要になった場合は別 issue で再検討 |
-| D-003 | open | integration-risk | dev-coder / parent | S03 selection は alias-aware import metadata を解決できるが、parse の `ast.Import` text が alias を保持しない可能性がある | S03 内では selection helper だけ実装する; S03 で parse も変える; stop | S03 は selection scope に閉じ、`import pkg.target as target; target.B` の end-to-end 確認は S04 integration で判定する | S03 の許可範囲は selection/tests のみであり、parse 変更は S04 の app integration failure で実証してから扱うのが workflow と blast radius に合う | pending | S03 dev-coder Ledger Note, parent inspection of `_extract_import_refs()` | S04 で generate integration test に alias import を含め、失敗した場合は plan/report に明記して parse alias preservation を追加実装する |
+| D-003 | resolved | integration-risk | dev-coder / parent | S03 selection は alias-aware import metadata を解決できるが、parse の `ast.Import` text が alias を保持しない可能性がある | S03 内では selection helper だけ実装する; S03 で parse も変える; S04 で app failure を見て parse alias preservation を追加する | S04 の app integration red で `import pkg.target as target; target.B` が欠落することを確認し、parse の `ast.Import` text に alias を保持する最小変更を入れる | alias preservation は import candidate lookup の既存責務内で、runtime import execution なしに D-003 を閉じられる | applied | S04 Red `1 failed, 70 passed`; S04 Green app targeted `71 passed`; parse alias regression test | なし |
 
 ## 実装記録（セッションログ）
 
@@ -518,11 +519,83 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 #### コミット
 
+- `c16a74b feat(analyze): 直接依存evidenceをdependency関係に変換`
+
+### 2026-05-22 20:45 - 21:10 JST
+
+#### 対象
+
+- Step: S04 generate and diff integration
+- Closure ids:
+  - `tc-007`
+  - `tc-008`
+- Planned source:
+  - `plan.md` S04
+
+#### Implementation Delegation Gate
+
+| step | decision | required reason | delegated role | delegated scope | source of truth | allowed changes | forbidden changes | required verification | stop conditions | output required | observed result |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| S04 | delegated | app integration tests and possible proven integration fix | dev-coder | generate/diff direct dependency e2e coverage and D-003 confirmation | `requirement.md`, `design.md`, `plan.md` S04, report D-003 | `tests/app/test_generate.py`, `tests/app/test_diff.py`; `src/pyclassuml/parse/indexer.py` and parse tests only if app failure proves alias preservation need | CLI option/output schema changes, data-flow, runtime import execution, external package resolution | app targeted pytest and combined targeted pytest | app behavior needs CLI/API contract change | changed files, Red/Green result, D-003 conclusion | completed; D-003 resolved |
+
+#### Red / Green Evidence
+
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| S04 | Red | app tests fail before integration fix | delegated worker reported `1 failed, 70 passed`; module-qualified alias import path missed `B` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/app/test_generate.py tests/app/test_diff.py` | pass | D-003 reproduced by app test |
+| S04 | Green | generate/diff app targeted tests pass after implementation | parent rerun confirmed `71 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/app/test_generate.py tests/app/test_diff.py` | pass | direct dependency matrix and diff added dependency pass |
+| S04 | Regression | model/parse/analyze/render/app targeted tests pass together | parent rerun confirmed `203 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/model/test_contracts.py tests/parse/test_module_parse_and_index.py tests/analyze/test_selection.py tests/render/test_document.py tests/app/test_generate.py tests/app/test_diff.py` | pass | S01-S04 contracts preserved |
+| S04 | Tidy | whitespace and path policy checks pass | parent ran diff check and uppercase path scan | `git diff --check`; `rg --files | rg '[A-Z]'` | pass | uppercase scan returned only existing `AGENTS.md` / `README.md` paths |
+
+#### Step Contract Closure
+
+| step | closure id | close condition | evidence | result | notes |
+|---|---|---|---|---|---|
+| S04 | tc-007 | `generate` renders direct dependency `..>` end-to-end for AC-001 through AC-006 visible cases | generate app direct dependency matrix passed | pass | same-file, explicit import, from-import alias, module-qualified alias, type/spec, self assignment |
+| S04 | tc-008 | `diff` renders added direct dependency with common relation semantics | diff app added dependency test passed | pass | changed source class is decorated and dependency target is rendered |
+
+#### Test Contract Closure
+
+| closure id | step | evidence level | pre-implementation evidence | verification command | result |
+|---|---|---|---|---|---|
+| tc-007 | S04 | red-required | delegated worker observed `1 failed, 70 passed` before parse alias fix | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/app/test_generate.py tests/app/test_diff.py` | pass, `71 passed` |
+| tc-008 | S04 | red-required | delegated worker observed S04 app tests before integration fix | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/app/test_generate.py tests/app/test_diff.py` | pass, `71 passed` |
+
+#### Closure Coverage
+
+| closure id | AC / EC / constraint | evidence | status |
+|---|---|---|---|
+| tc-007 | AC-001 / AC-002 / AC-003 / AC-004 / AC-005 / AC-006 | generate app matrix renders `..>` for direct constructor, explicit import, from-import alias, module-qualified alias/member access, type/spec dependency, and `self.b = B()` without structural relation | closed |
+| tc-008 | AC-007 | diff app renders added same-file direct dependency as `..>` | closed |
+| D-003 | app integration risk | `import pkg.target as target; target.B` failed before parse alias preservation and passed after alias text was preserved | resolved |
+
+#### Closure Delta
+
+| step | added | removed | changed | re-review required | notes |
+|---|---|---|---|---|---|
+| S04 | parse alias preservation | none | `ast.Import` text now preserves `as` alias | yes | app red evidence proved D-003 integration gap |
+
+#### Reviewer Gate Status
+
+| step | gate name | reviewer role | freshness | state | risk acceptance | promotion / completion decision | notes |
+|---|---|---|---|---|---|---|---|
+| S04 | code review | code-reviewer | fresh after report update | passed | no | S04 can be committed | findings: none |
+
+#### 変更したファイル
+
+- `src/pyclassuml/parse/indexer.py` - `ast.Import` alias text を import candidate key と module imports に保持。
+- `tests/parse/test_module_parse_and_index.py` - module import alias text preservation regression を追加。
+- `tests/app/test_generate.py` - generate direct dependency matrix を追加。
+- `tests/app/test_diff.py` - diff added direct dependency regression を追加。
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - S04 closure evidence と D-003 resolution を記録。
+
+#### コミット
+
 - pending
 
 ## Final Quality Gate
 
-この issue はまだ実装中であり、final gate は未実施。
+この issue は S04 まで実装済みであり、final gate は未実施。
 
 ### S90 Docs Impact Resolution
 
@@ -534,7 +607,7 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 | reviewer | scope | integration test decision | evidence | result |
 |---|---|---|---|---|
-| qa-reviewer | whole issue obligation coverage | 未判定 | 実装中 | not run |
+| qa-reviewer | whole issue obligation coverage | 未判定 | S04 まで実装済み | not run |
 
 ### Final Code Review Gate
 
@@ -565,9 +638,9 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 ## 今後の推奨事項
 
-- S03 は実装済み。次は `plan.md` の S04 として generate / diff integration を実装し、D-003 の alias import metadata path を確認する。
+- S04 は実装済み。次は S90 docs impact resolution と S99 final quality gate を実施する。
 - 各 implementation step では `report.md` に Red/Green/Review/Commit evidence を残してから次 step へ進む。
 
 ## 省略/例外メモ
 
-- S04 以降の実装、final quality gate、PR gate は未実施。
+- S90/S99 final quality gate、PR gate は未実施。

@@ -1491,6 +1491,21 @@ def test_import_candidates_are_parsed_recursively_and_indexed_deterministically(
     }
 
 
+def test_import_candidate_index_preserves_module_alias_text(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    package = project / "pkg"
+    seed = write_file(package / "source.py", "import pkg.target as target\nclass Source: pass\n")
+    dependency = write_file(package / "target.py", "class B: pass\n")
+
+    result = parse_target_set(target_set(seed), context(project, package_root=package), AnalysisConfig())
+
+    assert result.diagnostics == ()
+    assert result.module_index.module_by_path[Path("pkg/source.py")].imports == ("pkg.target as target",)
+    assert result.module_index.import_candidate_paths == {
+        "pkg.target as target": (dependency.relative_to(project),),
+    }
+
+
 def test_import_candidates_use_package_import_root_when_project_root_is_monorepo(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     backend = repo / "backend"

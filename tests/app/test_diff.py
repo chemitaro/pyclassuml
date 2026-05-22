@@ -541,6 +541,50 @@ def test_diff_member_rendering_e2e_covers_changed_class_body_and_alias_relations
     assert "changed_class_count: 3" in result.stdout_text
 
 
+def test_diff_renders_added_direct_dependency_relation(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "model.py",
+        "\n".join(
+            [
+                "class B:",
+                "    pass",
+                "",
+                "class A:",
+                "    def make(self):",
+                "        return None",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "model.py",
+        "\n".join(
+            [
+                "class B:",
+                "    pass",
+                "",
+                "class A:",
+                "    def make(self):",
+                "        return B()",
+            ]
+        ),
+    )
+
+    result = run_diff(
+        diff_request(repo, output=Path("direct-dependency.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "direct-dependency.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert "<<DiffChanged>>" in class_declaration(output, "A")
+    assert_relation(output, "A", "..>", "B")
+
+
 def test_diff_e2e_marks_changed_class_and_dependency_only_class(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "pkg" / "__init__.py")

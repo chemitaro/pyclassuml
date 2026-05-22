@@ -38,6 +38,12 @@ def assert_relation(plantuml_text: str, source_name: str, arrow: str, target_nam
     assert f"{source_alias} {arrow} {target_alias}" in plantuml_text
 
 
+def assert_no_relation(plantuml_text: str, source_name: str, arrow: str, target_name: str) -> None:
+    source_alias = class_alias(plantuml_text, source_name)
+    target_alias = class_alias(plantuml_text, target_name)
+    assert f"{source_alias} {arrow} {target_alias}" not in plantuml_text
+
+
 def write_file(path: Path, text: str = "") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -228,6 +234,167 @@ def test_generate_renders_sqlalchemy_mapped_once_without_field_ownership_relatio
     assert f"{user_alias} --> {account_alias}" not in output
     assert f"{user_alias} *-- {account_alias}" not in output
     assert output.count(f"{user_alias} ..> {account_alias}") == 1
+
+
+def test_generate_renders_direct_dependency_matrix_end_to_end(tmp_path: Path) -> None:
+    def run_case(case_name: str, files: dict[str, str], source_name: str, target_name: str) -> str:
+        case_root = tmp_path / case_name
+        write_file(case_root / "pkg" / "__init__.py")
+        for relative_path, text in files.items():
+            write_file(case_root / relative_path, text)
+        result = run_generate(
+            generate_request(case_root, ("pkg/source.py",), output=Path(f"{case_name}.puml")),
+            timestamp=TIMESTAMP,
+        )
+        output = (case_root / f"{case_name}.puml").read_text(encoding="utf-8")
+        assert result.outcome_kind in {"clean_success", "warning_only_success"}
+        assert result.command_result.exit_code == 0
+        assert_relation(output, source_name, "..>", target_name)
+        return output
+
+    same_file_output = run_case(
+        "same-file",
+        {
+            "pkg/source.py": "\n".join(
+                [
+                    "class B:",
+                    "    pass",
+                    "",
+                    "class SameFileSource:",
+                    "    def make(self):",
+                    "        return B()",
+                ]
+            ),
+        },
+        "SameFileSource",
+        "B",
+    )
+    assert same_file_output.count(" ..> ") == 1
+
+    explicit_output = run_case(
+        "explicit-import",
+        {
+            "pkg/source.py": "\n".join(
+                [
+                    "from pkg.target import B",
+                    "",
+                    "class ExplicitSource:",
+                    "    def make(self):",
+                    "        return B()",
+                ]
+            ),
+            "pkg/target.py": "\n".join(
+                [
+                    "class B:",
+                    "    pass",
+                    "",
+                    "class Helper:",
+                    "    pass",
+                ]
+            ),
+        },
+        "ExplicitSource",
+        "B",
+    )
+    assert 'class "Helper"' not in explicit_output
+
+    alias_output = run_case(
+        "from-import-alias",
+        {
+            "pkg/source.py": "\n".join(
+                [
+                    "from pkg.target import B as AliasB",
+                    "",
+                    "class AliasSource:",
+                    "    def make(self):",
+                    "        return AliasB()",
+                ]
+            ),
+            "pkg/target.py": "\n".join(
+                [
+                    "class B:",
+                    "    pass",
+                    "",
+                    "class Helper:",
+                    "    pass",
+                ]
+            ),
+        },
+        "AliasSource",
+        "B",
+    )
+    assert 'class "AliasB"' not in alias_output
+    assert 'class "Helper"' not in alias_output
+
+    module_output = run_case(
+        "module-qualified",
+        {
+            "pkg/source.py": "\n".join(
+                [
+                    "import pkg.target as target",
+                    "",
+                    "class ModuleQualifiedSource:",
+                    "    def make(self):",
+                    "        first = target.B.factory()",
+                    "        return target.B.CONST",
+                ]
+            ),
+            "pkg/target.py": "\n".join(
+                [
+                    "class B:",
+                    "    CONST = 1",
+                    "    @staticmethod",
+                    "    def factory():",
+                    "        return None",
+                    "",
+                    "class Helper:",
+                    "    pass",
+                ]
+            ),
+        },
+        "ModuleQualifiedSource",
+        "B",
+    )
+    assert 'class "Helper"' not in module_output
+
+    run_case(
+        "type-spec",
+        {
+            "pkg/source.py": "\n".join(
+                [
+                    "class TypeTarget:",
+                    "    pass",
+                    "",
+                    "class TypeSource:",
+                    "    def check(self, value):",
+                    "        local: TypeTarget",
+                    "        return isinstance(value, TypeTarget)",
+                ]
+            ),
+        },
+        "TypeSource",
+        "TypeTarget",
+    )
+
+    self_output = run_case(
+        "self-assignment",
+        {
+            "pkg/source.py": "\n".join(
+                [
+                    "class OwnedTarget:",
+                    "    pass",
+                    "",
+                    "class SelfAssignSource:",
+                    "    def __init__(self):",
+                    "        self.b = OwnedTarget()",
+                ]
+            ),
+        },
+        "SelfAssignSource",
+        "OwnedTarget",
+    )
+    assert_no_relation(self_output, "SelfAssignSource", "*--", "OwnedTarget")
+    assert_no_relation(self_output, "SelfAssignSource", "o--", "OwnedTarget")
 
 
 def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_relations(
