@@ -125,7 +125,8 @@ git commit -m "docs(spec-dock): 直接依存表示修正の作業ツリーを追
 |---|---|---|---|---|---|---|---|---|
 | scaffold creation | committed | new initiative / epic / issue scaffold | `a3b45aa` | clean before issue start | N/A | N/A | N/A | N/A |
 | initial report capture | committed | initial detailed report before relocation | `4f1cae9` | clean after commit | N/A | N/A | N/A | N/A |
-| research relocation | pending commit | research artifact and report pointer | pending | pending | N/A | N/A | N/A | N/A |
+| research relocation | committed | research artifact and report pointer | `b456b02` | clean after commit | N/A | N/A | N/A | N/A |
+| extended investigation | pending commit | research update and interview artifact | pending | pending | N/A | N/A | N/A | N/A |
 
 #### 変更したファイル
 
@@ -138,6 +139,61 @@ git commit -m "docs(spec-dock): 直接依存表示修正の作業ツリーを追
 
 - `a3b45aa docs(spec-dock): 直接依存表示修正の作業ツリーを追加`
 - `4f1cae9 docs(spec-dock): 直接依存表示の調査結果を記録`
+- `b456b02 docs(spec-dock): 直接依存表示の調査をresearchへ移動`
+
+### 2026-05-22 18:00 - 18:20 JST
+
+#### 対象
+
+- Step: extended investigation before requirement authoring
+- AC/EC: 未作成
+- Planned source:
+  - ユーザー指示: 要件定義書の前に完全理解を目指し、追加調査、deep-consultant 分析、discussion docs への命文化、必要なら interview を行う。
+
+#### 実施内容
+
+- `diff` コマンドで、同一ファイル内 `A.make()` が `B()` を返す代表ケースを手動再現した。
+- 結果、`generate` と同じく `extracted_relation_count: 0` で、`A --> B` も `A ..> B` も出ないことを確認した。
+- 追加 consultant / deep-consultant の結果を research に統合した。
+- 要件化前にユーザー確認が必要な product semantics を interview artifact として作成した。
+
+#### 実行コマンド / 結果
+
+```bash
+PYTHONPATH=src python -c 'from pyclassuml.cli.main import main; raise SystemExit(main())' diff \
+  --cwd /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/direct-dependency-diff-repro \
+  --project-root /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/direct-dependency-diff-repro \
+  --package-root /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/direct-dependency-diff-repro/pkg \
+  --scope-root /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/direct-dependency-diff-repro/pkg \
+  --base HEAD \
+  --output /Users/iwasawayuuta/workspace/tools/pyclassuml/build/manual-tests/direct-dependency-diff-repro/diff_same_file.puml
+# clean_success, extracted_class_count=2, extracted_relation_count=0, changed_class_count=2
+
+./spec-dock/scripts/spec-dock new doc interview --issue iss-00040 --title "Direct Dependency Requirement Interview" --slug direct-dependency-requirement-interview
+# ok: discussions/20260522t090118z-interview-direct-dependency-requirement-interview.md
+```
+
+#### Red/Green/Refactor Evidence
+
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| investigation | red/characterization | manual-required | `diff` 同一ファイル direct use でも relation 0 | CLI direct invocation | pass | build 配下の ignored manual fixture |
+| investigation | synthesis | discussion-required | research に追加 matrix / diff evidence / consultant findings を追記 | research artifact | pass | requirement 前の source of truth |
+| interview | decision-needed | interview-required | arrow semantics / AST scope / ambiguity / relation type の確認事項を記録 | interview artifact | pass | 回答後に requirement へ反映 |
+
+#### Delegated Worker Evidence
+
+| step | delegated role | delegated worker summary | changed files | tests run or docs-only verification | reviewer verdict | unresolved risks | parent integration decision |
+|---|---|---|---|---|---|---|---|
+| extended investigation | consultant | AST direct-use scope、MVP / defer、ユーザー確認質問を整理 | none | read-only conceptual analysis | N/A | repo inspection は未実施のため親調査で補完 | accepted with caveat |
+| extended investigation | deep-consultant | black-box repro matrix / narrow AC / typed relation guard を提案 | none | read-only analysis | N/A | diff 未検証という前提は親調査で更新済み | accepted with correction |
+| extended investigation | deep-consultant | renderer ではなく parse/analyze defect、direct runtime use と `uses` semantics の分離を提案 | none | read-only docs/code/tests inspection | N/A | relation type 新設 vs association 流用は未決 | accepted into interview |
+
+#### 変更したファイル
+
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` - diff 再現、追加 matrix、consultant findings、未決論点を追記。
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/discussions/20260522t090118z-interview-direct-dependency-requirement-interview.md` - 要件化前の確認質問を記録。
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - 追加調査の実施記録を追記。
 
 ## Final Quality Gate
 
