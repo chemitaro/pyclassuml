@@ -24,7 +24,9 @@ _SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 _TARGET_PYTHON = re.compile(r"^3\.[0-9]+$")
 _MEMBER_KINDS = frozenset({"field", "method"})
 _MEMBER_VISIBILITIES = frozenset({"public", "protected", "private"})
-_RELATION_TYPES = frozenset({"inherits", "realizes", "composition", "aggregation", "association", "uses"})
+_RELATION_TYPES = frozenset(
+    {"inherits", "realizes", "composition", "aggregation", "association", "uses", "dependency"}
+)
 _ANNOTATION_SHAPES = frozenset({"direct", "optional", "union", "collection", "mapping_value"})
 _DIFF_BASE_RESOLUTION_KINDS = frozenset(
     {"explicit_base", "default_branch_merge_base", "initial_commit_fallback"}
@@ -156,7 +158,9 @@ def _ensure_member_visibility(value: object) -> None:
 
 def _ensure_relation_type(value: object) -> None:
     if value not in _RELATION_TYPES:
-        raise ValueError("relation_type must be one of: inherits, realizes, composition, aggregation, association, uses")
+        raise ValueError(
+            "relation_type must be one of: inherits, realizes, composition, aggregation, association, uses, dependency"
+        )
 
 
 def _ensure_annotation_shape(value: object) -> None:

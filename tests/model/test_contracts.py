@@ -251,7 +251,7 @@ def test_selected_relation_contract_is_shared_and_restricts_relation_type() -> N
     inventory = SelectedRelations(relations=[relation])
 
     assert inventory.relations == (relation,)
-    for relation_type in ("inherits", "realizes", "composition", "aggregation", "association", "uses"):
+    for relation_type in ("inherits", "realizes", "composition", "aggregation", "association", "uses", "dependency"):
         assert SelectedRelation("pkg/a.py:A", "pkg/b.py:B", relation_type, "evidence")
 
     with pytest.raises(ValueError):

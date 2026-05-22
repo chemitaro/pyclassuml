@@ -14,10 +14,12 @@ ID: "iss-00040"
 
 ## 実装サマリー
 
-- この時点では実装未着手。
+- S01 は実装済み。
 - ユーザー指示により、直接依存 relation 欠落の詳細調査は `discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` に移した。
 - `requirement.md` / `design.md` / `plan.md` は作成済みで、実装前 `spec-reviewer` gate は pass 済み。
-- 実装、step code-reviewer gate、final quality gate、PR gate は未実施。
+- S01 は実装済みで、tc-001 の Red/Green evidence を記録済み。
+- S01 code-reviewer gate は再レビューで pass 済み。P2 の status cleanup はこの report 更新で対応した。
+- S02 以降の実装、final quality gate、PR gate は未実施。
 
 ## Spec Interpretation / Decision Ledger
 
@@ -305,6 +307,68 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/plan.md` - executable implementation plan and closure index.
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - spec authoring gate evidence.
 
+### 2026-05-22 19:20 - 19:35 JST
+
+#### 対象
+
+- Step: S01 dependency relation contract and render mapping
+- Closure ids:
+  - `tc-001`
+- Planned source:
+  - `plan.md` S01
+
+#### Implementation Delegation Gate
+
+| step | decision | required reason | delegated role | delegated scope | source of truth | allowed changes | forbidden changes | required verification | stop conditions | output required | observed result |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| S01 | delegated | code / runtime / tests change | dev-coder | add `dependency` relation type and render mapping | `requirement.md`, `design.md`, `plan.md` S01 | `src/pyclassuml/model/contracts.py`, `src/pyclassuml/render/document.py`, `tests/model/test_contracts.py`, `tests/render/test_document.py` | parse/analyze/app changes, existing arrow mapping changes | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/model/test_contracts.py tests/render/test_document.py` | relation type contract requires larger schema migration | changed files, verification result, Ledger Note | completed; no material implementation decisions beyond approved plan |
+
+#### Red / Green Evidence
+
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| S01 | Red | `dependency` relation type and render mapping tests fail before implementation | delegated worker reported `2 failed, 51 passed`; `SelectedRelation(..., relation_type="dependency")` rejected with `ValueError` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/model/test_contracts.py tests/render/test_document.py` | pass | red evidence from delegated worker |
+| S01 | Green | model/render targeted tests pass after implementation | parent rerun confirmed `53 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/model/test_contracts.py tests/render/test_document.py` | pass | dependency -> `..>` mapping included |
+
+#### Step Contract Closure
+
+| step | closure id | close condition | evidence | result | notes |
+|---|---|---|---|---|---|
+| S01 | tc-001 | dependency relation type is accepted and rendered as `..>` while existing mappings remain unchanged | targeted model/render tests passed; diff inspected by parent | pass | code-reviewer initial review found report evidence missing, not code defect |
+
+#### Test Contract Closure
+
+| closure id | step | evidence level | pre-implementation evidence | verification command | result |
+|---|---|---|---|---|---|
+| tc-001 | S01 | red-required | delegated worker observed `2 failed, 51 passed` before implementation | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/model/test_contracts.py tests/render/test_document.py` | pass, `53 passed` |
+
+#### Closure Coverage
+
+| closure id | AC / EC / constraint | evidence | status |
+|---|---|---|---|
+| tc-001 | AC-008 / relation contract / dependency output contract | `SelectedRelation(..., "dependency", ...)` accepted; `dependency` renders `..>`; existing mapping test still passes | closed |
+
+#### Closure Delta
+
+| step | added | removed | changed | re-review required | notes |
+|---|---|---|---|---|---|
+| S01 | none | none | report status cleanup only | no | no plan amendment; code-reviewer re-review passed |
+
+#### Reviewer Gate Status
+
+| step | gate name | reviewer role | freshness | state | risk acceptance | promotion / completion decision | notes |
+|---|---|---|---|---|---|---|---|
+| S01 | code review | code-reviewer | fresh before report update | failed | no | not complete | P1: report lacked S01 closure evidence; code changes otherwise matched S01 goal |
+| S01 | code review re-run | code-reviewer | fresh after report update | passed | no | S01 can be committed | P2: stale report status cleanup; addressed before commit |
+
+#### 変更したファイル
+
+- `src/pyclassuml/model/contracts.py` - `dependency` relation type を追加。
+- `src/pyclassuml/render/document.py` - `dependency` を `..>` に mapping。
+- `tests/model/test_contracts.py` - `dependency` relation type contract を追加。
+- `tests/render/test_document.py` - `dependency` arrow mapping assertion を追加。
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - S01 closure evidence を記録。
+
 ## Final Quality Gate
 
 この issue はまだ実装前であり、final gate は未実施。
@@ -350,9 +414,9 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 ## 今後の推奨事項
 
-- `plan.md` の S01 から順に、model/render contract、parse evidence、selection target resolution、generate/diff integration を実装する。
+- 次は `plan.md` の S02 として parse evidence extraction を実装する。
 - 各 implementation step では `report.md` に Red/Green/Review/Commit evidence を残してから次 step へ進む。
 
 ## 省略/例外メモ
 
-- 実装、テスト追加、reviewer gate、final quality gate、PR gate は未実施。
+- S02 以降の実装、final quality gate、PR gate は未実施。
