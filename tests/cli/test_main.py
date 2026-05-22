@@ -242,6 +242,33 @@ def test_main_diff_default_includes_untracked_python(
     assert 'class "Untracked"' in artifact_text
 
 
+def test_main_diff_no_base_projects_resolved_base_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    base_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
+    git(repo, "checkout", "-b", "feature")
+    write_file(repo / "pkg" / "model.py", "class User:\n    value = 1\n")
+    monkeypatch.chdir(repo)
+
+    exit_code = main(("diff", "--output", "diff.puml"))
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "outcome: clean_success" in captured.out
+    assert "base_resolution: default_branch_merge_base" in captured.out
+    assert f"resolved_base: {base_sha}" in captured.out
+    assert "requested_base: none" in captured.out
+    assert "base_candidate: main" in captured.out
+    assert captured.err == ""
+    assert 'class "User"' in (repo / "diff.puml").read_text(encoding="utf-8")
+
+
 def test_main_diff_no_include_untracked_opt_out_excludes_untracked_python(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

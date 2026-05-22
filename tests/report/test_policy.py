@@ -10,6 +10,7 @@ from pyclassuml.model import (
     DependencyGraph,
     Diagnostic,
     DiagnosticSeverity,
+    DiffBaseResolution,
     DiagramModel,
     ExecutionContext,
     FailureReason,
@@ -198,6 +199,57 @@ def test_diff_report_uses_nonzero_changed_class_inventory(tmp_path: Path) -> Non
     assert result.command_result.artifact_path == tmp_path / "pyclassuml_diff_20260504_123456.puml"
     assert result.command_result.summary.counters["changed_class_count"] == 2
     assert "changed_class_count: 2" in result.stdout_text
+
+
+def test_diff_report_carries_and_summarizes_base_resolution(tmp_path: Path) -> None:
+    resolution = DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref="abc123",
+        resolution_kind="default_branch_merge_base",
+        candidate_ref="origin/main",
+    )
+
+    result = write_report(
+        report_inputs(
+            tmp_path,
+            command=CommandName.DIFF,
+            diff_base_resolution=resolution,
+        )
+    )
+
+    assert result.command_result.diff_base_resolution is resolution
+    assert "base_resolution: default_branch_merge_base" in result.stdout_text
+    assert "resolved_base: abc123" in result.stdout_text
+    assert "requested_base: none" in result.stdout_text
+    assert "base_candidate: origin/main" in result.stdout_text
+
+
+def test_diff_report_fallback_warning_is_degraded_success_with_base_metadata(tmp_path: Path) -> None:
+    resolution = DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref="abc123",
+        resolution_kind="initial_commit_fallback",
+        candidate_ref=None,
+    )
+
+    result = write_report(
+        report_inputs(
+            tmp_path,
+            command=CommandName.DIFF,
+            diff_base_resolution=resolution,
+            diagnostics=(warning("diff_base_initial_commit_fallback", Recoverability.DEGRADED_OUTPUT),),
+        )
+    )
+
+    assert result.outcome_kind == "degraded_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["warning_count"] == 1
+    assert result.command_result.diff_base_resolution is resolution
+    assert "warning:diff_base_initial_commit_fallback:" in result.stdout_text
+    assert "base_resolution: initial_commit_fallback" in result.stdout_text
+    assert "resolved_base: abc123" in result.stdout_text
+    assert "requested_base: none" in result.stdout_text
+    assert "base_candidate: none" in result.stdout_text
 
 
 def test_recoverable_noop_warning_is_warning_only_success(tmp_path: Path) -> None:

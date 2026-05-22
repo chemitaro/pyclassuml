@@ -22,7 +22,8 @@ ID: "iss-00036"
 ## 実装サマリー
 - S01 CLI / model no-base contract を実装済み。
 - S02 VCS resolved-base resolver を実装済み。
-- S03 以降の app/report integration、README、final quality gate は未着手。
+- S03 app/report/CLI transcript integration を実装済み。
+- S90 README、final quality gate は未着手。
 
 ## 実装記録（セッションログ）
 
@@ -229,7 +230,62 @@ spec-dock: ok (new issue auto-sync)
 #### Step Commit Gate
 | step | review scope | step reviewer verdict | commit scope | closure state | commit evidence | post-commit clean check |
 |---|---|---|---|---|---|---|
-| S02 | S02 target files | code-reviewer pass | S02 implementation/tests plus report evidence | pending commit | pending | pending |
+| S02 | S02 target files | code-reviewer pass | S02 implementation/tests plus report evidence | committed | `a2f86ff` | `git status --short` clean after commit |
+
+### 2026-05-22 - S03 App / report / CLI transcript integration
+
+#### 対象
+- Step: S03
+- Closure id: tc-009
+- 対象ファイル:
+  - `src/pyclassuml/app/diff.py`
+  - `src/pyclassuml/report/policy.py`
+  - `tests/app/test_diff.py`
+  - `tests/report/test_policy.py`
+  - `tests/cli/test_main.py`
+
+#### Implementation Delegation Gate
+| step | decision | delegated role | scope | allowed changes | forbidden changes | required verification | result |
+|---|---|---|---|---|---|---|---|
+| S03 | delegated | dev-coder | app/report/CLI transcript integration | S03 target files only | VCS candidate order, DTO public contract drift, README | `uv run pytest tests/app/test_diff.py tests/report/test_policy.py tests/cli/test_main.py` or environment-equivalent targeted pytest | pass |
+
+#### Worker Result
+| step | worker summary | changed files | verification result | unresolved risks | ledger note |
+|---|---|---|---|---|---|
+| S03 | app base-side read を resolved base に切替え、ReportInputs / CommandResult / summary に base resolution metadata を transport | S03 target files | targeted app/report/CLI pytest passed via `/private/tmp` uv cache workaround | S90 README remains pending | No material implementation decisions beyond the approved plan. |
+
+#### Red/Green/Refactor Evidence
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| S03 | red | app/report/CLI tests detect missing resolved-base transport | test-first run failed with 6 failures and 95 passes | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/app/test_diff.py tests/report/test_policy.py tests/cli/test_main.py` | pass | failures included raw `base_ref=None` base blob read and missing report metadata |
+| S03 | green | S03 targeted tests pass | 101 targeted tests passed | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/app/test_diff.py tests/report/test_policy.py tests/cli/test_main.py` | pass | parent re-run confirmed |
+| S03 | static | whitespace / diff hygiene | no diff check errors | `git diff --check` | pass | parent re-run confirmed |
+| S03 | refactor | summary helper extraction allowed, exit policy unchanged | `_optional_summary_value` only | diff inspection | pass | VCS resolver policy unchanged |
+
+#### Step Contract Closure
+| step | closure id | close condition | evidence | result |
+|---|---|---|---|---|
+| S03 | tc-009 | S03 targeted tests pass and code-reviewer passes | targeted pytest 101 passed; code-reviewer `review_status: pass` | pass |
+
+#### Test Contract Closure
+| closure id | step | evidence level | pre-implementation evidence | verification command | result |
+|---|---|---|---|---|---|
+| tc-009 | S03 | red-required | app/report/CLI tests failed before resolved-base transport | `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest tests/app/test_diff.py tests/report/test_policy.py tests/cli/test_main.py` | pass |
+
+#### Closure Coverage
+| closure id | locked expectation | covering tests | result |
+|---|---|---|---|
+| tc-009 | app uses resolved base everywhere and CommandResult/summary expose it | `test_no_base_diff_uses_resolved_base_for_classification_and_report`, report metadata tests, fallback degraded success tests, no-base head semantics tests, console transcript test | pass |
+
+#### Reviewer Gate Status
+| gate name | reviewer role | freshness | state | evidence | risk acceptance |
+|---|---|---|---|---|---|
+| S03 step review | code-reviewer | fresh after S03 diff | passed | findings empty; `review_status: pass` | none |
+
+#### Step Commit Gate
+| step | review scope | step reviewer verdict | commit scope | closure state | commit evidence | post-commit clean check |
+|---|---|---|---|---|---|---|
+| S03 | S03 target files | code-reviewer pass | S03 implementation/tests plus report evidence | pending commit | pending | pending |
 
 ## Final Quality Gate (必須)
 

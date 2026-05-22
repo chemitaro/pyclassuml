@@ -101,6 +101,7 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
                 config=config,
                 timestamp=timestamp,
                 diagnostics=diagnostics,
+                diff_base_resolution=vcs_collection.collection.base_resolution,
                 target_set=TargetSet(
                     seed_files=(),
                     observations=target_normalization.observations,
@@ -144,7 +145,12 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
         classification_entries,
         parse_result.parsed_modules,
     )
-    base_class_inventory = _base_class_ids_by_current_path(request, context, classification_entries)
+    base_resolution = vcs_collection.collection.base_resolution
+    base_class_inventory = _base_class_ids_by_current_path(
+        base_resolution.resolved_base_ref,
+        context,
+        classification_entries,
+    )
     diagnostics = (*diagnostics, *current_classification_snapshot.diagnostics, *base_class_inventory.diagnostics)
     class_decorations = _diff_class_decorations(
         classification_entries,
@@ -197,6 +203,7 @@ def run_diff(request: CommandRequest, *, timestamp: datetime) -> ReportRunResult
             plantuml_text=render_result.plantuml_text,
             diagram_model=render_result.diagram_model,
             render_failure_signal=render_result.failure_signal,
+            diff_base_resolution=base_resolution,
             target_set=target_set,
             dependency_graph=traversal_result.graph,
             changed_class_inventory=changed_class_inventory,
@@ -326,11 +333,10 @@ def _current_parsed_modules_for_diff_classification(
 
 
 def _base_class_ids_by_current_path(
-    request: CommandRequest,
+    base_ref: str,
     context: ExecutionContext,
     changed_entries: tuple[ChangedFileEntry, ...],
 ) -> BaseClassInventory:
-    base_ref = request.cli_options.diff.base_ref if request.cli_options.diff is not None else ""
     result: dict[Path, frozenset[ClassId] | None] = {}
     diagnostics: list[Diagnostic] = []
     for entry in changed_entries:
