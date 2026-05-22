@@ -643,7 +643,19 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 | final report ledger | final commit scope | post-commit external evidence destination | result |
 |---|---|---|---|
-| ready for final report commit | report final gate cleanup plus D-004 follow-up implementation/tests | final response / PR body | pending commit |
+| committed | report final gate cleanup plus D-004 follow-up implementation/tests | final response / PR body | `5be1720` |
+
+### PR Delivery Gate
+
+| PR | base | head branch / SHA | issue linkage | creation route | result |
+|---|---|---|---|---|---|
+| `https://github.com/chemitaro/pyclassuml/pull/41` | `main` from `origin/HEAD` | `iss-00040-render-direct-class-dependency` / `5be1720` | `Closes #40` in PR body | `gh pr create` / GitHub connector were blocked by local uv cache permission; created through GitHub REST API after branch push | created |
+
+### Merge Preparation Gate
+
+| source | evidence | result | notes |
+|---|---|---|---|
+| GitHub Actions | PR check `validate` observed in progress on initial PR head | pending | final check state must be re-monitored after PR report commit push |
 
 ## 遭遇した問題と解決
 
