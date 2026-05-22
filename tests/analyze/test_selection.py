@@ -39,7 +39,12 @@ def reference(
     )
 
 
-def module_index(modules: tuple[ParsedModule, ...], *, seeds: tuple[str, ...]) -> ModuleIndex:
+def module_index(
+    modules: tuple[ParsedModule, ...],
+    *,
+    seeds: tuple[str, ...],
+    import_candidate_paths: dict[str, tuple[str, ...]] | None = None,
+) -> ModuleIndex:
     module_by_path = {parsed.module_path: parsed for parsed in modules}
     return ModuleIndex(
         module_by_path=module_by_path,
@@ -50,7 +55,10 @@ def module_index(modules: tuple[ParsedModule, ...], *, seeds: tuple[str, ...]) -
             for class_id in parsed.classes
         },
         seed_project_relative_paths=tuple(Path(seed) for seed in seeds),
-        import_candidate_paths={},
+        import_candidate_paths={
+            import_text: tuple(Path(path) for path in paths)
+            for import_text, paths in (import_candidate_paths or {}).items()
+        },
     )
 
 
@@ -64,10 +72,11 @@ def select(
     seeds: tuple[str, ...],
     reachable: tuple[str, ...],
     edges: tuple[tuple[str, str], ...] = (),
+    import_candidate_paths: dict[str, tuple[str, ...]] | None = None,
 ) -> SelectionResult:
     return select_classes_and_relations(
         modules,
-        module_index(modules, seeds=seeds),
+        module_index(modules, seeds=seeds, import_candidate_paths=import_candidate_paths),
         DependencyGraph(
             reachable_files=tuple(Path(path) for path in reachable),
             edges=tuple((Path(source), Path(target)) for source, target in edges),
@@ -924,3 +933,192 @@ def test_module_import_fallback_survives_only_without_semantic_endpoint_relation
         SelectedRelation("pkg/source.py:Source", "pkg/semantic.py:Semantic", "association", "field_annotation"),
     )
     assert result.diagnostics == ()
+
+
+def test_s03_001_dependency_evidence_selects_same_module_target_class() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/source.py"),
+        classes=("pkg/source.py:A", "pkg/source.py:B"),
+        class_references=(
+            reference("pkg/source.py:A", "B", "direct_class_call", "make@3:15"),
+            reference("pkg/source.py:A", "B", "direct_class_call", "__init__@6:17"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/source.py",), reachable=("pkg/source.py",))
+
+    assert result.selected_classes.class_ids == ("pkg/source.py:A", "pkg/source.py:B")
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/source.py:A", "pkg/source.py:B", "dependency", "direct_class_call"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_s03_002_explicit_from_import_resolves_multi_class_target_dependency() -> None:
+    source = ParsedModule(
+        module_path=Path("pkg/source.py"),
+        imports=("from pkg.target import B",),
+        classes=("pkg/source.py:A",),
+        class_references=(
+            reference("pkg/source.py:A", "B", "direct_class_call", "make@4:15"),
+        ),
+    )
+    target = module("pkg/target.py", classes=("pkg/target.py:B", "pkg/target.py:Helper"))
+
+    result = select(
+        (source, target),
+        seeds=("pkg/source.py",),
+        reachable=("pkg/source.py", "pkg/target.py"),
+        import_candidate_paths={"from pkg.target import B": ("pkg/target.py",)},
+    )
+
+    assert result.selected_classes.class_ids == ("pkg/source.py:A", "pkg/target.py:B")
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/source.py:A", "pkg/target.py:B", "dependency", "direct_class_call"),
+    )
+    assert "pkg/target.py:Helper" not in result.selected_classes.class_ids
+    assert result.diagnostics == ()
+
+
+def test_s03_002_dependency_direct_use_wins_over_single_class_import_fallback() -> None:
+    source = ParsedModule(
+        module_path=Path("pkg/source.py"),
+        imports=("from pkg.target import B",),
+        classes=("pkg/source.py:A",),
+        class_references=(
+            reference("pkg/source.py:A", "B", "direct_class_call", "make@4:15"),
+        ),
+    )
+    target = module("pkg/target.py", classes=("pkg/target.py:B",))
+
+    result = select(
+        (source, target),
+        seeds=("pkg/source.py",),
+        reachable=("pkg/source.py", "pkg/target.py"),
+        edges=(("pkg/source.py", "pkg/target.py"),),
+        import_candidate_paths={"from pkg.target import B": ("pkg/target.py",)},
+    )
+
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/source.py:A", "pkg/target.py:B", "dependency", "direct_class_call"),
+    )
+    assert result.diagnostics == ()
+
+
+def test_s03_003_alias_relative_and_module_qualified_imports_resolve_dependency_targets() -> None:
+    alias_source = ParsedModule(
+        module_path=Path("pkg/alias_source.py"),
+        imports=("from pkg.target import B as AliasB",),
+        classes=("pkg/alias_source.py:A",),
+        class_references=(
+            reference("pkg/alias_source.py:A", "AliasB", "direct_class_call", "make@4:15"),
+        ),
+    )
+    relative_source = ParsedModule(
+        module_path=Path("pkg/relative_source.py"),
+        imports=("from .target import B",),
+        classes=("pkg/relative_source.py:A",),
+        class_references=(
+            reference("pkg/relative_source.py:A", "B", "direct_class_call", "make@4:15"),
+        ),
+    )
+    qualified_source = ParsedModule(
+        module_path=Path("pkg/qualified_source.py"),
+        imports=("pkg.target",),
+        classes=("pkg/qualified_source.py:A",),
+        class_references=(
+            reference(
+                "pkg/qualified_source.py:A",
+                "pkg.target.B",
+                "direct_class_member_access",
+                "make@4:15",
+            ),
+        ),
+    )
+    target = module("pkg/target.py", classes=("pkg/target.py:B", "pkg/target.py:Helper"))
+
+    result = select(
+        (alias_source, qualified_source, relative_source, target),
+        seeds=("pkg/alias_source.py", "pkg/relative_source.py", "pkg/qualified_source.py"),
+        reachable=("pkg/alias_source.py", "pkg/relative_source.py", "pkg/qualified_source.py", "pkg/target.py"),
+        import_candidate_paths={
+            "from pkg.target import B as AliasB": ("pkg/target.py",),
+            "from .target import B": ("pkg/target.py",),
+            "pkg.target": ("pkg/target.py",),
+        },
+    )
+
+    assert result.selected_classes.class_ids == (
+        "pkg/alias_source.py:A",
+        "pkg/qualified_source.py:A",
+        "pkg/relative_source.py:A",
+        "pkg/target.py:B",
+    )
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/alias_source.py:A", "pkg/target.py:B", "dependency", "direct_class_call"),
+        SelectedRelation(
+            "pkg/qualified_source.py:A",
+            "pkg/target.py:B",
+            "dependency",
+            "direct_class_member_access",
+        ),
+        SelectedRelation("pkg/relative_source.py:A", "pkg/target.py:B", "dependency", "direct_class_call"),
+    )
+    assert "pkg/target.py:Helper" not in result.selected_classes.class_ids
+    assert result.diagnostics == ()
+
+
+def test_s03_004_dependency_ambiguity_import_only_and_priority_guards() -> None:
+    source = ParsedModule(
+        module_path=Path("pkg/source.py"),
+        imports=(
+            "from pkg.imported import ImportedOnly",
+            "from pkg.owned import Owned",
+            "from pkg.one import Duplicate",
+            "from pkg.outside import Outside",
+            "from pkg.two import Duplicate",
+        ),
+        classes=("pkg/source.py:A", "pkg/source.py:Structural"),
+        class_references=(
+            reference("pkg/source.py:A", "Duplicate", "direct_class_call", "ambiguous@4:15"),
+            reference("pkg/source.py:A", "target.B", "direct_class_member_access", "not_imported@5:15"),
+            reference("pkg/source.py:A", "Outside", "direct_class_call", "outside@6:15"),
+            reference("pkg/source.py:Structural", "Owned", "field_annotation", "owned", "direct"),
+            reference("pkg/source.py:Structural", "Owned", "direct_class_call", "make@7:15"),
+        ),
+    )
+    duplicate_a = module("pkg/one.py", classes=("pkg/one.py:Duplicate",))
+    duplicate_b = module("pkg/two.py", classes=("pkg/two.py:Duplicate",))
+    imported_only = module("pkg/imported.py", classes=("pkg/imported.py:ImportedOnly",))
+    owned = module("pkg/owned.py", classes=("pkg/owned.py:Owned",))
+    outside = module("pkg/outside.py", classes=("pkg/outside.py:Outside",))
+    not_imported_target = module("pkg/target.py", classes=("pkg/target.py:B",))
+
+    result = select(
+        (duplicate_a, duplicate_b, imported_only, not_imported_target, outside, owned, source),
+        seeds=("pkg/source.py",),
+        reachable=("pkg/source.py", "pkg/one.py", "pkg/two.py", "pkg/imported.py", "pkg/owned.py", "pkg/target.py"),
+        edges=(("pkg/source.py", "pkg/imported.py"),),
+        import_candidate_paths={
+            "from pkg.imported import ImportedOnly": ("pkg/imported.py",),
+            "from pkg.owned import Owned": ("pkg/owned.py",),
+            "from pkg.one import Duplicate": ("pkg/one.py",),
+            "from pkg.outside import Outside": ("pkg/outside.py",),
+            "from pkg.two import Duplicate": ("pkg/two.py",),
+        },
+    )
+
+    assert result.selected_classes.class_ids == (
+        "pkg/owned.py:Owned",
+        "pkg/source.py:A",
+        "pkg/source.py:Structural",
+    )
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/source.py:Structural", "pkg/owned.py:Owned", "composition", "field_annotation"),
+    )
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "ambiguous_relation_endpoint",
+        "dependency_relation_ambiguous",
+        "dependency_relation_selection_outside",
+        "dependency_relation_unresolved",
+    ]

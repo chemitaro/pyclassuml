@@ -14,13 +14,13 @@ ID: "iss-00040"
 
 ## 実装サマリー
 
-- S01 は実装済み。
 - ユーザー指示により、直接依存 relation 欠落の詳細調査は `discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` に移した。
 - `requirement.md` / `design.md` / `plan.md` は作成済みで、実装前 `spec-reviewer` gate は pass 済み。
 - S01 は実装済みで、tc-001 の Red/Green evidence を記録済み。
 - S01 code-reviewer gate は再レビューで pass 済み。P2 の status cleanup はこの report 更新で対応した。
-- S02 は実装済みで、tc-002 / tc-003 の Red/Green evidence を記録済み。code-reviewer gate は未実施。
-- S03 以降の実装、final quality gate、PR gate は未実施。
+- S02 は実装済みで、tc-002 / tc-003 の Red/Green evidence を記録済み。code-reviewer gate は pass 済み。
+- S03 は実装済みで、tc-004 / tc-005 / tc-006 の Red/Green evidence を記録済み。code-reviewer gate は未実施。
+- S04 以降の実装、final quality gate、PR gate は未実施。
 
 ## Spec Interpretation / Decision Ledger
 
@@ -28,6 +28,7 @@ ID: "iss-00040"
 |---|---|---|---|---|---|---|---|---|---|---|
 | D-001 | resolved | scope | user / investigation | 直接依存 relation 欠落の調査結果を report ではなく research/scratch にまとめるべきという指摘 | report に詳細を置く; research に移し report は参照だけにする | 詳細調査は issue discussions の research artifact に置き、report は作業ログと反映先参照に留める | report は observed evidence ledger であり、調査本文の一次整理は research の責務に合う | applied | `discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` | requirement/design/plan 作成時に research を参照 |
 | D-002 | resolved | implementation-detail | dev-coder / parent | S02 で同一 method 内の複数 direct-use evidence が既存 `_ordered_class_references()` の dedupe で潰れうる | method name only; semantic expression owner; method name + AST source position | method body dependency evidence の `reference_owner` は `{method}@{lineno}:{col_offset}` とする | schema 追加なしで distinct evidence と deterministic ordering を保てる。`reference_owner` は user-facing contract ではなく diagnostics / evidence identity 用の issue-local detail | applied | S02 parse tests, parent inspection, code-reviewer pass with P2 disposition cleanup | なし。将来 semantic owner が必要になった場合は別 issue で再検討 |
+| D-003 | open | integration-risk | dev-coder / parent | S03 selection は alias-aware import metadata を解決できるが、parse の `ast.Import` text が alias を保持しない可能性がある | S03 内では selection helper だけ実装する; S03 で parse も変える; stop | S03 は selection scope に閉じ、`import pkg.target as target; target.B` の end-to-end 確認は S04 integration で判定する | S03 の許可範囲は selection/tests のみであり、parse 変更は S04 の app integration failure で実証してから扱うのが workflow と blast radius に合う | pending | S03 dev-coder Ledger Note, parent inspection of `_extract_import_refs()` | S04 で generate integration test に alias import を含め、失敗した場合は plan/report に明記して parse alias preservation を追加実装する |
 
 ## 実装記録（セッションログ）
 
@@ -431,7 +432,7 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 | step | gate name | reviewer role | freshness | state | risk acceptance | promotion / completion decision | notes |
 |---|---|---|---|---|---|---|---|
-| S02 | code review | code-reviewer | pending | provisional | no | pending | run after this report update |
+| S02 | code review | code-reviewer | fresh after report update | passed | no | S02 committed | initial P2 D-002 disposition cleanup addressed before commit |
 
 #### 変更したファイル
 
@@ -439,9 +440,89 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 - `tests/parse/test_module_parse_and_index.py` - direct-use extraction と skip-boundary tests を追加。
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - S02 closure evidence と D-002 を記録。
 
+#### コミット
+
+- `aab1056 feat(parse): method bodyの直接依存evidenceを抽出`
+
+### 2026-05-22 20:00 - 20:25 JST
+
+#### 対象
+
+- Step: S03 select dependency relations and resolve explicit imports
+- Closure ids:
+  - `tc-004`
+  - `tc-005`
+  - `tc-006`
+- Planned source:
+  - `plan.md` S03
+
+#### Implementation Delegation Gate
+
+| step | decision | required reason | delegated role | delegated scope | source of truth | allowed changes | forbidden changes | required verification | stop conditions | output required | observed result |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| S03 | delegated | code / tests change | dev-coder | dependency evidence selection and explicit import target resolution | `requirement.md`, `design.md`, `plan.md` S03 | `src/pyclassuml/analyze/selection.py`, `tests/analyze/test_selection.py` | parse/render/app/model/spec docs/report changes, full Python resolution, data-flow, runtime import execution | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_selection.py` | resolution requires import execution or out-of-scope global symbol analysis | changed files, Red/Green result, Ledger Note | completed; Ledger Note D-003 recorded |
+
+#### Red / Green Evidence
+
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| S03 | Red | dependency references currently produce no relation and imported multi-class target is dropped | delegated worker reported `4 failed, 33 passed` after adding S03 tests before implementation | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_selection.py` | pass | red evidence from delegated worker |
+| S03 | Green | analyze targeted tests pass after implementation | parent rerun confirmed `37 passed`; after review fixes and added guard tests, parent rerun confirmed `38 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_selection.py` | pass | covers dependency selection, import resolution, ambiguity, priority, reachability, import fallback priority |
+| S03 | Regression | model/parse/render/analyze targeted tests still pass after selection change | parent ran combined targeted tests after review fixes | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/model/test_contracts.py tests/parse/test_module_parse_and_index.py tests/render/test_document.py tests/analyze/test_selection.py` | pass, `131 passed` | S01/S02 contracts preserved |
+| S03 | Tidy | whitespace / conflict check passes | parent ran diff check | `git diff --check` | pass | no whitespace errors |
+
+#### Step Contract Closure
+
+| step | closure id | close condition | evidence | result | notes |
+|---|---|---|---|---|---|
+| S03 | tc-004 | dependency evidence resolves to selected target class and selected relation `dependency` | same-module `B` / repeated constructor evidence test passed | pass | target class is added to selected set |
+| S03 | tc-005 | explicit import, alias import, relative import, and module-qualified access resolve intended class when unique | selection fixtures with multi-class target modules passed; module-qualified fixture uses real `ast.Import` metadata shape `pkg.target` | pass | app-level module import alias path remains D-003 follow-up |
+| S03 | tc-006 | ambiguous/import-only references are skipped and structural/typed relations keep priority | ambiguity/import-only/priority guard test passed | pass | dependency has lower endpoint priority than structural relations |
+
+#### Test Contract Closure
+
+| closure id | step | evidence level | pre-implementation evidence | verification command | result |
+|---|---|---|---|---|---|
+| tc-004 | S03 | red-required | delegated worker observed S03 test failures before implementation | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_selection.py` | pass, `38 passed` |
+| tc-005 | S03 | red-required | delegated worker observed S03 test failures before implementation | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_selection.py` | pass, `38 passed` |
+| tc-006 | S03 | red-required | delegated worker observed S03 test failures before implementation | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_selection.py` | pass, `38 passed` |
+
+#### Closure Coverage
+
+| closure id | AC / EC / constraint | evidence | status |
+|---|---|---|---|
+| tc-004 | AC-001 / AC-006 selection-side | same-module direct constructor and `self.b = B()` equivalent evidence selects target and relation | closed |
+| tc-005 | AC-002 / AC-003 / AC-004 selection-side | from-import, from-import alias, relative import, and real-metadata module-qualified access resolve to intended `B` in multi-class target module | closed with D-003 integration follow-up for `import pkg.target as target` app path |
+| tc-006 | EC-001 / EC-002 / EC-005 / AC-008 | ambiguous reference warns/skips, import-only relation does not become dependency, structural relation wins over dependency | closed |
+
+#### Closure Delta
+
+| step | added | removed | changed | re-review required | notes |
+|---|---|---|---|---|---|
+| S03 | none | none | none | yes | no plan amendment yet; D-003 must be checked during S04 |
+
+#### Reviewer Gate Status
+
+| step | gate name | reviewer role | freshness | state | risk acceptance | promotion / completion decision | notes |
+|---|---|---|---|---|---|---|---|
+| S03 | code review | code-reviewer | fresh before P1/P2 fixes | failed | no | not complete | P1: dotted dependency resolved without proven import; P2: module alias fixture used metadata shape parser does not emit |
+| S03 | code review re-run | code-reviewer | fresh after P1/P2 fixes | failed | no | not complete | P1: dependency target selection bypassed traversal reachability |
+| S03 | code review re-run 2 | code-reviewer | fresh after reachability gate fix | failed | no | not complete | P1: module-import `uses` masked direct-use `dependency` for same endpoint |
+| S03 | code review re-run 3 | code-reviewer | fresh after relation priority fix | passed | no | S03 can be committed | P2: stale verification counts; addressed before commit |
+
+#### 変更したファイル
+
+- `src/pyclassuml/analyze/selection.py` - dependency evidence classification、target resolution、warning diagnostics、priority を追加。
+- `tests/analyze/test_selection.py` - S03 dependency selection / explicit import / alias / relative / module-qualified / ambiguity / priority tests を追加。
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - S03 closure evidence と D-003 を記録。
+
+#### コミット
+
+- pending
+
 ## Final Quality Gate
 
-この issue はまだ実装前であり、final gate は未実施。
+この issue はまだ実装中であり、final gate は未実施。
 
 ### S90 Docs Impact Resolution
 
@@ -453,7 +534,7 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 | reviewer | scope | integration test decision | evidence | result |
 |---|---|---|---|---|
-| qa-reviewer | whole issue obligation coverage | 未判定 | 実装前 | not run |
+| qa-reviewer | whole issue obligation coverage | 未判定 | 実装中 | not run |
 
 ### Final Code Review Gate
 
@@ -484,9 +565,9 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 ## 今後の推奨事項
 
-- 次は `plan.md` の S03 として dependency relation selection / target resolution を実装する。
+- S03 は実装済み。次は `plan.md` の S04 として generate / diff integration を実装し、D-003 の alias import metadata path を確認する。
 - 各 implementation step では `report.md` に Red/Green/Review/Commit evidence を残してから次 step へ進む。
 
 ## 省略/例外メモ
 
-- S03 以降の実装、final quality gate、PR gate は未実施。
+- S04 以降の実装、final quality gate、PR gate は未実施。

@@ -28,7 +28,8 @@ _RELATION_TYPE_PRIORITY = {
     "composition": 1,
     "aggregation": 2,
     "association": 3,
-    "uses": 4,
+    "dependency": 4,
+    "uses": 5,
 }
 _EVIDENCE_KIND_PRIORITY = {
     "inherits": {
@@ -56,7 +57,15 @@ _EVIDENCE_KIND_PRIORITY = {
         "module_import": 2,
         "pydantic_forward_ref": 3,
     },
+    "dependency": {
+        "direct_class_call": 0,
+        "direct_class_member_access": 1,
+        "type_check_dependency": 2,
+        "cast_dependency": 3,
+        "local_annotation_dependency": 4,
+    },
 }
+_DEPENDENCY_REFERENCE_KINDS = frozenset(_EVIDENCE_KIND_PRIORITY["dependency"])
 
 
 @dataclass(frozen=True)
@@ -137,16 +146,48 @@ def select_classes_and_relations(
         selected_class_ids.add(source_class_id)
         selected_class_ids.add(target_class_id)
 
+    module_by_path = {module.module_path: module for module in parsed_modules}
+
+    for reference in _dependency_relation_references(parsed_modules):
+        if reference.source_class_id not in selected_class_ids:
+            continue
+        resolved = _resolve_dependency_relation_target(
+            reference=reference,
+            module_index=module_index,
+            module_by_path=module_by_path,
+        )
+        if isinstance(resolved, Diagnostic):
+            diagnostics.append(resolved)
+            continue
+        target_module_path = module_index.class_to_module.get(resolved)
+        if target_module_path not in reachable_files:
+            diagnostics.append(
+                _dependency_relation_warning_diagnostic(
+                    code="dependency_relation_selection_outside",
+                    reference=reference,
+                    candidate_class_ids=(resolved,),
+                )
+            )
+            continue
+        selected_class_ids.add(resolved)
+        relation_candidates.append(
+            SelectedRelation(
+                source_class_id=reference.source_class_id,
+                target_class_id=resolved,
+                relation_type="dependency",
+                evidence_kind=reference.reference_kind,
+            )
+        )
+
     protocol_class_ids = _selected_protocol_class_ids(
         parsed_modules=parsed_modules,
         module_index=module_index,
         selected_class_ids=selected_class_ids,
     )
-    module_by_path = {module.module_path: module for module in parsed_modules}
 
     for reference in _typed_relation_references(parsed_modules):
         relation_type = _relation_type_for_reference(reference)
-        if relation_type is None:
+        if relation_type is None or relation_type == "dependency":
             continue
         if reference.source_class_id not in selected_class_ids:
             continue
@@ -224,6 +265,15 @@ def _typed_relation_references(parsed_modules: tuple[ParsedModule, ...]) -> tupl
     return tuple(reference for module in parsed_modules for reference in module.class_references)
 
 
+def _dependency_relation_references(parsed_modules: tuple[ParsedModule, ...]) -> tuple[ClassReference, ...]:
+    return tuple(
+        reference
+        for module in parsed_modules
+        for reference in module.class_references
+        if reference.reference_kind in _DEPENDENCY_REFERENCE_KINDS
+    )
+
+
 def _selected_protocol_class_ids(
     *,
     parsed_modules: tuple[ParsedModule, ...],
@@ -261,6 +311,8 @@ def _relation_type_for_reference(reference: ClassReference) -> str | None:
         return "association"
     if reference.reference_kind in {"method_parameter_annotation", "method_return_annotation"}:
         return "uses"
+    if reference.reference_kind in _DEPENDENCY_REFERENCE_KINDS:
+        return "dependency"
     return None
 
 
@@ -366,6 +418,192 @@ def _resolve_typed_relation_target(
     return target_class_id
 
 
+def _resolve_dependency_relation_target(
+    *,
+    reference: ClassReference,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> ClassId | Diagnostic:
+    candidates = _dependency_target_candidates(
+        reference=reference,
+        module_index=module_index,
+        module_by_path=module_by_path,
+    )
+    if len(candidates) == 0:
+        return _dependency_relation_warning_diagnostic(
+            code="dependency_relation_unresolved",
+            reference=reference,
+        )
+    if len(candidates) > 1:
+        return _dependency_relation_warning_diagnostic(
+            code="dependency_relation_ambiguous",
+            reference=reference,
+            candidate_class_ids=candidates,
+        )
+    return candidates[0]
+
+
+def _dependency_target_candidates(
+    *,
+    reference: ClassReference,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> tuple[ClassId, ...]:
+    candidates: list[ClassId] = []
+    candidates.extend(
+        _direct_dependency_target_candidates(
+            source_class_id=reference.source_class_id,
+            target_name=reference.target_name,
+            module_index=module_index,
+        )
+    )
+    source_module_path = module_index.class_to_module.get(reference.source_class_id)
+    source_module = module_by_path.get(source_module_path) if source_module_path is not None else None
+    if source_module is not None:
+        candidates.extend(
+            _from_import_dependency_target_candidates(
+                target_name=reference.target_name,
+                source_module=source_module,
+                module_index=module_index,
+                module_by_path=module_by_path,
+            )
+        )
+        candidates.extend(
+            _module_import_dependency_target_candidates(
+                target_name=reference.target_name,
+                source_module=source_module,
+                module_index=module_index,
+                module_by_path=module_by_path,
+            )
+        )
+    return tuple(sorted(set(candidates)))
+
+
+def _direct_dependency_target_candidates(
+    *,
+    source_class_id: ClassId,
+    target_name: str,
+    module_index: ModuleIndex,
+) -> tuple[ClassId, ...]:
+    if target_name in module_index.class_to_module:
+        return (target_name,)
+
+    source_module = module_index.class_to_module.get(source_class_id)
+    if source_module is None or "." in target_name:
+        return ()
+    return tuple(
+        class_id
+        for class_id in sorted(module_index.class_to_module)
+        if module_index.class_to_module.get(class_id) == source_module
+        and _short_class_name(class_id) == target_name
+    )
+
+
+def _from_import_dependency_target_candidates(
+    *,
+    target_name: str,
+    source_module: ParsedModule,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> tuple[ClassId, ...]:
+    if "." in target_name:
+        return ()
+
+    candidates: list[ClassId] = []
+    for import_text in source_module.imports:
+        imported_name = _from_import_original_name(import_text, local_name=target_name)
+        if imported_name is None:
+            continue
+        candidates.extend(
+            _class_ids_named_in_import_candidates(
+                import_text=import_text,
+                class_name=imported_name,
+                module_index=module_index,
+                module_by_path=module_by_path,
+            )
+        )
+    return tuple(candidates)
+
+
+def _module_import_dependency_target_candidates(
+    *,
+    target_name: str,
+    source_module: ParsedModule,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> tuple[ClassId, ...]:
+    parts = tuple(part for part in target_name.split(".") if part)
+    if len(parts) < 2:
+        return ()
+
+    candidates: list[ClassId] = []
+    for split_at in range(1, len(parts)):
+        access_prefix = ".".join(parts[:split_at])
+        class_name = ".".join(parts[split_at:])
+        for import_text in source_module.imports:
+            module_import = _module_import_parts(import_text)
+            if module_import is None:
+                continue
+            module_name, local_name = module_import
+            if access_prefix not in {local_name, module_name}:
+                continue
+            candidates.extend(
+                _class_ids_named_in_import_candidates(
+                    import_text=import_text,
+                    class_name=class_name,
+                    module_index=module_index,
+                    module_by_path=module_by_path,
+                )
+            )
+    return tuple(candidates)
+
+
+def _class_ids_named_in_import_candidates(
+    *,
+    import_text: str,
+    class_name: str,
+    module_index: ModuleIndex,
+    module_by_path: dict[Path, ParsedModule],
+) -> tuple[ClassId, ...]:
+    candidates: list[ClassId] = []
+    for module_path in module_index.import_candidate_paths.get(import_text, ()):
+        module = module_by_path.get(module_path)
+        if module is None:
+            continue
+        candidates.extend(class_id for class_id in module.classes if _short_class_name(class_id) == class_name)
+    return tuple(candidates)
+
+
+def _from_import_original_name(import_text: str, *, local_name: str) -> str | None:
+    if not import_text.startswith("from ") or " import " not in import_text:
+        return None
+    imported_text = import_text.split(" import ", maxsplit=1)[1]
+    for part in imported_text.split(","):
+        imported_name, imported_local_name = _imported_name_and_local_name(part)
+        if imported_local_name == local_name:
+            return imported_name
+    return None
+
+
+def _module_import_parts(import_text: str) -> tuple[str, str] | None:
+    if import_text.startswith("from ") or " import " in import_text:
+        return None
+    import_body = import_text.removeprefix("import ").strip()
+    if not import_body:
+        return None
+    module_name, local_name = _imported_name_and_local_name(import_body)
+    if local_name == module_name:
+        local_name = module_name.split(".", maxsplit=1)[0]
+    return module_name, local_name
+
+
+def _imported_name_and_local_name(imported_text: str) -> tuple[str, str]:
+    parts = tuple(part.strip() for part in imported_text.split(" as ", maxsplit=1))
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return parts[0], parts[0]
+
+
 def _target_candidates(
     *,
     source_class_id: ClassId,
@@ -445,6 +683,32 @@ def _typed_relation_warning_diagnostic(
         code=code,
         message=(
             "typed relation reference could not be converted to a selected class relation: "
+            f"source_class_id={reference.source_class_id}; "
+            f"target_name={reference.target_name}; "
+            f"reference_kind={reference.reference_kind}; "
+            f"reference_owner={reference.reference_owner}"
+            f"{candidate_message}"
+        ),
+        origin_seam=OriginSeam.ANALYZE,
+        recoverability=Recoverability.RECOVERABLE,
+        failure_reason=None,
+    )
+
+
+def _dependency_relation_warning_diagnostic(
+    *,
+    code: str,
+    reference: ClassReference,
+    candidate_class_ids: tuple[ClassId, ...] = (),
+) -> Diagnostic:
+    candidate_message = ""
+    if candidate_class_ids:
+        candidate_message = f"; candidates={','.join(candidate_class_ids)}"
+    return Diagnostic(
+        severity=DiagnosticSeverity.WARNING,
+        code=code,
+        message=(
+            "dependency reference could not be converted to a selected class relation: "
             f"source_class_id={reference.source_class_id}; "
             f"target_name={reference.target_name}; "
             f"reference_kind={reference.reference_kind}; "
