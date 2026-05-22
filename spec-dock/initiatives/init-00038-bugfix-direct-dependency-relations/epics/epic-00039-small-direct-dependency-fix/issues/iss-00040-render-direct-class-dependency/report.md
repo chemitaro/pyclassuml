@@ -16,7 +16,8 @@ ID: "iss-00040"
 
 - この時点では実装未着手。
 - ユーザー指示により、直接依存 relation 欠落の詳細調査は `discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` に移した。
-- `requirement.md` / `design.md` / `plan.md` の本格作成、実装、テスト、reviewer gate、final quality gate は未実施。
+- `requirement.md` / `design.md` / `plan.md` は作成済みで、実装前 `spec-reviewer` gate は pass 済み。
+- 実装、step code-reviewer gate、final quality gate、PR gate は未実施。
 
 ## Spec Interpretation / Decision Ledger
 
@@ -127,7 +128,8 @@ git commit -m "docs(spec-dock): 直接依存表示修正の作業ツリーを追
 | initial report capture | committed | initial detailed report before relocation | `4f1cae9` | clean after commit | N/A | N/A | N/A | N/A |
 | research relocation | committed | research artifact and report pointer | `b456b02` | clean after commit | N/A | N/A | N/A | N/A |
 | extended investigation | committed | research update and interview artifact | `6e92858` | clean after commit | N/A | N/A | N/A | N/A |
-| requirement authoring | pending commit | answered interview and requirement | pending | pending | N/A | N/A | N/A | N/A |
+| requirement authoring | committed | answered interview and requirement | `98c5b70` | clean after commit | N/A | N/A | N/A | N/A |
+| design-plan authoring | pending commit | design / plan / spec authoring gate evidence | pending | pending | N/A | N/A | N/A | N/A |
 
 #### 変更したファイル
 
@@ -244,6 +246,65 @@ git diff --check
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/requirement.md` - dependency semantics に基づく要件定義を作成。
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - 要件作成の根拠と検証を記録。
 
+#### コミット
+
+- `98c5b70 docs(spec-dock): 直接依存表示の要件定義を作成`
+
+### 2026-05-22 18:40 - 19:20 JST
+
+#### 対象
+
+- Step: design / plan authoring and spec authoring gate
+- AC/EC: `design.md` / `plan.md` に反映
+- Planned source:
+  - ユーザー指示: workflow に則り、設計書、実装計画書を作成した上で実装へ進む。
+
+#### 実施内容
+
+- `design.md` を作成し、既存 parse/analyze/render pipeline に沿って `dependency` relation type を追加する設計にした。
+- `plan.md` を作成し、S01 model/render contract、S02 parse evidence、S03 selection target resolution、S04 generate/diff integration、S90 docs impact、S99 final quality gate に分割した。
+- `spec-reviewer` に実装前 review を依頼し、2回 fail 指摘を受けた。
+- 指摘を反映し、3回目の `spec-reviewer` で `review_status: pass` を得た。
+
+#### Spec Authoring Gate Evidence
+
+| artifact | reviewer | attempt | result | findings / action |
+|---|---|---|---|---|
+| requirement/design/plan | spec-reviewer | 1 | fail | AC-003〜AC-006 の generate-level evidence 不足、tc-005 の import form 不足、final exit contract placeholder、report-update gate 不足、design N/A placeholder |
+| requirement/design/plan | spec-reviewer | 2 | fail | `B.CONST` の non-call class member access が plan verification に未固定、S02 planned contract の Markdown 階層不備 |
+| requirement/design/plan | spec-reviewer | 3 | pass | prior concerns resolved; executable plan traces AC/EC through closure ids, step obligations, verification commands, report destinations, reviewer gates |
+
+#### 検証
+
+```bash
+./spec-dock/scripts/spec-dock validate
+# spec-dock: ok (validate) nodes=39
+
+git diff --check
+# ok
+
+UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/model/test_contracts.py tests/render/test_document.py
+# 53 passed
+
+UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/parse/test_module_parse_and_index.py
+# 38 passed
+
+UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_selection.py
+# 33 passed
+```
+
+#### Workflow Delegation Consent
+
+| consent source | repo/worktree | active issue | session | named roles | boundary | expires / invalidation condition | denied / unavailable reason | next action |
+|---|---|---|---|---|---|---|---|---|
+| user instruction: workflow に則って実装完了と PR 作成まで依頼 | `/Users/iwasawayuuta/workspace/tools/pyclassuml` | iss-00040 | current session | spec-reviewer, code-reviewer, qa-reviewer, dev-coder, doc-writer, github-pr-merge-preparer | issue-local execution / review / PR delivery only; no destructive action outside workflow; no credentialed external use beyond GitHub PR workflow | session end / scope change / user revocation | none | proceed to S01 implementation |
+
+#### 変更したファイル
+
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/design.md` - implementation design, dependency analysis, module diagram, file change plan.
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/plan.md` - executable implementation plan and closure index.
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - spec authoring gate evidence.
+
 ## Final Quality Gate
 
 この issue はまだ実装前であり、final gate は未実施。
@@ -289,11 +350,9 @@ git diff --check
 
 ## 今後の推奨事項
 
-- `requirement.md` で「direct use」の対象を AST パターン別に固定する。
-- `design.md` で direct use evidence kind、target resolution、multi-class module の扱い、arrow type を分離して決める。
-- `plan.md` で parse evidence、selection relation、rendered PlantUML、CLI generate の characterization / regression を段階化する。
+- `plan.md` の S01 から順に、model/render contract、parse evidence、selection target resolution、generate/diff integration を実装する。
+- 各 implementation step では `report.md` に Red/Green/Review/Commit evidence を残してから次 step へ進む。
 
 ## 省略/例外メモ
 
-- ユーザー指示により、この時点では `requirement.md` / `design.md` / `plan.md` の本格作成は省略した。
 - 実装、テスト追加、reviewer gate、final quality gate、PR gate は未実施。
