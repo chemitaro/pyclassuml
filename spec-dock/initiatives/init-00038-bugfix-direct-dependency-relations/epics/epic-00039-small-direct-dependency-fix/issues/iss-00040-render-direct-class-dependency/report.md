@@ -20,8 +20,9 @@ ID: "iss-00040"
 - S01 code-reviewer gate は再レビューで pass 済み。P2 の status cleanup はこの report 更新で対応した。
 - S02 は実装済みで、tc-002 / tc-003 の Red/Green evidence を記録済み。code-reviewer gate は pass 済み。
 - S03 は実装済みで、tc-004 / tc-005 / tc-006 の Red/Green evidence を記録済み。code-reviewer gate は pass 済み。
-- S04 は実装済みで、tc-007 / tc-008 の Red/Green evidence を記録済み。code-reviewer gate は未実施。
-- Final quality gate、PR gate は未実施。
+- S04 は実装済みで、tc-007 / tc-008 の Red/Green evidence を記録済み。code-reviewer gate は pass 済み。
+- Final quality gate は QA / code / spec review まで pass 済み。
+- PR #41 は作成済みで、GitHub Actions `validate` と mergeability check は pass 済み。
 
 ## Spec Interpretation / Decision Ledger
 
@@ -644,18 +645,22 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 | final report ledger | final commit scope | post-commit external evidence destination | result |
 |---|---|---|---|
 | committed | report final gate cleanup plus D-004 follow-up implementation/tests | final response / PR body | `5be1720` |
+| committed | PR delivery gate evidence update | final response / PR #41 | `711a1c2` |
 
 ### PR Delivery Gate
 
 | PR | base | head branch / SHA | issue linkage | creation route | result |
 |---|---|---|---|---|---|
-| `https://github.com/chemitaro/pyclassuml/pull/41` | `main` from `origin/HEAD` | `iss-00040-render-direct-class-dependency` / `5be1720` | `Closes #40` in PR body | `gh pr create` / GitHub connector were blocked by local uv cache permission; created through GitHub REST API after branch push | created |
+| `https://github.com/chemitaro/pyclassuml/pull/41` | `main` from `origin/HEAD` | `iss-00040-render-direct-class-dependency` / `711a1c2` | `Closes #40` in PR body | `gh pr create` / GitHub connector were blocked by local uv cache permission; created through GitHub REST API after branch push | pass |
 
 ### Merge Preparation Gate
 
 | source | evidence | result | notes |
 |---|---|---|---|
-| GitHub Actions | PR check `validate` observed in progress on initial PR head | pending | final check state must be re-monitored after PR report commit push |
+| GitHub Actions | latest monitored head `711a1c206c06a09cf6d499312017dc8b04b5c40c`; check-runs `validate` completed with `success` x2 | pass | required checks are green on current PR head |
+| GitHub PR API | PR state `open`; `mergeable=true`; `mergeable_state=clean`; base `main`; no requested reviewers or review comments | pass | visible merge blockers were not observed through GitHub REST API |
+| Review thread limitation | GitHub REST PR summary and check-runs were inspected; no unresolved review comments were visible | pass | no unresolved review-thread blocker observed |
+| Final merge-prepared decision | PR #41 is ready for human merge decision | pass | no unresolved blockers remained before lifecycle finish |
 
 ## 遭遇した問題と解決
 
@@ -668,9 +673,9 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 ## 今後の推奨事項
 
-- S90/S99 validation and reviewer gates are complete.
-- 次は final report commit、PR delivery gate、merge preparation gate、`issue finish` を実施する。
+- S90/S99 validation, reviewer gates, PR delivery gate, and merge preparation gate are complete.
+- 次は `issue finish` を実施し、lifecycle closure 後の最終状態を確認する。
 
 ## 省略/例外メモ
 
-- PR gate と lifecycle finish は final report commit 後に実施する。
+- `issue finish` 後の active clear は lifecycle-owned state であり、最終応答で外部証跡として報告する。
