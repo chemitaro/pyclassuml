@@ -15,6 +15,7 @@ from pyclassuml.model import (
     DependencyGraph,
     Diagnostic,
     DiagnosticSeverity,
+    DiffBaseResolution,
     DiagramModel,
     ExecutionContext,
     FailureReason,
@@ -99,6 +100,7 @@ class ReportInputs:
     target_set: TargetSet | None = None
     dependency_graph: DependencyGraph | None = None
     changed_class_inventory: ChangedClassInventory | None = None
+    diff_base_resolution: DiffBaseResolution | None = None
     scope_stop_count: int = 0
 
     def __post_init__(self) -> None:
@@ -128,6 +130,8 @@ class ReportInputs:
             self.changed_class_inventory, ChangedClassInventory
         ):
             raise ValueError("changed_class_inventory must be ChangedClassInventory or None")
+        if self.diff_base_resolution is not None and not isinstance(self.diff_base_resolution, DiffBaseResolution):
+            raise ValueError("diff_base_resolution must be DiffBaseResolution or None")
         if (
             isinstance(self.scope_stop_count, bool)
             or not isinstance(self.scope_stop_count, int)
@@ -316,8 +320,9 @@ def write_report(
         summary=summary,
         diagnostics=diagnostics,
         exit_code=policy.exit_code,
+        diff_base_resolution=inputs.diff_base_resolution,
     )
-    summary_text = _format_summary(policy.outcome_kind, summary, diagnostics)
+    summary_text = _format_summary(policy.outcome_kind, summary, diagnostics, inputs.diff_base_resolution)
     return ReportRunResult(
         command_result=command_result,
         outcome_kind=policy.outcome_kind,
@@ -384,10 +389,20 @@ def _format_summary(
     outcome_kind: str,
     summary: RunSummary,
     diagnostics: tuple[Diagnostic, ...],
+    diff_base_resolution: DiffBaseResolution | None = None,
 ) -> str:
     lines = [f"outcome: {outcome_kind}", f"exit_code: {0 if outcome_kind in SUCCESS_OUTCOMES else 1}"]
     if summary.failure_reason is not None:
         lines.append(f"failure_reason: {summary.failure_reason.value}")
+    if diff_base_resolution is not None:
+        lines.extend(
+            (
+                f"base_resolution: {diff_base_resolution.resolution_kind}",
+                f"resolved_base: {diff_base_resolution.resolved_base_ref}",
+                f"requested_base: {_optional_summary_value(diff_base_resolution.requested_base_ref)}",
+                f"base_candidate: {_optional_summary_value(diff_base_resolution.candidate_ref)}",
+            )
+        )
     lines.append("counters:")
     for key in COUNTER_KEYS:
         lines.append(f"{key}: {summary.counters[key]}")
@@ -396,6 +411,10 @@ def _format_summary(
         for diagnostic in diagnostics:
             lines.append(f"{diagnostic.severity.value}:{diagnostic.code}: {diagnostic.message}")
     return "\n".join(lines) + "\n"
+
+
+def _optional_summary_value(value: str | None) -> str:
+    return value if value is not None else "none"
 
 
 def _make_parent_dirs(parent: Path) -> None:

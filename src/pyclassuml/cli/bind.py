@@ -116,7 +116,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     diff_parser = subparsers.add_parser(CommandName.DIFF.value)
     _add_common_options(diff_parser)
-    diff_parser.add_argument("--base", dest="base_ref", required=True, type=_non_empty_string)
+    diff_parser.add_argument("--base", dest="base_ref", type=_non_empty_string)
     diff_parser.add_argument(
         "--current-state",
         choices=[state.value for state in DiffCurrentState],

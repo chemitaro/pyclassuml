@@ -79,12 +79,12 @@ def test_generate_binds_full_common_options_with_raw_relative_cwd_and_exact_proc
 
 
 def test_diff_binds_default_current_state_and_include_untracked() -> None:
-    request = bind_command_request(("diff", "--base", "main"), Path("/repo"))
+    request = bind_command_request(("diff",), Path("/repo"))
 
     options = request.cli_options
     assert options.command is CommandName.DIFF
     assert options.diff is not None
-    assert options.diff.base_ref == "main"
+    assert options.diff.base_ref is None
     assert options.diff.current_state is DiffCurrentState.WORKING_TREE
     assert options.diff.current_state_cli_provided is False
     assert options.diff.include_untracked is True
@@ -104,6 +104,17 @@ def test_diff_binds_specified_current_state_and_include_untracked() -> None:
     assert request.cli_options.diff.current_state_cli_provided is True
     assert request.cli_options.diff.include_untracked is True
     assert request.cli_options.diff.include_untracked_cli_provided is True
+
+
+def test_diff_binds_explicit_base_preserving_defaults() -> None:
+    request = bind_command_request(("diff", "--base", "origin/main"), Path("/repo"))
+
+    assert request.cli_options.diff is not None
+    assert request.cli_options.diff.base_ref == "origin/main"
+    assert request.cli_options.diff.current_state is DiffCurrentState.WORKING_TREE
+    assert request.cli_options.diff.current_state_cli_provided is False
+    assert request.cli_options.diff.include_untracked is True
+    assert request.cli_options.diff.include_untracked_cli_provided is False
 
 
 def test_diff_binds_no_include_untracked_opt_out() -> None:
@@ -185,7 +196,6 @@ def test_usage_errors_do_not_call_handler_and_return_cli_usage_error() -> None:
     for argv in (
         ("generate", "--unknown"),
         (),
-        ("diff",),
         ("diff", "--base", "main", "--depth", "-1"),
         ("diff", "--base", "main", "--target-python", "3.x"),
         ("diff", "--base", ""),

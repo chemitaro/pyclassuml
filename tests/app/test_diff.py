@@ -13,6 +13,7 @@ from pyclassuml.model import (
     CommandName,
     CommandOptions,
     CommandRequest,
+    DiffBaseResolution,
     DiffCurrentState,
     DiffOptions,
     FailureReason,
@@ -80,10 +81,14 @@ def tag_base(repo: Path) -> str:
     return "base"
 
 
+def checkout_new_branch(repo: Path, branch_name: str) -> None:
+    git(repo, "checkout", "-b", branch_name)
+
+
 def diff_request(
     process_cwd: Path,
     *,
-    base_ref: str = "base",
+    base_ref: str | None = "base",
     current_state: DiffCurrentState = DiffCurrentState.WORKING_TREE,
     include_untracked: bool = False,
     **overrides: object,
@@ -240,6 +245,47 @@ def test_zero_target_failure_returns_report_nonzero_without_common_pipeline_call
     assert not list(repo.glob("*.puml"))
 
 
+def test_no_base_zero_target_failure_preserves_base_resolution_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "README.md", "base\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    base_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
+    checkout_new_branch(repo, "feature/no-target")
+    write_file(repo / "README.md", "changed\n")
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+    monkeypatch.setattr(diff_app, "traverse_dependencies", fail_if_called("traversal"))
+    monkeypatch.setattr(diff_app, "render_uml_document", fail_if_called("render"))
+
+    result = run_diff(diff_request(repo, base_ref=None), timestamp=TIMESTAMP)
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER
+    assert result.command_result.diff_base_resolution == DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref=base_sha,
+        resolution_kind="default_branch_merge_base",
+        candidate_ref="main",
+    )
+    assert result.stdout_text == ""
+    assert "failure_reason: diff_zero_target_after_scope_filter" in result.stderr_text
+    assert "error:diff_zero_target_after_scope_filter:" in result.stderr_text
+    assert "base_resolution: default_branch_merge_base" in result.stderr_text
+    assert f"resolved_base: {base_sha}" in result.stderr_text
+    assert "requested_base: none" in result.stderr_text
+    assert "base_candidate: main" in result.stderr_text
+    assert captured.out == ""
+    assert captured.err == ""
+    assert not list(repo.glob("*.puml"))
+
+
 def test_diff_post_target_stage_invocation_order_is_canonical(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -344,6 +390,100 @@ def test_happy_path_writes_artifact_summary_and_does_not_emit_process_streams(
     assert result.stderr_text == ""
     assert captured.out == ""
     assert captured.err == ""
+
+
+def test_no_base_diff_uses_resolved_base_for_classification_and_report(
+    tmp_path: Path,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class Existing:\n    pass\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    base_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
+    checkout_new_branch(repo, "feature")
+    write_file(repo / "pkg" / "model.py", "class Existing:\n    value = 1\n\nclass Added:\n    pass\n")
+
+    result = run_diff(
+        diff_request(repo, base_ref=None, output=Path("no-base.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "no-base.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.diff_base_resolution == DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref=base_sha,
+        resolution_kind="default_branch_merge_base",
+        candidate_ref="main",
+    )
+    assert "<<DiffChanged>>" in class_declaration(output, "Existing")
+    assert "<<DiffAdded>>" in class_declaration(output, "Added")
+    assert "base_resolution: default_branch_merge_base" in result.stdout_text
+    assert f"resolved_base: {base_sha}" in result.stdout_text
+    assert "requested_base: none" in result.stdout_text
+    assert "base_candidate: main" in result.stdout_text
+    assert all(diagnostic.code != "diff_classification_base_read_unavailable" for diagnostic in result.command_result.diagnostics)
+
+
+def test_no_base_initial_fallback_is_degraded_success_with_base_metadata(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class Base:\n    pass\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    initial_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
+    write_file(repo / "pkg" / "model.py", "class Base:\n    value = 1\n")
+
+    result = run_diff(
+        diff_request(repo, base_ref=None, output=Path("fallback.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "degraded_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["warning_count"] == 1
+    assert result.command_result.diff_base_resolution == DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref=initial_sha,
+        resolution_kind="initial_commit_fallback",
+        candidate_ref=None,
+    )
+    assert "warning:diff_base_initial_commit_fallback:" in result.stdout_text
+    assert "base_resolution: initial_commit_fallback" in result.stdout_text
+    assert f"resolved_base: {initial_sha}" in result.stdout_text
+    assert "requested_base: none" in result.stdout_text
+    assert "base_candidate: none" in result.stdout_text
+
+
+def test_no_base_head_semantics_exclude_working_tree_only_and_untracked_files(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "base.py", "class Base:\n    pass\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    checkout_new_branch(repo, "feature")
+    write_file(repo / "pkg" / "head_only.py", "class HeadOnly:\n    pass\n")
+    commit_all(repo, "head only")
+    write_file(repo / "pkg" / "working_only.py", "class WorkingOnly:\n    pass\n")
+    write_file(repo / "pkg" / "untracked.py", "class Untracked:\n    pass\n")
+
+    result = run_diff(
+        diff_request(
+            repo,
+            base_ref=None,
+            current_state=DiffCurrentState.HEAD,
+            include_untracked=True,
+            output=Path("head.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "head.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "warning_only_success"
+    assert result.command_result.exit_code == 0
+    assert "HeadOnly" in output
+    assert "WorkingOnly" not in output
+    assert "Untracked" not in output
+    assert "warning:head_untracked_noop:" in result.stdout_text
+    assert "base_resolution: default_branch_merge_base" in result.stdout_text
 
 
 def test_diff_member_rendering_e2e_covers_changed_class_body_and_alias_relations(
