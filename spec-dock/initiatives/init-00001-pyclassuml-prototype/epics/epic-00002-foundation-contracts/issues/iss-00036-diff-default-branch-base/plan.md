@@ -3,7 +3,7 @@
 ID: "iss-00036"
 タイトル: "Diff Default Branch Base"
 関連GitHub: ["#36"]
-状態: "approved"
+状態: "draft | approved"
 作成者: "iwasawayuuta"
 最終更新: "2026-05-21"
 依存: ["requirement.md", "design.md"]
@@ -12,227 +12,258 @@ ID: "iss-00036"
 
 # iss-00036 Diff Default Branch Base — 実装計画（Execution Contract）
 
+> このテンプレートは最小 scaffold です。`plan.md` は planned contract を所有し、実装者が step を上から順に実行できる command queue として書く。実行結果、逸脱、discovered tests、reviewer verdict、commit/no-op evidence は `report.md` の observed evidence ledger に記録する。実行 policy は `workflow_issue.md`、Issue 計画の書き方は `phase_plan_issue.md` と `docs/authoring/issue-plan.md` を正本にする。
+
 ## この計画で満たす要件ID
 - AC:
-  - AC-001: `pyclassuml diff` の default branch merge-base 解決。
-  - AC-002: `--base <ref>` の既存互換。
-  - AC-003: initial commit fallback。
-  - AC-004: `--current-state head` との整合。
+  - ...
 - EC:
-  - EC-001: commit なし repository。
-  - EC-002: candidate merge-base failure。
-  - EC-003: default branch 自身での fallback。
+  - ...
 - 制約:
-  - read-only Git 操作、deterministic resolver、対象コード import 不使用。
+  - ...
 
 ## 依存関係から導く実装順序
 - 依存関係の正本:
-  - `design.md` の module dependency diagram と file change plan。
+  - `design.md` の依存関係、図、ファイル変更計画
+- 順序ルール:
+  - prerequisite / lower-dependency slice から先に閉じる
+  - downstream slice は前提が固定されてから置く
 - step 依存 summary:
   - S01:
-    - 依存: なし。
-    - unblock: CLI / DTO が `--base` optional を表現できる。
-    - 対象ファイル: `cli.bind`, `model.contracts`, `config.resolver`, related tests。
-  - S02:
-    - 依存: S01。
-    - unblock: `vcs.diff_collect` が resolved base を必ず持てる。
-    - 対象ファイル: `vcs.diff_collect`, vcs tests。
-  - S03:
-    - 依存: S02。
-    - unblock: app/report/README が user-visible behavior を閉じる。
-    - 対象ファイル: `app.diff`, `report`, `README.md`, integration tests。
+    - 依存:
+    - unblock:
+    - 対象ファイル:
 
 ## ステップ一覧
 - S01:
-  - 観測可能な振る舞い: `pyclassuml diff` が usage error にならず、optional base DTO として bind される。
-  - レビューゲート: code-reviewer。
+  - 観測可能な振る舞い:
+  - 依存:
+  - unblock:
+  - 対象ファイル:
+  - 閉じる要件:
+  - レビューゲート:
 - S02:
-  - 観測可能な振る舞い: `--base` 未指定時に deterministic resolver が default branch merge-base または initial commit fallback を返す。
-  - レビューゲート: code-reviewer。
-- S03:
-  - 観測可能な振る舞い: resolved base が app/report/README で観測でき、`--current-state head` も既存仕様と整合する。
-  - レビューゲート: code-reviewer。
-- S90:
-  - docs impact resolution。
-- S99:
-  - final QA / code / spec review と final commit gate。
+  - ...
 
 ## 要件 ↔ ステップ対応
-- AC-001 -> S02, S03
-- AC-002 -> S01, S02
-- AC-003 -> S02, S03
-- AC-004 -> S02, S03
+- AC-001 -> S01
 - EC-001 -> S02
-- EC-002 -> S02
-- EC-003 -> S02
 
 ## Spec-Locked Closure Index（仕様固定クロージャ索引）
 
+> これは Issue 全体のテスト一覧ではなく、仕様を縮小解釈・後付けテスト・過剰実装しないための coverage ledger です。実際の step-local obligation と concrete seeds は各 implementation step の `具体テストケース一覧` に置く。
+
 | id | step | slice | type | spec link | locked expectation | observable input/state | bug class guarded | required | evidence level | closure evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
-| tc-001 | S01 | cli-model | acceptance | AC-002 | `diff --base <ref>` remains explicit and `diff` without base is valid | parser bind inputs | compatibility break / usage error regression | yes | red-required | report step closure |
-| tc-002 | S02 | vcs-resolver | acceptance | AC-001 | no-base diff resolves merge-base against default branch candidate | temp repo with default branch and feature branch | wrong default base / no-base failure | yes | red-required | report step closure |
-| tc-003 | S02 | fallback | acceptance | AC-003, EC-003 | no-base diff falls back to initial commit when no candidate is usable | repo without usable default candidate | arrogant config/upstream requirement | yes | red-required | report step closure |
-| tc-004 | S02 | failure | negative | EC-001 | no-commit repo fails before parse/analyze | empty git repo | ambiguous base / late pipeline failure | yes | red-required | report step closure |
-| tc-005 | S03 | current-state | acceptance | AC-004 | resolved base works with `--current-state head` and keeps untracked semantics | feature branch with working-tree-only file | head/working-tree semantic drift | yes | red-required | report step closure |
-| tc-006 | S03 | docs-report | acceptance | AC-001, AC-003 | resolved base and resolution kind are visible in diagnostics/report/docs | command/report inspection | silent surprising base choice | yes | red-required | report step closure |
+| tc-001 | S01 | <behavior> | acceptance | AC-001 | ... | ... | spec drift | yes | red-required | report step closure |
+| tc-002 | S01 | <behavior> | negative | EC-001 | ... | ... | silent failure | yes | inspect-only | report step closure |
+
+- evidence level:
+  - red-required: 実装前に失敗する新規 test / characterization を固定する。
+  - covered-existing: 既存 test が対象 behavior を検出できる根拠を固定する。
+  - inspect-only: docs / template / config などを inspection、structural assertion、review evidence で閉じる。
+  - manual-required: 自動化できない確認手順、期待結果、記録先を固定する。
+- 詳細化方針:
+  - 件数ではなく、AC、changed contract、failure mode、regression risk、invariant、manual / integration risk から必要な obligation を決める。
+  - private method、実装アルゴリズム、mock 構造、assert 細部は原則固定しない。
 
 ## レビュー / QA ゲート方針
 - RG1 step review:
-  - 実施タイミング: 各 implementation step の commit 前。
-  - reviewer: code-reviewer。
-  - pass 条件: review_status: pass。
+  - 実施タイミング: 各 implementation step の commit 前
+  - reviewer: code-reviewer for code / runtime / tests / scaffold behavior; spec-reviewer for docs-only / template-only / skill-text-only
+  - pass 条件: review_status: pass
 - QG1 final QA:
-  - reviewer: qa-reviewer。
-  - 範囲: Issue 全体の obligation coverage、missing high-value tests、manual / integration test 要否。
+  - reviewer: qa-reviewer
+  - 範囲: Issue 全体の obligation coverage、missing high-value tests、manual / integration test 要否
 - SG1 final spec review:
-  - reviewer: spec-reviewer。
-  - 範囲: requirement / design / plan / report / docs 整合。
+  - reviewer: spec-reviewer
+  - 範囲: requirement / design / plan / report / docs 整合
 
 ## 実行ルール（全ステップ共通）
-- `plan.md` には planned requirements、evidence destination、closure 条件だけを書く。
-- observed result、逸脱、discovered tests、reviewer verdict、commit/no-op evidence は `report.md` に記録する。
-- implementation 中に resolver の候補順や diagnostic severity を変更する必要が出た場合は、`report.md` の decision ledger に記録し、必要なら plan amendment と re-review を行う。
+- 各 implementation step は原則として 1 behavior slice / 1 review scope / 1 commit boundary とする。
+- `plan.md` には planned requirements、evidence destination、closure 条件だけを書く。observed result は `report.md` に書く。
+- docs-only / inspect-only / manual-required step は code test 前提にせず、代替 evidence path と rationale を implementation 前に固定する。
+- implementation 中に新しい仕様、bug class、外部 contract risk、未計画の closure が見つかった場合は、report 記録だけで足りるか、plan amendment と re-review が必要かを判断する。
 
 ## 実装ステップ
 
-### S01 — CLI / DTO の `--base` optional 化
+### S01 — <観測可能な振る舞い>
 - behavior goal:
-  - `pyclassuml diff` が valid invocation になり、明示 `--base <ref>` は既存どおり bind される。
+  - ...
 - design 参照:
-  - `design.md` のインターフェース契約。
+  - ...
 - 依存:
-  - なし。
+  - ...
 - unblock:
-  - S02 が no-base と explicit-base を区別できる。
+  - ...
 - 対象ファイル:
-  - `src/pyclassuml/cli/bind.py`
-  - `src/pyclassuml/model/contracts.py`
-  - `src/pyclassuml/config/resolver.py`
-  - `tests/cli/test_bind.py`
-  - `tests/model/test_contracts.py`
-  - `tests/config/test_context_resolve.py`
+  - ...
 - planned contract:
+  - scope:
+    - 実装・文書化する範囲:
   - test obligation:
-    - closure id: tc-001
-    - coverage rationale: CLI usage compatibility と DTO invariant の regression を検出する。
+    - closure id:
+      - tc-001
+    - coverage rationale:
+      - AC / changed contract / failure mode / regression risk / invariant / manual risk から必要性を書く:
   - Red / alternative evidence requirement:
-    - red-required: `diff` without `--base` bind test と explicit `--base` compatibility test。
+    - red-required / covered-existing:
+      - 実装前に確認する failing test、characterization、または既存 test sensitivity:
+    - docs-only / inspect-only / manual-required:
+      - code test を置かない理由:
+      - 代替 evidence path:
+      - manual 手順と期待結果:
   - implementation scope:
-    - allowed paths: 対象ファイルに限定。
-    - forbidden changes: diff collection algorithm の実装。
+    - allowed paths:
+      - ...
+    - forbidden changes:
+      - ...
   - Green verification:
-    - `uv run pytest tests/cli/test_bind.py tests/model/test_contracts.py tests/config/test_context_resolve.py`
+    - command / inspection / manual evidence:
+      - ...
+  - Refactor / cleanup guardrail:
+    - 目的:
+    - 禁止する広がり:
+  - closure evidence requirements:
+    - Step Contract Closure:
+    - Test Contract Closure:
+    - Closure Coverage:
   - report evidence destination:
-    - `report.md` の S01 session、Step Contract Closure、Test Contract Closure。
+    - `report.md` の対象 section / ledger:
   - amendment trigger:
-    - `DiffOptions` に optional field 以外の大きな DTO 再設計が必要になった場合。
+    - plan amendment と re-review が必要になる発見:
 
-### S02 — VCS branch-start base resolver
-- behavior goal:
-  - `--base` 未指定時に default branch candidate merge-base、または initial commit fallback を resolved base として返す。
-- design 参照:
-  - `design.md` の採用方針 / インターフェース契約。
-- 依存:
-  - S01。
-- unblock:
-  - S03 が resolved base diagnostics と app integration を閉じられる。
-- 対象ファイル:
-  - `src/pyclassuml/vcs/diff_collect.py`
-  - `tests/vcs/test_diff_file_collect.py`
-- planned contract:
-  - test obligation:
-    - closure id: tc-002, tc-003, tc-004
-    - coverage rationale: no-base happy path、fallback path、no-commit failure を固定する。
-  - Red / alternative evidence requirement:
-    - red-required: temp Git repository fixtures で default branch merge-base / fallback / no commit failure を検出する tests。
-  - implementation scope:
-    - allowed paths: vcs diff collection と vcs tests。
-    - forbidden changes: parser / renderer / analyzer behavior。
-  - Green verification:
-    - `uv run pytest tests/vcs/test_diff_file_collect.py`
-  - report evidence destination:
-    - `report.md` の S02 session、Step Contract Closure、Test Contract Closure。
-  - amendment trigger:
-    - candidate priority を Q-001 推奨案から変える場合。
+#### delegation contract
+- delegated role:
+  - dev-coder / doc-writer / other named worker / N/A
+- input docs:
+  - `requirement.md`
+  - `design.md`
+  - `plan.md`
+  - workflow / authoring docs:
+  - current target files:
+- allowed paths:
+  - ...
+- forbidden changes:
+  - ...
+- acceptance criteria:
+  - closure id / step close condition:
+- required tests or docs-only verification:
+  - targeted command / inspection / docs diff / manual evidence:
+- reviewer focus:
+  - code-reviewer for code / runtime / tests / scaffold behavior; spec-reviewer for docs-only / template-only / skill-text-only docs/spec alignment
+- output required:
+  - changed files:
+  - verification result:
+  - report evidence to update:
+  - unresolved risks:
+- stop conditions:
+  - input docs conflict / path outside allowed scope / verification cannot run / acceptance cannot be met:
 
-### S03 — App / report / docs integration
-- behavior goal:
-  - resolved base が app pipeline、report diagnostics、README で観測でき、`--current-state head` との整合を確認する。
-- design 参照:
-  - `design.md` のテスト戦略とリスク緩和。
-- 依存:
-  - S02。
-- unblock:
-  - S90 / S99。
-- 対象ファイル:
-  - `src/pyclassuml/app/diff.py`
-  - `src/pyclassuml/report/`
-  - `README.md`
-  - `tests/app/test_diff.py`
-  - `tests/report/test_policy.py`
-  - `tests/cli/test_main.py`
-- planned contract:
-  - test obligation:
-    - closure id: tc-005, tc-006
-    - coverage rationale: current-state semantics と user-visible explanation の regression を検出する。
-  - Red / alternative evidence requirement:
-    - red-required: no-base `--current-state head` integration test と diagnostics/report assertion。
-  - implementation scope:
-    - allowed paths: app/report/docs/integration tests。
-    - forbidden changes: UML rendering algorithm の仕様外変更。
-  - Green verification:
-    - `uv run pytest tests/app/test_diff.py tests/report/test_policy.py tests/cli/test_main.py`
-  - report evidence destination:
-    - `report.md` の S03 session、Step Contract Closure、Test Contract Closure。
-  - amendment trigger:
-    - report schema / summary contract の変更が必要になった場合。
+#### 具体テストケース一覧
+
+> この欄は full test inventory ではありません。step-local obligation と concrete red / characterization / inspect / manual seeds を、実装前に固定するための欄です。
+
+- `tc-s01-001` acceptance: <短い説明>
+  - 前提: ...
+  - 操作: ...
+  - 期待結果: ...
+  - 失敗検出: ...
+  - 検証方法: ...
+  - 関連 closure id: tc-001
+
+- `tc-s01-002` inspect-only / manual-required: <短い説明>
+  - テスト不要理由: <自動テスト不要の理由>
+  - 代替検証方法: <確認手順>
+  - 期待結果: <期待される状態>
+  - 記録先: <証跡の保存先>
+  - 関連 closure id: tc-002
+
+#### step closure contract
+- closure id:
+  - tc-001
+- close 条件:
+  - ...
+- 検証 evidence:
+  - targeted command / inspection / manual evidence:
+- report evidence:
+  - Step Contract Closure:
+  - Test Contract Closure:
+  - Closure Coverage:
+  - Closure Delta:
+- 残リスク:
+  - ...
+
+#### step gate
+- step reviewer gate:
+  - reviewer:
+  - review 範囲:
+  - pass 条件: review_status: pass
+  - re-review rule: 指摘を修正し pass まで再実行
+- commit / no-op gate:
+  - closure 状態: committed / approved-no-op
+  - commit 範囲:
+  - no-op の場合の確認対象、差分なし確認コマンド、read-only evidence:
+
+### Sxx — <next observable behavior>
+- S01 の subsections を複製して記入する。
+- `planned contract`、`delegation contract`、`具体テストケース一覧`、`step closure contract`、`step gate` がない implementation step は implementation-ready ではない。
 
 ### S90 — docs impact resolution / docs refresh
 - 対象:
-  - `README.md`
-  - 必要に応じて config reference。
+  - docs / templates / README / workflow / skill / migration notes / none
 - 対応:
-  - `diff [options] [--base <ref>]`、`--base` 省略時の best effort resolver、initial commit fallback、明示 `--base` の後方互換を文書化する。
+  - ...
+- doc update owner:
+  - doc-writer when updates are required
 - spec/doc review:
-  - reviewer: spec-reviewer。
-  - pass 条件: docs が requirement / design / plan と整合する。
+  - reviewer: spec-reviewer
+  - pass 条件: docs が requirement / design / plan と整合し、未解決の必須 docs 影響が残っていない
 
 ### S99 — final quality gate
 - branch diff 範囲:
-  - `iss-00036` issue branch 全体。
+  - ...
 - 必須 validation:
-  - `uv run pytest`
-  - `./spec-dock/scripts/spec-dock validate`
-  - `git diff --check`
+  - ...
 - final QA gate:
-  - reviewer: qa-reviewer。
-  - 範囲: obligation coverage と integration test 要否。
-  - pass 条件: reviewer pass。
+  - reviewer: qa-reviewer
+  - 範囲: Issue 全体の obligation coverage と integration test 要否
+  - pass 条件: reviewer pass
 - final code review ゲート:
-  - reviewer: code-reviewer。
-  - 範囲: issue-wide integrated diff、構造、責務境界、回帰リスク、保守性。
-  - pass 条件: review_status: pass。
+  - reviewer: code-reviewer
+  - 範囲: issue-wide integrated diff、構造、責務境界、回帰リスク、保守性
+  - pass 条件: review_status: pass
 - final spec review ゲート:
-  - reviewer: spec-reviewer。
-  - 範囲: requirement / design / plan / report / implementation / tests / docs 整合。
-  - pass 条件: reviewer pass。
+  - reviewer: spec-reviewer
+  - 範囲: requirement / design / plan / report / implementation / tests / docs 整合
+  - pass 条件: reviewer pass
 - final commit gate:
-  - commit 範囲: issue implementation, tests, docs, report ledger。
-  - post-commit external evidence destination: final response / PR description。
+  - commit 範囲:
+  - final report ledger:
+  - post-commit external evidence destination:
 
 ## 未確定事項
 - Q-001:
-  - 質問: default branch candidate の固定順序。
-  - 推奨案: `origin/HEAD`, `origin/main`, `origin/develop`, `main`, `develop`, `master`。
-  - 影響範囲: resolver tests、README 文面。
+  - 質問:
+  - 推奨案:
+  - 影響範囲:
 
 ## 最終完了条件
 - AC/EC 達成:
-  - AC-001〜AC-004、EC-001〜EC-003 が closure evidence で閉じている。
+  - ...
 - docs 影響解決:
-  - README 更新済み。
+  - ...
 - 全 implementation step 完了:
-  - S01〜S03 committed / approved-no-op。
+  - committed / approved-no-op:
 - final quality gate pass:
-  - qa-reviewer / code-reviewer / spec-reviewer が pass。
+  - qa-reviewer:
+  - issue-wide code-reviewer:
+  - spec-reviewer:
+- final commit 完了:
+  - ...
+- 必須 closure id 完了:
+  - Step Contract Closure:
+  - Test Contract Closure:
+  - Closure Coverage:
+- final clean state:
+  - no unintended staged / unstaged changes:
