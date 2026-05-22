@@ -680,6 +680,7 @@ def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
         "pkg/models.py:D",
         "pkg/models.py:E",
         "pkg/models.py:F",
+        "pkg/models.py:G",
     )
     result = render_uml_document(
         parsed_modules=(parsed_module("pkg/models.py", *class_ids),),
@@ -693,6 +694,7 @@ def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
                 relation("pkg/models.py:D", "pkg/models.py:E", relation_type="aggregation"),
                 relation("pkg/models.py:E", "pkg/models.py:F", relation_type="association"),
                 relation("pkg/models.py:F", "pkg/models.py:A", relation_type="uses"),
+                relation("pkg/models.py:G", "pkg/models.py:A", relation_type="dependency"),
             )
         ),
         sqlalchemy_hints=SqlalchemyEnrichmentHints(),
@@ -709,6 +711,7 @@ def test_render_plantuml_text_maps_relation_types_without_labels() -> None:
         "c004 o-- c005",
         "c005 --> c006",
         "c006 ..> c001",
+        "c007 ..> c001",
     )
     assert "*-->" not in result.plantuml_text.text
     assert "o-->" not in result.plantuml_text.text

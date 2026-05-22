@@ -489,6 +489,7 @@ def _relation_arrow(relation_type: RelationType) -> str:
         "aggregation": "o--",
         "association": "-->",
         "uses": "..>",
+        "dependency": "..>",
     }[relation_type]
 
 

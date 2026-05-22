@@ -84,6 +84,21 @@ def semantic_references(class_references: tuple[ClassReference, ...]) -> tuple[C
     )
 
 
+def dependency_references(class_references: tuple[ClassReference, ...]) -> tuple[ClassReference, ...]:
+    return tuple(
+        reference
+        for reference in class_references
+        if reference.reference_kind
+        in {
+            "direct_class_call",
+            "direct_class_member_access",
+            "type_check_dependency",
+            "cast_dependency",
+            "local_annotation_dependency",
+        }
+    )
+
+
 def test_seed_file_parse_builds_parsed_module_and_index(tmp_path: Path) -> None:
     project = tmp_path / "project"
     seed = write_file(
@@ -849,6 +864,168 @@ def test_raw_class_references_are_ordered_by_source_position_before_lexical_fiel
     )
 
 
+def test_method_body_direct_use_dependency_references_are_extracted_deterministically(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "import typing",
+                "from typing import cast",
+                "import pkg.b as module",
+                "class A:",
+                "    def make(self, value):",
+                "        one = B()",
+                "        two = B.factory()",
+                "        three = B.CONST",
+                "        four = module.B()",
+                "        five = module.B.CONST",
+                "        if isinstance(value, B):",
+                "            pass",
+                "        if issubclass(type(value), B):",
+                "            pass",
+                "        typed = typing.cast(B, value)",
+                "        local = cast(B, value)",
+                "        annotated: B = value",
+                "        self.b = B()",
+                "class B:",
+                "    CONST = object()",
+                "    @classmethod",
+                "    def factory(cls):",
+                "        return cls()",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert tuple(
+        (reference.target_name, reference.reference_kind)
+        for reference in dependency_references(result.parsed_modules[0].class_references)
+    ) == (
+        ("B", "direct_class_call"),
+        ("B", "direct_class_member_access"),
+        ("B", "direct_class_member_access"),
+        ("module.B", "direct_class_call"),
+        ("module.B", "direct_class_member_access"),
+        ("B", "type_check_dependency"),
+        ("B", "type_check_dependency"),
+        ("B", "cast_dependency"),
+        ("B", "cast_dependency"),
+        ("B", "local_annotation_dependency"),
+        ("B", "direct_class_call"),
+    )
+
+
+def test_method_body_dependency_references_skip_dynamic_nested_and_lambda_uses(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    def make(self):",
+                "        dynamic = getattr(module, 'B')",
+                "        def nested():",
+                "            return B()",
+                "        async def async_nested():",
+                "            return B.factory()",
+                "        local = lambda: B()",
+                "        class Local:",
+                "            value = B()",
+                "        return None",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert dependency_references(result.parsed_modules[0].class_references) == ()
+
+
+def test_method_body_dependency_references_skip_shadowed_direct_calls(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "def B():",
+                "    return None",
+                "class A:",
+                "    def parameter_shadow(self, B):",
+                "        return B()",
+                "    def parameter_member_shadow(self, B):",
+                "        return B.factory()",
+                "    def assignment_shadow(self):",
+                "        B = lambda: None",
+                "        return B()",
+                "    def assignment_member_shadow(self):",
+                "        B = lambda: None",
+                "        return B.CONST",
+                "    def function_shadow(self):",
+                "        def B():",
+                "            return None",
+                "        return B()",
+                "    def function_member_shadow(self):",
+                "        def B():",
+                "            return None",
+                "        return B.factory()",
+                "    def type_check_shadow(self, B, value):",
+                "        return isinstance(value, B)",
+                "    def cast_shadow(self, B, value):",
+                "        return cast(B, value)",
+                "    def annotation_shadow(self, B, value):",
+                "        local: B = value",
+                "        return local",
+                "    def match_shadow(self, value):",
+                "        match value:",
+                "            case B:",
+                "                return B()",
+                "class B:",
+                "    CONST = 1",
+                "    @classmethod",
+                "    def factory(cls):",
+                "        return cls()",
+                "    pass",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert dependency_references(result.parsed_modules[0].class_references) == ()
+
+
+def test_method_body_dependency_references_keep_module_qualified_target_when_terminal_name_is_shadowed(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "import pkg.target as target",
+                "class A:",
+                "    def parameter_shadow(self, B):",
+                "        return target.B()",
+                "    def member_shadow(self, B):",
+                "        return target.B.CONST",
+            ]
+        ),
+    )
+    write_file(project / "pkg" / "target.py", "class B:\n    CONST = 1\n")
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert tuple(
+        (reference.target_name, reference.reference_kind)
+        for reference in dependency_references(result.module_index.module_by_path[Path("pkg/a.py")].class_references)
+    ) == (
+        ("target.B", "direct_class_call"),
+        ("target.B", "direct_class_member_access"),
+    )
+
+
 def test_class_base_references_are_generic_and_deterministic(tmp_path: Path) -> None:
     project = tmp_path / "project"
     seed = write_file(
@@ -1394,6 +1571,21 @@ def test_import_candidates_are_parsed_recursively_and_indexed_deterministically(
         dependency_b.relative_to(project): Path("pkg/b.py"),
         dependency_c.relative_to(project): Path("pkg/sub/c.py"),
         seed.relative_to(project): Path("pkg/a.py"),
+    }
+
+
+def test_import_candidate_index_preserves_module_alias_text(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    package = project / "pkg"
+    seed = write_file(package / "source.py", "import pkg.target as target\nclass Source: pass\n")
+    dependency = write_file(package / "target.py", "class B: pass\n")
+
+    result = parse_target_set(target_set(seed), context(project, package_root=package), AnalysisConfig())
+
+    assert result.diagnostics == ()
+    assert result.module_index.module_by_path[Path("pkg/source.py")].imports == ("pkg.target as target",)
+    assert result.module_index.import_candidate_paths == {
+        "pkg.target as target": (dependency.relative_to(project),),
     }
 
 
