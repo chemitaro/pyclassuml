@@ -19,13 +19,15 @@ ID: "iss-00040"
 - `requirement.md` / `design.md` / `plan.md` は作成済みで、実装前 `spec-reviewer` gate は pass 済み。
 - S01 は実装済みで、tc-001 の Red/Green evidence を記録済み。
 - S01 code-reviewer gate は再レビューで pass 済み。P2 の status cleanup はこの report 更新で対応した。
-- S02 以降の実装、final quality gate、PR gate は未実施。
+- S02 は実装済みで、tc-002 / tc-003 の Red/Green evidence を記録済み。code-reviewer gate は未実施。
+- S03 以降の実装、final quality gate、PR gate は未実施。
 
 ## Spec Interpretation / Decision Ledger
 
 | ID | Status | Type | Raised By | Trigger / Gap | Options Considered | Decision / Interpretation | Rationale | Disposition | Evidence | Follow-up |
 |---|---|---|---|---|---|---|---|---|---|---|
 | D-001 | resolved | scope | user / investigation | 直接依存 relation 欠落の調査結果を report ではなく research/scratch にまとめるべきという指摘 | report に詳細を置く; research に移し report は参照だけにする | 詳細調査は issue discussions の research artifact に置き、report は作業ログと反映先参照に留める | report は observed evidence ledger であり、調査本文の一次整理は research の責務に合う | applied | `discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` | requirement/design/plan 作成時に research を参照 |
+| D-002 | resolved | implementation-detail | dev-coder / parent | S02 で同一 method 内の複数 direct-use evidence が既存 `_ordered_class_references()` の dedupe で潰れうる | method name only; semantic expression owner; method name + AST source position | method body dependency evidence の `reference_owner` は `{method}@{lineno}:{col_offset}` とする | schema 追加なしで distinct evidence と deterministic ordering を保てる。`reference_owner` は user-facing contract ではなく diagnostics / evidence identity 用の issue-local detail | applied | S02 parse tests, parent inspection, code-reviewer pass with P2 disposition cleanup | なし。将来 semantic owner が必要になった場合は別 issue で再検討 |
 
 ## 実装記録（セッションログ）
 
@@ -369,6 +371,74 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 - `tests/render/test_document.py` - `dependency` arrow mapping assertion を追加。
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - S01 closure evidence を記録。
 
+#### コミット
+
+- `d80fb8c feat(render): dependency relation typeを追加`
+
+### 2026-05-22 19:35 - 19:55 JST
+
+#### 対象
+
+- Step: S02 parse method body dependency evidence
+- Closure ids:
+  - `tc-002`
+  - `tc-003`
+- Planned source:
+  - `plan.md` S02
+
+#### Implementation Delegation Gate
+
+| step | decision | required reason | delegated role | delegated scope | source of truth | allowed changes | forbidden changes | required verification | stop conditions | output required | observed result |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| S02 | delegated | code / tests change | dev-coder | method body direct-use dependency evidence extraction | `requirement.md`, `design.md`, `plan.md` S02 | `src/pyclassuml/parse/indexer.py`, `tests/parse/test_module_parse_and_index.py` | model/render/analyze/app changes, spec-dock docs/report changes, target resolution, data-flow tracking, dynamic inference | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/parse/test_module_parse_and_index.py` | AST scope requires data-flow/runtime import execution | changed files, Red/Green result, Ledger Note | completed; Ledger Note D-002 integrated |
+
+#### Red / Green Evidence
+
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| S02 | Red | direct-use dependency parse tests fail before implementation | delegated worker reported `1 failed, 39 passed`; dependency evidence was empty | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/parse/test_module_parse_and_index.py` | pass | red evidence from delegated worker |
+| S02 | Green | parse targeted tests pass after implementation | parent rerun confirmed `40 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/parse/test_module_parse_and_index.py` | pass | includes direct-use and skip-boundary tests |
+| S02 | Regression | existing analyze/model/render tests still pass after parse evidence addition | parent ran combined targeted tests | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_selection.py tests/model/test_contracts.py tests/render/test_document.py` | pass, `86 passed` | selection ignores new evidence until S03 |
+
+#### Step Contract Closure
+
+| step | closure id | close condition | evidence | result | notes |
+|---|---|---|---|---|---|
+| S02 | tc-002 | method body direct-use patterns emit deterministic dependency evidence | parse targeted tests pass; diff inspected by parent | pass | parse-side only; selection is S03 |
+| S02 | tc-003 | dynamic references and nested function/lambda bodies do not become outer class dependency evidence | parse targeted tests pass | pass | false-positive guard |
+
+#### Test Contract Closure
+
+| closure id | step | evidence level | pre-implementation evidence | verification command | result |
+|---|---|---|---|---|---|
+| tc-002 | S02 | red-required | delegated worker observed `1 failed, 39 passed` before implementation | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/parse/test_module_parse_and_index.py` | pass, `40 passed` |
+| tc-003 | S02 | red-required | delegated worker observed `1 failed, 39 passed` before implementation | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/parse/test_module_parse_and_index.py` | pass, `40 passed` |
+
+#### Closure Coverage
+
+| closure id | AC / EC / constraint | evidence | status |
+|---|---|---|---|
+| tc-002 | AC-001 / AC-005 / AC-006 parse-side | direct constructor, member access, type check, cast, local annotation, `self.b = B()` evidence extracted | closed |
+| tc-003 | EC-003 / EC-004 parse-side | dynamic `getattr`, nested function, async nested function, lambda, nested class bodies skipped | closed |
+
+#### Closure Delta
+
+| step | added | removed | changed | re-review required | notes |
+|---|---|---|---|---|---|
+| S02 | none | none | none | yes | no plan amendment; code-reviewer review required |
+
+#### Reviewer Gate Status
+
+| step | gate name | reviewer role | freshness | state | risk acceptance | promotion / completion decision | notes |
+|---|---|---|---|---|---|---|---|
+| S02 | code review | code-reviewer | pending | provisional | no | pending | run after this report update |
+
+#### 変更したファイル
+
+- `src/pyclassuml/parse/indexer.py` - method body direct-use dependency evidence extraction を追加。
+- `tests/parse/test_module_parse_and_index.py` - direct-use extraction と skip-boundary tests を追加。
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - S02 closure evidence と D-002 を記録。
+
 ## Final Quality Gate
 
 この issue はまだ実装前であり、final gate は未実施。
@@ -414,9 +484,9 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 ## 今後の推奨事項
 
-- 次は `plan.md` の S02 として parse evidence extraction を実装する。
+- 次は `plan.md` の S03 として dependency relation selection / target resolution を実装する。
 - 各 implementation step では `report.md` に Red/Green/Review/Commit evidence を残してから次 step へ進む。
 
 ## 省略/例外メモ
 
-- S02 以降の実装、final quality gate、PR gate は未実施。
+- S03 以降の実装、final quality gate、PR gate は未実施。

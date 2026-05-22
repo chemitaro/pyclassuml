@@ -683,6 +683,7 @@ def _class_body_references(
             references.extend(method_references)
             diagnostics.extend(method_diagnostics)
             references.extend(_init_field_annotation_references(statement, source_class_id, annotation_text_cache))
+            references.extend(_method_body_dependency_references(statement, source_class_id, annotation_text_cache))
             continue
         references.extend(_field_annotation_references_in_statement(statement, source_class_id, annotation_text_cache))
         references.extend(_annotation_string_references_in_statement(statement, source_class_id))
@@ -817,6 +818,147 @@ def _init_field_annotation_references(
             )
         )
     return tuple(references)
+
+
+def _method_body_dependency_references(
+    function_def: ast.FunctionDef | ast.AsyncFunctionDef,
+    source_class_id: str,
+    annotation_text_cache: _AnnotationTextCache,
+) -> tuple[_PositionedReference, ...]:
+    references: list[_PositionedReference] = []
+    for statement in function_def.body:
+        if isinstance(statement, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for node in _walk_without_nested_definition_bodies(statement):
+            owner = _method_body_reference_owner(function_def, node)
+            if isinstance(node, ast.AnnAssign):
+                references.extend(
+                    _semantic_annotation_references(
+                        node.annotation,
+                        source_class_id=source_class_id,
+                        reference_kind="local_annotation_dependency",
+                        reference_owner=owner,
+                        lineno=node.annotation.lineno,
+                        col_offset=node.annotation.col_offset,
+                        annotation_text_cache=annotation_text_cache,
+                    )
+                )
+                continue
+
+            if isinstance(node, ast.Call):
+                references.extend(_call_dependency_references(node, source_class_id, owner))
+                continue
+
+            if isinstance(node, ast.Attribute):
+                member_target = _class_member_access_target(node)
+                if member_target is None:
+                    continue
+                references.append(
+                    _PositionedReference(
+                        reference=ClassReference(
+                            source_class_id=source_class_id,
+                            target_name=member_target,
+                            reference_kind="direct_class_member_access",
+                            reference_owner=owner,
+                        ),
+                        lineno=node.lineno,
+                        col_offset=node.col_offset,
+                    )
+                )
+    return tuple(references)
+
+
+def _method_body_reference_owner(
+    function_def: ast.FunctionDef | ast.AsyncFunctionDef,
+    node: ast.AST,
+) -> str:
+    lineno = getattr(node, "lineno", function_def.lineno)
+    col_offset = getattr(node, "col_offset", function_def.col_offset)
+    return f"{function_def.name}@{lineno}:{col_offset}"
+
+
+def _call_dependency_references(
+    call: ast.Call,
+    source_class_id: str,
+    reference_owner: str,
+) -> tuple[_PositionedReference, ...]:
+    references: list[_PositionedReference] = []
+
+    type_check_targets = _type_check_dependency_targets(call)
+    if type_check_targets:
+        references.extend(
+            _PositionedReference(
+                reference=ClassReference(
+                    source_class_id=source_class_id,
+                    target_name=target_name,
+                    reference_kind="type_check_dependency",
+                    reference_owner=reference_owner,
+                ),
+                lineno=call.lineno,
+                col_offset=call.col_offset,
+            )
+            for target_name in type_check_targets
+        )
+        return tuple(references)
+
+    cast_targets = _cast_dependency_targets(call)
+    if cast_targets:
+        references.extend(
+            _PositionedReference(
+                reference=ClassReference(
+                    source_class_id=source_class_id,
+                    target_name=target_name,
+                    reference_kind="cast_dependency",
+                    reference_owner=reference_owner,
+                ),
+                lineno=call.lineno,
+                col_offset=call.col_offset,
+            )
+            for target_name in cast_targets
+        )
+        return tuple(references)
+
+    call_target = _direct_class_call_target(call)
+    if call_target is not None:
+        references.append(
+            _PositionedReference(
+                reference=ClassReference(
+                    source_class_id=source_class_id,
+                    target_name=call_target,
+                    reference_kind="direct_class_call",
+                    reference_owner=reference_owner,
+                ),
+                lineno=call.func.lineno,
+                col_offset=call.func.col_offset,
+            )
+        )
+    return tuple(references)
+
+
+def _type_check_dependency_targets(call: ast.Call) -> tuple[str, ...]:
+    if _terminal_name(call.func) not in {"isinstance", "issubclass"} or len(call.args) < 2:
+        return ()
+    return _semantic_class_like_names(call.args[1])
+
+
+def _cast_dependency_targets(call: ast.Call) -> tuple[str, ...]:
+    if _dotted_name(call.func) not in {"cast", "typing.cast"} or not call.args:
+        return ()
+    return _semantic_class_like_names(call.args[0])
+
+
+def _direct_class_call_target(call: ast.Call) -> str | None:
+    target_name = _dotted_name(call.func)
+    if target_name is None or not _is_class_like_target(target_name):
+        return None
+    return target_name
+
+
+def _class_member_access_target(attribute: ast.Attribute) -> str | None:
+    target_name = _dotted_name(attribute.value)
+    if target_name is None or not _is_class_like_target(target_name):
+        return None
+    return target_name
 
 
 def _semantic_annotation_references(

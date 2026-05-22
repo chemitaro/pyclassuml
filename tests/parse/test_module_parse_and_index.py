@@ -84,6 +84,21 @@ def semantic_references(class_references: tuple[ClassReference, ...]) -> tuple[C
     )
 
 
+def dependency_references(class_references: tuple[ClassReference, ...]) -> tuple[ClassReference, ...]:
+    return tuple(
+        reference
+        for reference in class_references
+        if reference.reference_kind
+        in {
+            "direct_class_call",
+            "direct_class_member_access",
+            "type_check_dependency",
+            "cast_dependency",
+            "local_annotation_dependency",
+        }
+    )
+
+
 def test_seed_file_parse_builds_parsed_module_and_index(tmp_path: Path) -> None:
     project = tmp_path / "project"
     seed = write_file(
@@ -847,6 +862,85 @@ def test_raw_class_references_are_ordered_by_source_position_before_lexical_fiel
             reference_owner="link_to",
         ),
     )
+
+
+def test_method_body_direct_use_dependency_references_are_extracted_deterministically(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "import typing",
+                "from typing import cast",
+                "import pkg.b as module",
+                "class A:",
+                "    def make(self, value):",
+                "        one = B()",
+                "        two = B.factory()",
+                "        three = B.CONST",
+                "        four = module.B()",
+                "        five = module.B.CONST",
+                "        if isinstance(value, B):",
+                "            pass",
+                "        if issubclass(type(value), B):",
+                "            pass",
+                "        typed = typing.cast(B, value)",
+                "        local = cast(B, value)",
+                "        annotated: B = value",
+                "        self.b = B()",
+                "class B:",
+                "    CONST = object()",
+                "    @classmethod",
+                "    def factory(cls):",
+                "        return cls()",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert tuple(
+        (reference.target_name, reference.reference_kind)
+        for reference in dependency_references(result.parsed_modules[0].class_references)
+    ) == (
+        ("B", "direct_class_call"),
+        ("B", "direct_class_member_access"),
+        ("B", "direct_class_member_access"),
+        ("module.B", "direct_class_call"),
+        ("module.B", "direct_class_member_access"),
+        ("B", "type_check_dependency"),
+        ("B", "type_check_dependency"),
+        ("B", "cast_dependency"),
+        ("B", "cast_dependency"),
+        ("B", "local_annotation_dependency"),
+        ("B", "direct_class_call"),
+    )
+
+
+def test_method_body_dependency_references_skip_dynamic_nested_and_lambda_uses(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "class A:",
+                "    def make(self):",
+                "        dynamic = getattr(module, 'B')",
+                "        def nested():",
+                "            return B()",
+                "        async def async_nested():",
+                "            return B.factory()",
+                "        local = lambda: B()",
+                "        class Local:",
+                "            value = B()",
+                "        return None",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert dependency_references(result.parsed_modules[0].class_references) == ()
 
 
 def test_class_base_references_are_generic_and_deterministic(tmp_path: Path) -> None:
