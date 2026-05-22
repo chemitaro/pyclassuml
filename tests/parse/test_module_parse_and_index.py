@@ -943,6 +943,89 @@ def test_method_body_dependency_references_skip_dynamic_nested_and_lambda_uses(t
     assert dependency_references(result.parsed_modules[0].class_references) == ()
 
 
+def test_method_body_dependency_references_skip_shadowed_direct_calls(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "def B():",
+                "    return None",
+                "class A:",
+                "    def parameter_shadow(self, B):",
+                "        return B()",
+                "    def parameter_member_shadow(self, B):",
+                "        return B.factory()",
+                "    def assignment_shadow(self):",
+                "        B = lambda: None",
+                "        return B()",
+                "    def assignment_member_shadow(self):",
+                "        B = lambda: None",
+                "        return B.CONST",
+                "    def function_shadow(self):",
+                "        def B():",
+                "            return None",
+                "        return B()",
+                "    def function_member_shadow(self):",
+                "        def B():",
+                "            return None",
+                "        return B.factory()",
+                "    def type_check_shadow(self, B, value):",
+                "        return isinstance(value, B)",
+                "    def cast_shadow(self, B, value):",
+                "        return cast(B, value)",
+                "    def annotation_shadow(self, B, value):",
+                "        local: B = value",
+                "        return local",
+                "    def match_shadow(self, value):",
+                "        match value:",
+                "            case B:",
+                "                return B()",
+                "class B:",
+                "    CONST = 1",
+                "    @classmethod",
+                "    def factory(cls):",
+                "        return cls()",
+                "    pass",
+            ]
+        ),
+    )
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert dependency_references(result.parsed_modules[0].class_references) == ()
+
+
+def test_method_body_dependency_references_keep_module_qualified_target_when_terminal_name_is_shadowed(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    seed = write_file(
+        project / "pkg" / "a.py",
+        "\n".join(
+            [
+                "import pkg.target as target",
+                "class A:",
+                "    def parameter_shadow(self, B):",
+                "        return target.B()",
+                "    def member_shadow(self, B):",
+                "        return target.B.CONST",
+            ]
+        ),
+    )
+    write_file(project / "pkg" / "target.py", "class B:\n    CONST = 1\n")
+
+    result = parse_target_set(target_set(seed), context(project, package_root=project / "pkg"), AnalysisConfig())
+
+    assert tuple(
+        (reference.target_name, reference.reference_kind)
+        for reference in dependency_references(result.module_index.module_by_path[Path("pkg/a.py")].class_references)
+    ) == (
+        ("target.B", "direct_class_call"),
+        ("target.B", "direct_class_member_access"),
+    )
+
+
 def test_class_base_references_are_generic_and_deterministic(tmp_path: Path) -> None:
     project = tmp_path / "project"
     seed = write_file(

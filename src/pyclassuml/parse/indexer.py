@@ -832,6 +832,7 @@ def _method_body_dependency_references(
     annotation_text_cache: _AnnotationTextCache,
 ) -> tuple[_PositionedReference, ...]:
     references: list[_PositionedReference] = []
+    shadowed_names = _method_body_shadowed_names(function_def)
     for statement in function_def.body:
         if isinstance(statement, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
@@ -839,25 +840,28 @@ def _method_body_dependency_references(
             owner = _method_body_reference_owner(function_def, node)
             if isinstance(node, ast.AnnAssign):
                 references.extend(
-                    _semantic_annotation_references(
-                        node.annotation,
-                        source_class_id=source_class_id,
-                        reference_kind="local_annotation_dependency",
-                        reference_owner=owner,
-                        lineno=node.annotation.lineno,
-                        col_offset=node.annotation.col_offset,
-                        annotation_text_cache=annotation_text_cache,
+                    _filter_shadowed_dependency_references(
+                        _semantic_annotation_references(
+                            node.annotation,
+                            source_class_id=source_class_id,
+                            reference_kind="local_annotation_dependency",
+                            reference_owner=owner,
+                            lineno=node.annotation.lineno,
+                            col_offset=node.annotation.col_offset,
+                            annotation_text_cache=annotation_text_cache,
+                        ),
+                        shadowed_names,
                     )
                 )
                 continue
 
             if isinstance(node, ast.Call):
-                references.extend(_call_dependency_references(node, source_class_id, owner))
+                references.extend(_call_dependency_references(node, source_class_id, owner, shadowed_names))
                 continue
 
             if isinstance(node, ast.Attribute):
                 member_target = _class_member_access_target(node)
-                if member_target is None:
+                if member_target is None or _is_shadowed_bare_dependency_target(member_target, shadowed_names):
                     continue
                 references.append(
                     _PositionedReference(
@@ -874,6 +878,81 @@ def _method_body_dependency_references(
     return tuple(references)
 
 
+def _method_body_shadowed_names(function_def: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    names: set[str] = set(_argument_names(function_def.args))
+    for statement in function_def.body:
+        if isinstance(statement, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.add(statement.name)
+            continue
+        for node in _walk_without_nested_definition_bodies(statement):
+            if isinstance(node, ast.NamedExpr):
+                names.update(_stored_names(node.target))
+            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.For, ast.AsyncFor, ast.With, ast.AsyncWith, ast.ExceptHandler, ast.Match)):
+                names.update(_statement_bound_names(node))
+    return frozenset(name for name in names if name)
+
+
+def _argument_names(args: ast.arguments) -> tuple[str, ...]:
+    positional = (*args.posonlyargs, *args.args, *args.kwonlyargs)
+    names = [argument.arg for argument in positional]
+    if args.vararg is not None:
+        names.append(args.vararg.arg)
+    if args.kwarg is not None:
+        names.append(args.kwarg.arg)
+    return tuple(names)
+
+
+def _statement_bound_names(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Assign):
+        return tuple(name for target in node.targets for name in _stored_names(target))
+    if isinstance(node, ast.AnnAssign):
+        return _stored_names(node.target)
+    if isinstance(node, ast.AugAssign):
+        return _stored_names(node.target)
+    if isinstance(node, (ast.For, ast.AsyncFor)):
+        return _stored_names(node.target)
+    if isinstance(node, (ast.With, ast.AsyncWith)):
+        return tuple(
+            name
+            for item in node.items
+            if item.optional_vars is not None
+            for name in _stored_names(item.optional_vars)
+        )
+    if isinstance(node, ast.ExceptHandler) and node.name is not None:
+        return (node.name,)
+    if isinstance(node, ast.Match):
+        return tuple(name for case in node.cases for name in _pattern_bound_names(case.pattern))
+    return ()
+
+
+def _pattern_bound_names(pattern: ast.AST) -> tuple[str, ...]:
+    if isinstance(pattern, ast.MatchAs):
+        names = (pattern.name,) if pattern.name is not None else ()
+        if pattern.pattern is None:
+            return names
+        return (*names, *_pattern_bound_names(pattern.pattern))
+    if isinstance(pattern, ast.MatchStar):
+        return (pattern.name,) if pattern.name is not None else ()
+    if isinstance(pattern, ast.MatchMapping):
+        rest = (pattern.rest,) if pattern.rest is not None else ()
+        return (*rest, *(name for nested in pattern.patterns for name in _pattern_bound_names(nested)))
+    if isinstance(pattern, ast.MatchClass):
+        return tuple(name for nested in (*pattern.patterns, *pattern.kwd_patterns) for name in _pattern_bound_names(nested))
+    if isinstance(pattern, ast.MatchSequence):
+        return tuple(name for nested in pattern.patterns for name in _pattern_bound_names(nested))
+    if isinstance(pattern, ast.MatchOr):
+        return tuple(name for nested in pattern.patterns for name in _pattern_bound_names(nested))
+    return ()
+
+
+def _stored_names(target: ast.AST) -> tuple[str, ...]:
+    if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Store):
+        return (target.id,)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return tuple(name for element in target.elts for name in _stored_names(element))
+    return ()
+
+
 def _method_body_reference_owner(
     function_def: ast.FunctionDef | ast.AsyncFunctionDef,
     node: ast.AST,
@@ -883,14 +962,30 @@ def _method_body_reference_owner(
     return f"{function_def.name}@{lineno}:{col_offset}"
 
 
+def _filter_shadowed_dependency_references(
+    references: tuple[_PositionedReference, ...],
+    shadowed_names: frozenset[str],
+) -> tuple[_PositionedReference, ...]:
+    return tuple(
+        reference
+        for reference in references
+        if not _is_shadowed_bare_dependency_target(reference.reference.target_name, shadowed_names)
+    )
+
+
 def _call_dependency_references(
     call: ast.Call,
     source_class_id: str,
     reference_owner: str,
+    shadowed_names: frozenset[str],
 ) -> tuple[_PositionedReference, ...]:
     references: list[_PositionedReference] = []
 
-    type_check_targets = _type_check_dependency_targets(call)
+    type_check_targets = tuple(
+        target_name
+        for target_name in _type_check_dependency_targets(call)
+        if not _is_shadowed_bare_dependency_target(target_name, shadowed_names)
+    )
     if type_check_targets:
         references.extend(
             _PositionedReference(
@@ -907,7 +1002,11 @@ def _call_dependency_references(
         )
         return tuple(references)
 
-    cast_targets = _cast_dependency_targets(call)
+    cast_targets = tuple(
+        target_name
+        for target_name in _cast_dependency_targets(call)
+        if not _is_shadowed_bare_dependency_target(target_name, shadowed_names)
+    )
     if cast_targets:
         references.extend(
             _PositionedReference(
@@ -925,6 +1024,8 @@ def _call_dependency_references(
         return tuple(references)
 
     call_target = _direct_class_call_target(call)
+    if call_target is not None and _is_shadowed_bare_dependency_target(call_target, shadowed_names):
+        return ()
     if call_target is not None:
         references.append(
             _PositionedReference(
@@ -939,6 +1040,10 @@ def _call_dependency_references(
             )
         )
     return tuple(references)
+
+
+def _is_shadowed_bare_dependency_target(target_name: str, shadowed_names: frozenset[str]) -> bool:
+    return "." not in target_name and target_name in shadowed_names
 
 
 def _type_check_dependency_targets(call: ast.Call) -> tuple[str, ...]:

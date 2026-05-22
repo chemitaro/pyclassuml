@@ -397,6 +397,69 @@ def test_generate_renders_direct_dependency_matrix_end_to_end(tmp_path: Path) ->
     assert_no_relation(self_output, "SelfAssignSource", "o--", "OwnedTarget")
 
 
+def test_generate_does_not_render_shadowed_direct_call_as_dependency(tmp_path: Path) -> None:
+    write_file(
+        tmp_path / "pkg" / "source.py",
+        "\n".join(
+            [
+                "class B:",
+                "    pass",
+                "",
+                "class A:",
+                "    def make(self, B):",
+                "        return B()",
+                "    def make_member(self, B):",
+                "        return B.factory()",
+                "    def check(self, B, value):",
+                "        return isinstance(value, B)",
+                "    def cast_value(self, B, value):",
+                "        return cast(B, value)",
+                "    def annotate(self, B, value):",
+                "        local: B = value",
+                "        return local",
+            ]
+        ),
+    )
+
+    result = run_generate(
+        generate_request(tmp_path, ("pkg/source.py",), output=Path("shadowed-direct-call.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (tmp_path / "shadowed-direct-call.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert_no_relation(output, "A", "..>", "B")
+
+
+def test_generate_keeps_module_qualified_dependency_when_terminal_name_is_shadowed(tmp_path: Path) -> None:
+    write_file(
+        tmp_path / "pkg" / "source.py",
+        "\n".join(
+            [
+                "import pkg.target as target",
+                "",
+                "class A:",
+                "    def make(self, B):",
+                "        return target.B()",
+                "    def make_member(self, B):",
+                "        return target.B.CONST",
+            ]
+        ),
+    )
+    write_file(tmp_path / "pkg" / "target.py", "class B:\n    CONST = 1\n")
+
+    result = run_generate(
+        generate_request(tmp_path, ("pkg/source.py",), output=Path("qualified-shadowed-terminal.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (tmp_path / "qualified-shadowed-terminal.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert_relation(output, "A", "..>", "B")
+
+
 def test_generate_member_rendering_e2e_covers_mixed_shapes_warnings_and_alias_relations(
     tmp_path: Path,
 ) -> None:

@@ -30,6 +30,7 @@ ID: "iss-00040"
 | D-001 | resolved | scope | user / investigation | 直接依存 relation 欠落の調査結果を report ではなく research/scratch にまとめるべきという指摘 | report に詳細を置く; research に移し report は参照だけにする | 詳細調査は issue discussions の research artifact に置き、report は作業ログと反映先参照に留める | report は observed evidence ledger であり、調査本文の一次整理は research の責務に合う | applied | `discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` | requirement/design/plan 作成時に research を参照 |
 | D-002 | resolved | implementation-detail | dev-coder / parent | S02 で同一 method 内の複数 direct-use evidence が既存 `_ordered_class_references()` の dedupe で潰れうる | method name only; semantic expression owner; method name + AST source position | method body dependency evidence の `reference_owner` は `{method}@{lineno}:{col_offset}` とする | schema 追加なしで distinct evidence と deterministic ordering を保てる。`reference_owner` は user-facing contract ではなく diagnostics / evidence identity 用の issue-local detail | applied | S02 parse tests, parent inspection, code-reviewer pass with P2 disposition cleanup | なし。将来 semantic owner が必要になった場合は別 issue で再検討 |
 | D-003 | resolved | integration-risk | dev-coder / parent | S03 selection は alias-aware import metadata を解決できるが、parse の `ast.Import` text が alias を保持しない可能性がある | S03 内では selection helper だけ実装する; S03 で parse も変える; S04 で app failure を見て parse alias preservation を追加する | S04 の app integration red で `import pkg.target as target; target.B` が欠落することを確認し、parse の `ast.Import` text に alias を保持する最小変更を入れる | alias preservation は import candidate lookup の既存責務内で、runtime import execution なしに D-003 を閉じられる | applied | S04 Red `1 failed, 70 passed`; S04 Green app targeted `71 passed`; parse alias regression test | なし |
+| D-004 | resolved | false-positive-guard | qa-reviewer / code-reviewer / parent | final QA で method parameter / local assignment / local function / match capture が class-like name を shadow しても bare dependency evidence が出る false-positive と、qualified target の false-negative risk を指摘 | selection で診断して skip; parse で shadowed dependency evidence を出さない; scope out | parse seam で method-local bound names を集め、bare target name が shadowed された direct class call / member access / type-check / cast / local annotation は dependency evidence にしない。`target.B` のような qualified target は import 解決に任せて保持する | shadowing は bare symbol evidence の信頼性問題であり、qualified access は module/import evidence の解決対象であるため、同名 terminal だけで落とさない | applied | QA findings; code-review P2 match capture; parse/app Red for bare direct use/type-spec shadowing and qualified false-negative; Green full pytest `434 passed` | なし |
 
 ## 実装記録（セッションログ）
 
@@ -546,6 +547,12 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 | S04 | Green | generate/diff app targeted tests pass after implementation | parent rerun confirmed `71 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/app/test_generate.py tests/app/test_diff.py` | pass | direct dependency matrix and diff added dependency pass |
 | S04 | Regression | model/parse/analyze/render/app targeted tests pass together | parent rerun confirmed `203 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/model/test_contracts.py tests/parse/test_module_parse_and_index.py tests/analyze/test_selection.py tests/render/test_document.py tests/app/test_generate.py tests/app/test_diff.py` | pass | S01-S04 contracts preserved |
 | S04 | Tidy | whitespace and path policy checks pass | parent ran diff check and uppercase path scan | `git diff --check`; `rg --files | rg '[A-Z]'` | pass | uppercase scan returned only existing `AGENTS.md` / `README.md` paths |
+| S04 follow-up | QA Red | shadowed method-local names must not create false-positive direct-call dependency | parent added shadowing parse/app tests and confirmed failures: parse `1 failed, 41 passed`; generate `1 failed, 14 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/parse/test_module_parse_and_index.py -q`; `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/app/test_generate.py -q` | pass | QA P1 direct-call reproduced |
+| S04 follow-up | QA Red 2 | shadowed method-local names must not create false-positive member-access dependency | parent extended shadowing tests and confirmed failures in focused parse/app tests | focused parse/app pytest | pass | QA P1 member-access reproduced |
+| S04 follow-up | QA Red 3 | qualified dependency targets must survive same-named method-local terminal shadowing | parent added `target.B()` / `target.B.CONST` tests and confirmed parse focused failure before guard refinement | focused parse pytest | pass | QA P1 qualified false-negative reproduced |
+| S04 follow-up | QA Red 4 | shadowed method-local names must not create false-positive type-check, cast, or local-annotation dependency | parent extended shadowing tests and confirmed focused parse/app failures before filter expansion | focused parse/app pytest | pass | QA P1 AC-005 shadowing reproduced |
+| S04 follow-up | Code Review Red | match capture names must shadow bare dependency evidence | parent added match capture case and confirmed focused parse failure before pattern capture support | focused parse pytest | pass | code-reviewer P2 addressed |
+| S04 follow-up | QA/Review Green | bare shadowed direct use/type-spec evidence is skipped while qualified targets survive and existing contracts pass | parent rerun confirmed focused parse/app pass, combined targeted `207 passed`, full suite `434 passed` | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest` | pass | D-004 resolved |
 
 #### Step Contract Closure
 
@@ -568,12 +575,13 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 | tc-007 | AC-001 / AC-002 / AC-003 / AC-004 / AC-005 / AC-006 | generate app matrix renders `..>` for direct constructor, explicit import, from-import alias, module-qualified alias/member access, type/spec dependency, and `self.b = B()` without structural relation | closed |
 | tc-008 | AC-007 | diff app renders added same-file direct dependency as `..>` | closed |
 | D-003 | app integration risk | `import pkg.target as target; target.B` failed before parse alias preservation and passed after alias text was preserved | resolved |
+| D-004 | EC-001 / EC-003 false-positive guard / AC-004 / AC-005 | bare parameter/local assignment/local function/match capture shadowing tests fail before fix and pass after shadow skip; qualified `target.B` survives same terminal shadowing | resolved |
 
 #### Closure Delta
 
 | step | added | removed | changed | re-review required | notes |
 |---|---|---|---|---|---|
-| S04 | parse alias preservation | none | `ast.Import` text now preserves `as` alias | yes | app red evidence proved D-003 integration gap |
+| S04 | parse alias preservation; method-local bare shadow guard | none | `ast.Import` text now preserves `as` alias; shadowed bare direct use/type-spec evidence no longer emits dependency evidence; qualified targets survive same terminal shadowing | yes | app red evidence proved D-003; final QA proved D-004 |
 
 #### Reviewer Gate Status
 
@@ -583,49 +591,59 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 #### 変更したファイル
 
-- `src/pyclassuml/parse/indexer.py` - `ast.Import` alias text を import candidate key と module imports に保持。
-- `tests/parse/test_module_parse_and_index.py` - module import alias text preservation regression を追加。
-- `tests/app/test_generate.py` - generate direct dependency matrix を追加。
+- `src/pyclassuml/parse/indexer.py` - `ast.Import` alias text を import candidate key と module imports に保持し、method-local shadowed bare direct use/type-spec evidence を dependency evidence から除外。
+- `tests/parse/test_module_parse_and_index.py` - module import alias text preservation、shadowed bare dependency、qualified target preservation の regressions を追加。
+- `tests/app/test_generate.py` - generate direct dependency matrix、shadowing false-positive、qualified target preservation の regressions を追加。
 - `tests/app/test_diff.py` - diff added direct dependency regression を追加。
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - S04 closure evidence と D-003 resolution を記録。
 
 #### コミット
 
-- pending
+- `02c8ccd feat(app): 直接依存のgenerateとdiff出力を固定`
 
 ## Final Quality Gate
 
-この issue は S04 まで実装済みであり、final gate は未実施。
+この issue は S04 まで実装済みであり、S90 / S99 を実施中。
 
 ### S90 Docs Impact Resolution
 
 | target | update required | owner | evidence | spec-reviewer result |
 |---|---|---|---|---|
-| README / docs / templates / workflow / skills | 未確認 | N/A | 実装前 | not run |
+| README / user docs | no | parent inspection | `README.md` は概要、CLI、境界、設定、出力の説明のみで relation arrow semantics の表や直接依存の個別契約を持たない | pending |
+| spec-dock docs / templates / workflow / skills | no | parent inspection | `spec-dock/docs` は SpecDock workflow / dependency graph docs であり PyClassUML relation semantics の user-facing docs ではない | pending |
+
+### S99 Validation Evidence
+
+| validation | command | result | notes |
+|---|---|---|---|
+| full test suite | `UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest` | pass, `434 passed` | all tests after QA shadowing / qualified-target fix |
+| SpecDock validate | `./spec-dock/scripts/spec-dock validate` | pass, `nodes=39` | after S04 commit and report update precheck |
+| SpecDock sync | `./spec-dock/scripts/spec-dock sync` | pass, active unchanged / generated state already clean | no generated diff remained |
+| diff check | `git diff --check` | pass | S04 pre-commit and final report update precheck |
 
 ### Final QA Gate
 
 | reviewer | scope | integration test decision | evidence | result |
 |---|---|---|---|---|
-| qa-reviewer | whole issue obligation coverage | 未判定 | S04 まで実装済み | not run |
+| qa-reviewer | whole issue obligation coverage | generate/diff app integration covered by S04; full suite passed | initial fail P1 shadowing false-positive; second fail P1 shadowed member access; third fail P1 qualified-target false-negative; fourth fail P1 shadowed type/spec evidence; D-004 fix added parse/app red-green tests | pass |
 
 ### Final Code Review Gate
 
 | reviewer | scope | findings / fixes | re-review count | result |
 |---|---|---|---|---|
-| code-reviewer | issue-wide integrated diff | 未実施 | 0 | not run |
+| code-reviewer | issue-wide integrated diff | pass with P2 findings: match capture shadowing and stale final QA ledger; both addressed before final commit | 1 | pass |
 
 ### Final Spec Review Gate
 
 | reviewer | scope | findings / fixes | re-review count | result |
 |---|---|---|---|---|
-| spec-reviewer | requirement / design / plan / report / implementation / tests / docs alignment | 未実施 | 0 | not run |
+| spec-reviewer | requirement / design / plan / report / implementation / tests / docs alignment | pass with P2 finding: stale trailing status notes; addressed before final commit | 1 | pass |
 
 ### Final Commit
 
 | final report ledger | final commit scope | post-commit external evidence destination | result |
 |---|---|---|---|
-| not ready | N/A | final response / future PR | not ready |
+| ready for final report commit | report final gate cleanup plus D-004 follow-up implementation/tests | final response / PR body | pending commit |
 
 ## 遭遇した問題と解決
 
@@ -638,9 +656,9 @@ UV_CACHE_DIR=/private/tmp/pyclassuml-uv-cache uv run pytest tests/analyze/test_s
 
 ## 今後の推奨事項
 
-- S04 は実装済み。次は S90 docs impact resolution と S99 final quality gate を実施する。
-- 各 implementation step では `report.md` に Red/Green/Review/Commit evidence を残してから次 step へ進む。
+- S90/S99 validation and reviewer gates are complete.
+- 次は final report commit、PR delivery gate、merge preparation gate、`issue finish` を実施する。
 
 ## 省略/例外メモ
 
-- S90/S99 final quality gate、PR gate は未実施。
+- PR gate と lifecycle finish は final report commit 後に実施する。
