@@ -3,7 +3,7 @@
 ID: "iss-00036"
 タイトル: "Diff Default Branch Base"
 関連GitHub: ["#36"]
-状態: "draft"
+状態: "approved"
 作成者: "iwasawayuuta"
 最終更新: "2026-05-22"
 親: ["epic-00002", "init-00001"]
@@ -46,10 +46,12 @@ ID: "iss-00036"
 - 必須:
   - `diff` の `--base` を任意にする。
   - `--base <ref>` 指定時の既存挙動と意味論を維持する。
+  - CLI / model / VCS handoff では、明示 `--base <ref>` と no-base invocation を区別できるようにする。
+  - no-base invocation は valid input として扱い、VCS diff collection 前または VCS diff collection 内で resolved base を確定してから既存 diff pipeline へ渡す。
   - `--base` 未指定時に、現在ブランチの開始点に近い基点を決定的な順序で best effort 解決する。
   - `--base` 未指定時に upstream や config default がなくても、それだけを理由に usage error / hard failure にしない。
-  - best effort 解決で適切な候補が得られない場合は、repository の initial commit を fallback base として差分収集を続行する。
-  - 実際に使った resolved base と、その解決理由を diagnostics / report / user-visible output のいずれかで確認できるようにする。
+  - best effort 解決で適切な候補が得られない場合は、repository の initial commit object を fallback base として差分収集を続行する。
+  - 実際に使った resolved base と、その解決理由を `CommandResult.diagnostics` または同等の structured result でテスト可能にし、成功 / degraded success / failure summary の diagnostics 表示経路でも CLI 利用者が確認できるようにする。
   - `--current-state working-tree|head` と `--include-untracked|--no-include-untracked` の既存意味論を維持する。
 - 禁止:
   - `--base <ref>` の意味を暗黙に merge-base / three-dot 比較へ変更しない。
@@ -65,6 +67,7 @@ ID: "iss-00036"
 ## 境界
 - 常に行う:
   - 明示 `--base <ref>` がある場合は、その ref を authoritative base として扱う。
+  - no-base invocation は explicit base absence として保持し、空文字列や invalid ref と混同しない。
   - `--base` 未指定時は、Git から読み取れる情報だけで deterministic best effort の branch-start base 解決を行う。
   - 解決結果の commit hash または ref と resolution kind を観測可能にする。
   - base 解決と Git diff collection は read-only に行う。
@@ -85,11 +88,13 @@ ID: "iss-00036"
 - 同一 repository state / same inputs では、base 解決順序、resolved base、diagnostics 順序を決定的にする。
 - invalid explicit `--base <ref>` は既存どおり invalid base 系 failure として扱い、initial commit fallback で握りつぶさない。
 - no-base fallback は、利用者に設定を強制しないための degraded behavior であり、明示 `--base` の代替として silent に不正確さを隠さない。
+- initial commit fallback は empty tree 比較を意味しない。既存 `git diff <base>` 形式の比較基点として repository の initial commit object を使う。
 
 ## 前提
 - Git branch は commit を指す可変の名前であり、「branch 作成時点」や「branch の一番最初の commit」を常に復元できるとは限らない。
 - この issue でいう「現在ブランチの開始点」は、厳密な Git metadata ではなく、現在 repository state から決定的に推定した diff 基点を指す。
 - initial commit fallback は、branch-start が推定できない場合にも `pyclassuml diff` を useful に動かすための最終 fallback とする。
+- initial commit fallback では、initial commit で導入された内容そのものは差分対象に含まれない。これは「最初の commit から現在までの差分」を見るという no-base fallback の意図に従う。
 - default branch candidate や merge-base 推定は、明示 `--base` がない場合にだけ使う。
 
 ## 受け入れ条件
@@ -98,7 +103,7 @@ ID: "iss-00036"
   - 前提: feature branch が default branch 候補から分岐しており、`--base` は指定されていない。
   - 操作: `pyclassuml diff` を実行する。
   - 期待結果: default branch 候補との merge-base が resolved base になり、その base から現在の working tree までの diff UML が生成される。
-  - 観測点: resolved base と resolution kind が diagnostics / report / user-visible output のいずれかで確認できる。
+  - 観測点: resolved base と resolution kind が `CommandResult.diagnostics` または同等の structured result で検証でき、summary diagnostics 表示経路でも CLI 利用者が確認できる。
 - AC-002:
   - アクター: 開発者
   - 前提: `--base origin/main`、`--base <tag>`、または `--base <commit>` が指定されている。
@@ -110,7 +115,7 @@ ID: "iss-00036"
   - 前提: upstream、config default、default branch 候補が利用できない repository state がある。
   - 操作: `pyclassuml diff` を実行する。
   - 期待結果: initial commit を fallback base として差分収集を続行し、fallback したことを示す diagnostic を出す。
-  - 観測点: usage error ではなく、diagnostic 付きの通常 pipeline 結果になる。
+  - 観測点: usage error ではなく、resolved base と `initial_commit_fallback` 相当の resolution kind を持つ diagnostic 付きの通常 pipeline 結果になる。
 - AC-004:
   - アクター: 開発者
   - 前提: `--current-state head` が指定されており、`--base` は指定されていない。
@@ -135,7 +140,7 @@ ID: "iss-00036"
   - 観測点: 最終的な resolved base と resolution kind が確認できる。
 - EC-003:
   - 条件: `--base` 未指定かつ current branch が default branch 自身である。
-  - 期待: initial commit fallback または同等の repository-start base を使い、リポジトリ開始点から現在状態までの diff として動作する。
+  - 期待: initial commit object を fallback base として使い、その commit から現在状態までの diff として動作する。
   - 観測点: upstream 未設定でも usage error にしない。
 - EC-004:
   - 条件: no-base 実行時に untracked Python file が存在する。
@@ -158,7 +163,7 @@ ID: "iss-00036"
   - 出力: no-base resolved base から `HEAD` までの committed diff UML。
 - EX-004:
   - 入力: default branch 候補がない repository で `pyclassuml diff`
-  - 出力: `resolved_base=<initial-commit-sha>`, `base_resolution=initial_commit_fallback` 等を伴う diff UML。
+  - 出力: `resolved_base=<initial-commit-sha>`, `base_resolution=initial_commit_fallback` 等を伴う diff UML。比較基点は empty tree ではなく initial commit object。
 
 ## 用語
 - TERM-001: explicit base
@@ -172,7 +177,7 @@ ID: "iss-00036"
 - TERM-005: default branch candidate
   - no-base diff の branch-start 推定に使う、default branch / base branch の候補。具体的な候補順は design で確定する。
 - TERM-006: initial commit fallback
-  - branch-start base を推定できない場合に、repository の initial commit を resolved base として使う最終 fallback。
+  - branch-start base を推定できない場合に、repository の initial commit object を resolved base として使う最終 fallback。empty tree 比較ではない。
 - TERM-007: upstream
   - Git が保持するローカルブランチの追跡先。今回の branch-start base の必須条件ではなく、分岐元 branch と同一とは限らない。
 
@@ -182,6 +187,6 @@ ID: "iss-00036"
   - 推奨案: design 作成時に、`origin/HEAD` など Git が示す default branch 情報を優先し、その後に代表的な branch 名を固定順序で試す。
   - 影響範囲: base 解決の決定性、CI / local の再現性、diagnostic 文面。
 - Q-002:
-  - 質問: resolved base と resolution kind を stdout / stderr / report のどこに表示するか。
-  - 推奨案: design 作成時に既存 report / diagnostics の責務境界を確認して決める。
+  - 質問: resolved base と resolution kind を既存 summary diagnostics だけで表示するか、追加の report field / counter も持たせるか。
+  - 推奨案: design 作成時に既存 report / diagnostics の責務境界を確認し、少なくとも `CommandResult.diagnostics` と summary diagnostics 表示で観測できるようにする。
   - 影響範囲: CLI transcript、README、report tests。
