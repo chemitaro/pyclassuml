@@ -23,7 +23,8 @@ ID: "iss-00036"
 - S01 CLI / model no-base contract を実装済み。
 - S02 VCS resolved-base resolver を実装済み。
 - S03 app/report/CLI transcript integration を実装済み。
-- S90 README、final quality gate は未着手。
+- S90 README docs impact resolution を実施済み。
+- final quality gate は未着手。
 
 ## 実装記録（セッションログ）
 
@@ -285,14 +286,64 @@ spec-dock: ok (new issue auto-sync)
 #### Step Commit Gate
 | step | review scope | step reviewer verdict | commit scope | closure state | commit evidence | post-commit clean check |
 |---|---|---|---|---|---|---|
-| S03 | S03 target files | code-reviewer pass | S03 implementation/tests plus report evidence | pending commit | pending | pending |
+| S03 | S03 target files | code-reviewer pass | S03 implementation/tests plus report evidence | committed | `9256f36` | `git status --short` clean after commit |
+
+### 2026-05-22 - S90 Docs impact resolution / docs refresh
+
+#### 対象
+- Step: S90
+- Closure id: tc-010
+- 対象ファイル:
+  - `README.md`
+
+#### Implementation Delegation Gate
+| step | decision | delegated role | scope | allowed changes | forbidden changes | required verification | result |
+|---|---|---|---|---|---|---|---|
+| S90 | delegated | doc-writer | README diff command contract | `README.md` only | source code, tests, spec workflow docs | README inspection and `./spec-dock/scripts/spec-dock validate` | pass |
+
+#### Worker Result
+| step | worker summary | changed files | verification result | unresolved risks | ledger note |
+|---|---|---|---|---|---|
+| S90 | README の diff usage を optional base 形式へ更新し、no-base resolution、explicit-base compatibility、fallback、summary fields を説明 | `README.md` | `git diff --check` passed; parent `spec-dock validate` passed | none | No material implementation decisions beyond the approved plan. |
+
+#### Red/Green/Refactor Evidence
+| step | phase | planned evidence requirement | observed evidence | command / inspection / manual record | result | notes |
+|---|---|---|---|---|---|---|
+| S90 | inspect | README documents no-base behavior and summary fields | README diff inspected by parent and spec-reviewer | `git diff -- README.md` | pass | content aligned with S01-S03 behavior |
+| S90 | validate | SpecDock docs validation | validation succeeded | `./spec-dock/scripts/spec-dock validate` | pass | `nodes=36` |
+| S90 | static | whitespace / diff hygiene | no diff check errors | `git diff --check` | pass | parent re-run confirmed |
+
+#### Step Contract Closure
+| step | closure id | close condition | evidence | result |
+|---|---|---|---|---|
+| S90 | tc-010 | README updated and spec-reviewer passes | README diff inspection; `spec-dock validate`; spec-reviewer `review_status: pass` | pass |
+
+#### Test Contract Closure
+| closure id | step | evidence level | pre-implementation evidence | verification command | result |
+|---|---|---|---|---|---|
+| tc-010 | S90 | inspect-only | README previously documented `--base` as required | README inspection and `./spec-dock/scripts/spec-dock validate` | pass |
+
+#### Closure Coverage
+| closure id | locked expectation | covering evidence | result |
+|---|---|---|---|
+| tc-010 | README documents no-base behavior, explicit-base compatibility, fallback, and summary fields | README diff plus spec-reviewer pass | pass |
+
+#### Reviewer Gate Status
+| gate name | reviewer role | freshness | state | evidence | risk acceptance |
+|---|---|---|---|---|---|
+| S90 docs/spec review | spec-reviewer | fresh after README diff | passed | README content aligned; remaining P2 validate evidence fixed in this report | none |
+
+#### Step Commit Gate
+| step | review scope | step reviewer verdict | commit scope | closure state | commit evidence | post-commit clean check |
+|---|---|---|---|---|---|---|
+| S90 | README docs | spec-reviewer pass | README plus report evidence | pending commit | pending | pending |
 
 ## Final Quality Gate (必須)
 
 ### S90 Docs Impact Resolution
 | target | update required | owner | evidence | spec-reviewer result |
 |---|---|---|---|---|
-| README / config reference if needed | yes | TBD during implementation | pending | pending |
+| README | yes | doc-writer | README updated; `./spec-dock/scripts/spec-dock validate` pass | pass |
 
 ### Final QA Gate
 | reviewer | scope | integration test decision | evidence | result |

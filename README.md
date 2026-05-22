@@ -68,14 +68,13 @@ pyclassuml generate "pkg/**/*.py" --output diagram.puml
 Git 差分からクラス図を作る場合:
 
 ```bash
-pyclassuml diff --base main --output diff.puml
+pyclassuml diff --output diff.puml
 ```
 
 monorepo やレイヤー限定の解析では、境界を明示します。
 
 ```bash
 pyclassuml diff \
-  --base main \
   --project-root . \
   --package-root backend \
   --scope-root backend/app \
@@ -100,19 +99,28 @@ pyclassuml generate [options] [targets ...]
 ### `diff`
 
 ```bash
-pyclassuml diff [options] --base <ref>
+pyclassuml diff [options] [--base <ref>]
 ```
 
-`diff` は Git 差分から対象ファイルを集めてクラス図を作ります。`--base` は必須で、Git の revision を指定します。
+`diff` は Git 差分から対象ファイルを集めてクラス図を作ります。`--base <ref>` を省略すると、現在の branch で積み上げた変更を扱うために、default branch 候補との merge-base を best effort で resolved base として使います。default branch 自身で実行している場合、または使える候補がない場合は、empty tree ではなく repository の initial commit object を fallback base として使います。
+
+明示的に `--base <ref>` を指定した場合は、従来どおり `<ref>` 自体を比較基点として使います。明示した base が無効な場合は failure になり、no-base 用の default branch 推定や initial commit fallback には切り替わりません。
 
 `--current-state` は比較対象を選びます。
 
-- `working-tree`: `--base` と現在の作業ツリーを比較します。デフォルトです。
-- `head`: `--base` と `HEAD` を比較します。
+- `working-tree`: resolved base と現在の作業ツリーを比較します。デフォルトです。
+- `head`: resolved base と `HEAD` を比較します。
 
 `--current-state head` は、Git 差分の対象ファイルと差分分類を `HEAD` 基準で集めるための指定です。図を作るために読む現在側のファイル内容は作業ツリー上のファイルなので、`HEAD` の内容だけを図にしたい場合は作業ツリーを clean にしてから実行してください。
 
 `--include-untracked` / `--no-include-untracked` は、未追跡ファイルを差分対象に含めるかを指定します。デフォルトは include です。`--current-state head` の場合、未追跡ファイルは Git の `HEAD` 差分に含まれないため、この指定は実質的に効きません。
+
+`diff` の summary には、実際に使った base を確認するための情報が表示されます。
+
+- `base_resolution`: `explicit_base`、`default_branch_merge_base`、`initial_commit_fallback` のいずれかです。
+- `resolved_base`: Git 差分の比較基点として使った ref または commit です。
+- `requested_base`: 利用者が `--base <ref>` で指定した値です。no-base の場合は `none` です。
+- `base_candidate`: no-base 解決で merge-base を取れた default branch 候補です。explicit base や initial commit fallback の場合は `none` です。
 
 ### 共通オプション
 
