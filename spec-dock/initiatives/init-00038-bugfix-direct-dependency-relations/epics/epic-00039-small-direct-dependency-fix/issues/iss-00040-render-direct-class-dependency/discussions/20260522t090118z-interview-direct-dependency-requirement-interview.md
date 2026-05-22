@@ -2,14 +2,15 @@
 種別: interview
 ID: "20260522t090118z-interview"
 タイトル: "Direct Dependency Requirement Interview"
-状態: "draft | answered | archived"
+状態: "answered"
 作成者: "iwasawayuuta"
 最終更新: "2026-05-22"
 親: ["iss-00040"]
 関連: []
 authority: "raw"
 derived_from: []
-reflected_to: []
+reflected_to:
+  - "../requirement.md"
 ---
 
 # 20260522t090118z-interview Direct Dependency Requirement Interview
@@ -20,6 +21,27 @@ reflected_to: []
 
 調査で確定した技術事実は `20260522t084855z-research-direct-dependency-relation-investigation.md` にまとめた。
 本書では、要件化に必要な人間判断だけを扱う。
+
+## 代理回答サマリー
+
+ユーザー指示により、deep-consultant 2名に「pyclassuml 固有の期待ではなく、一般的な UML class diagram / class relationship の第一原理に基づく回答」を依頼した。
+
+結論:
+
+- Runtime direct use は、一般 UML では association ではなく dependency として表す。
+  - `A` の method body が `B()` / `B.factory()` / `module.B()` を参照する場合、`A` は `B` を使用する client であり、`B` は supplier である。
+  - PlantUML 出力では `A ..> B` を採用する。
+- `A --> B` は PlantUML 上 dependency としても使えるが、一般的な UML 図の視覚意味では solid directed association と混同されやすいため、今回の要件では採用しない。
+- `self.b = B()` は instance attribute へ保持するため association 候補だが、composition / aggregation は生命周期所有や共有不可性を静的に断定できないため推定しない。
+- 曖昧な名前解決は fail closed とし、通常図には推測 edge を出さない。
+- `from target import B` は import だけでは relation にしない。ただし `B()` などの実使用があり、import が `target.B` に一意解決できる場合は dependency を出す。
+- `generate` と `diff` は同じ relation classification を使う。
+- 内部 relation type は既存 `association` を流用せず、`dependency` を追加する。
+
+参考:
+
+- OMG UML 2.5.1: dependency と association は異なる relationship として扱う。
+- PlantUML class diagram: `-->` と `..>` の両方を使えるが、UML 準拠の視覚意味を優先するなら dependency は dashed arrow が安全。
 
 ## ヒアリング概要 (必須)
 - 対象者:
@@ -84,7 +106,7 @@ reflected_to: []
 - 未回答時の影響:
   - `requirement.md` の受入条件と `design.md` の relation type が確定しない。
 - 回答欄:
-  - 未回答
+  - 回答: B。一般 UML の第一原理では、method body の `B()` / `B.factory()` は runtime use であり、構造的 link を表す association ではなく dependency として表す。PlantUML では `A ..> B` を採用する。
 - 回答後フォローアップ:
   - 反映先:
     - `requirement.md`, `design.md`, 必要なら ADR
@@ -121,7 +143,7 @@ reflected_to: []
 - 推奨案:
   - A。ユーザーが「直接内部で他のクラスを使用」と表現した中核に近く、過度な型推論に踏み込まない。
 - 回答欄:
-  - 未回答
+  - 回答: B寄り。`B()`, `return B()`, `B.factory()` / static/class method call, `module.B()`, `module.B.factory()`, `isinstance(x, B)`, `issubclass(x, B)`, `typing.cast(B, x)`, method body local annotation `x: B` を、既知の class symbol に一意解決できる場合に dependency evidence として扱う。ただし `typing.cast` と local annotation は runtime link ではなく type/specification dependency として evidence kind を分ける。
 
 ### 質問 3
 - 質問主題:
@@ -142,7 +164,7 @@ reflected_to: []
 - 推奨案:
   - A寄り。ownership を推測して `*--` にするのではなく、runtime direct use として黒実線 `-->` に留めれば、過度な保持 semantics を避けつつ欠落を修正できる。ただし図の過密化を避けたい場合は B。
 - 回答欄:
-  - 未回答
+  - 回答: `self.b = B()` は association 候補だが、この issue では少なくとも dependency evidence として扱う。composition / aggregation は lifecycle ownership や共有不可性を静的に断定できる場合に限るため、単なる `self.b = B()` からは推定しない。将来 association 推定を入れる場合は、association が dependency を上書きまたは抑制する precedence を設ける。
 
 ### 質問 4
 - 質問主題:
@@ -161,7 +183,7 @@ reflected_to: []
 - 推奨案:
   - A。pyclassuml の決定性と静的解析の信頼性を優先する。
 - 回答欄:
-  - 未回答
+  - 回答: A。UML edge は意味の断言であるため、解決不能・複数候補・shadowing 疑いがある場合は fail closed として edge を出さない。必要に応じて diagnostics / warning に残す。
 
 ### 質問 5
 - 質問主題:
@@ -184,7 +206,7 @@ reflected_to: []
 - 推奨案:
   - A寄り。ただし工数を最小化したい場合は B。ユーザー報告が実プロジェクト由来なら、multi-class module は頻出するため A の価値が高い。
 - 回答欄:
-  - 未回答
+  - 回答: A。ただし import だけでは relation を出さない。`B()` などの認識済み use/type pattern があり、`from target import B` によって `target.B` へ一意解決できる場合に限り dependency を出す。target module 内の他 class へは出さない。
 
 ### 質問 6
 - 質問主題:
@@ -201,7 +223,7 @@ reflected_to: []
 - 推奨案:
   - A。共通 parse/analyze 経路の欠落であり、片方だけ直す意味は薄い。
 - 回答欄:
-  - 未回答
+  - 回答: A。`generate` と `diff` は同じ dependency 検出ロジック、同じ曖昧性 policy、同じ canonical relation identity を使う。
 
 ### 質問 7
 - 質問主題:
@@ -222,7 +244,7 @@ reflected_to: []
 - 推奨案:
   - B。長期的には typed/uses と structural association と runtime direct dependency の意味が分かれる。ただし issue を最小化するなら A も許容可能。
 - 回答欄:
-  - 未回答
+  - 回答: B。既存 `association` を流用せず、新しい `dependency` relation type を追加する。association は instance link、dependency は client/supplier dependency で意味が異なるため、内部型を混ぜると出力記法、diff、将来 filtering、association 追加時の precedence が壊れる。
 
 ## 図解（任意）
 ```plantuml

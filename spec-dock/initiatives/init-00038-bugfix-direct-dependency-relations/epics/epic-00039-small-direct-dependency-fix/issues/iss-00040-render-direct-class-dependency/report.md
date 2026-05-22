@@ -126,7 +126,8 @@ git commit -m "docs(spec-dock): 直接依存表示修正の作業ツリーを追
 | scaffold creation | committed | new initiative / epic / issue scaffold | `a3b45aa` | clean before issue start | N/A | N/A | N/A | N/A |
 | initial report capture | committed | initial detailed report before relocation | `4f1cae9` | clean after commit | N/A | N/A | N/A | N/A |
 | research relocation | committed | research artifact and report pointer | `b456b02` | clean after commit | N/A | N/A | N/A | N/A |
-| extended investigation | pending commit | research update and interview artifact | pending | pending | N/A | N/A | N/A | N/A |
+| extended investigation | committed | research update and interview artifact | `6e92858` | clean after commit | N/A | N/A | N/A | N/A |
+| requirement authoring | pending commit | answered interview and requirement | pending | pending | N/A | N/A | N/A | N/A |
 
 #### 変更したファイル
 
@@ -194,6 +195,54 @@ PYTHONPATH=src python -c 'from pyclassuml.cli.main import main; raise SystemExit
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/discussions/20260522t084855z-research-direct-dependency-relation-investigation.md` - diff 再現、追加 matrix、consultant findings、未決論点を追記。
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/discussions/20260522t090118z-interview-direct-dependency-requirement-interview.md` - 要件化前の確認質問を記録。
 - `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - 追加調査の実施記録を追記。
+
+#### コミット
+
+- `6e92858 docs(spec-dock): 直接依存表示の追加調査と確認事項を記録`
+
+### 2026-05-22 18:20 - 18:40 JST
+
+#### 対象
+
+- Step: proxy interview answer and requirement authoring
+- AC/EC: `requirement.md` に初回定義
+- Planned source:
+  - ユーザー指示: ヒアリング質問を deep-consultant に代理回答させ、一般的な class diagram / UML の第一原理に基づく回答を要件定義書に反映する。
+
+#### 実施内容
+
+- deep-consultant 2名に、pyclassuml 固有の期待ではなく一般 UML class diagram の観点から interview 7項目への代理回答を依頼した。
+- 両者とも、runtime direct use は association ではなく dependency として扱うべき、という判断で一致した。
+- Interview artifact を `answered` に更新し、代理回答を記録した。
+- `requirement.md` を作成し、runtime direct use を新 `dependency` relation type として扱い、PlantUML では `..>` を出力する要件にした。
+
+#### Decision Summary
+
+| topic | decision | rationale |
+|---|---|---|
+| `B()` / `B.factory()` | dependency `..>` | 一時的な生成・呼び出しは構造的 association ではなく UML dependency |
+| `self.b = B()` | dependency evidence; composition / aggregation は推定しない | 属性保持は association 候補だが lifecycle ownership までは静的に断定できない |
+| import only | relation なし | import は解決材料であり class relation の evidence ではない |
+| explicit import multi-class target | 使用地点があり一意解決できる場合だけ dependency | `from target import B` は `B` を一意に選ぶが、未使用 import だけでは edge にしない |
+| ambiguity | fail closed | UML edge は意味の断言であり false-positive を避ける |
+| generate / diff | 共通要件 | relation semantics は出力経路で分裂させない |
+| internal relation type | new `dependency` | `association` と runtime dependency の意味混同を避ける |
+
+#### 検証
+
+```bash
+./spec-dock/scripts/spec-dock validate
+# spec-dock: ok (validate) nodes=39
+
+git diff --check
+# ok
+```
+
+#### 変更したファイル
+
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/discussions/20260522t090118z-interview-direct-dependency-requirement-interview.md` - deep-consultant proxy answers を記録。
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/requirement.md` - dependency semantics に基づく要件定義を作成。
+- `spec-dock/initiatives/init-00038-bugfix-direct-dependency-relations/epics/epic-00039-small-direct-dependency-fix/issues/iss-00040-render-direct-class-dependency/report.md` - 要件作成の根拠と検証を記録。
 
 ## Final Quality Gate
 
