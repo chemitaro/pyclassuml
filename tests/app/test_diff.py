@@ -245,6 +245,47 @@ def test_zero_target_failure_returns_report_nonzero_without_common_pipeline_call
     assert not list(repo.glob("*.puml"))
 
 
+def test_no_base_zero_target_failure_preserves_base_resolution_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "README.md", "base\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    base_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
+    checkout_new_branch(repo, "feature/no-target")
+    write_file(repo / "README.md", "changed\n")
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+    monkeypatch.setattr(diff_app, "traverse_dependencies", fail_if_called("traversal"))
+    monkeypatch.setattr(diff_app, "render_uml_document", fail_if_called("render"))
+
+    result = run_diff(diff_request(repo, base_ref=None), timestamp=TIMESTAMP)
+    captured = capsys.readouterr()
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.artifact_path is None
+    assert result.command_result.summary.failure_reason is FailureReason.DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER
+    assert result.command_result.diff_base_resolution == DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref=base_sha,
+        resolution_kind="default_branch_merge_base",
+        candidate_ref="main",
+    )
+    assert result.stdout_text == ""
+    assert "failure_reason: diff_zero_target_after_scope_filter" in result.stderr_text
+    assert "error:diff_zero_target_after_scope_filter:" in result.stderr_text
+    assert "base_resolution: default_branch_merge_base" in result.stderr_text
+    assert f"resolved_base: {base_sha}" in result.stderr_text
+    assert "requested_base: none" in result.stderr_text
+    assert "base_candidate: main" in result.stderr_text
+    assert captured.out == ""
+    assert captured.err == ""
+    assert not list(repo.glob("*.puml"))
+
+
 def test_diff_post_target_stage_invocation_order_is_canonical(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

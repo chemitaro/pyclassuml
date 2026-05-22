@@ -201,9 +201,29 @@ def test_no_base_without_usable_candidate_uses_initial_commit_fallback(tmp_path:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "tracked.py", "initial\n")
     commit_all(repo, "initial")
+    git(repo, "branch", "-M", "feature/no-candidate")
     initial_sha = rev_parse(repo, "HEAD")
     write_file(repo / "tracked.py", "head\n")
     commit_all(repo, "head")
+
+    assert git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == "feature/no-candidate"
+    for ref in (
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/develop",
+        "refs/remotes/origin/master",
+        "refs/heads/main",
+        "refs/heads/develop",
+        "refs/heads/master",
+    ):
+        ref_probe = subprocess.run(
+            ("git", "-C", str(repo), "show-ref", "--verify", "--quiet", ref),
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert ref_probe.returncode != 0
 
     result = collect_diff_files(request(repo, base_ref=None), context(repo), config())
 

@@ -4,6 +4,7 @@ from pyclassuml.model import (
     AnalysisConfig,
     Diagnostic,
     DiagnosticSeverity,
+    DiffBaseResolution,
     ExecutionContext,
     FailureReason,
     OriginSeam,
@@ -32,7 +33,13 @@ def context(project_root: Path, *, scope_root: Path | None = None) -> ExecutionC
 
 def collection(*paths: str) -> ChangedFileCollection:
     return ChangedFileCollection(
-        entries=tuple(ChangedFileEntry(current_project_relative_path=path, change_kind="modified") for path in paths)
+        entries=tuple(ChangedFileEntry(current_project_relative_path=path, change_kind="modified") for path in paths),
+        base_resolution=DiffBaseResolution(
+            requested_base_ref="origin/main",
+            resolved_base_ref="origin/main",
+            resolution_kind="explicit_base",
+            candidate_ref=None,
+        ),
     )
 
 

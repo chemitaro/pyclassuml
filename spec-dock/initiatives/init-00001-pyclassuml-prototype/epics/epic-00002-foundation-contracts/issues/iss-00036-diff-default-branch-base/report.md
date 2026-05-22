@@ -24,7 +24,8 @@ ID: "iss-00036"
 - S02 VCS resolved-base resolver を実装済み。
 - S03 app/report/CLI transcript integration を実装済み。
 - S90 README docs impact resolution を実施済み。
-- final quality gate は未着手。
+- S99 final validation は全体 pytest / sync / validate / diff check まで実施済み。
+- final QA / code / spec review は pass。
 
 ## 実装記録（セッションログ）
 
@@ -336,7 +337,35 @@ spec-dock: ok (new issue auto-sync)
 #### Step Commit Gate
 | step | review scope | step reviewer verdict | commit scope | closure state | commit evidence | post-commit clean check |
 |---|---|---|---|---|---|---|
-| S90 | README docs | spec-reviewer pass | README plus report evidence | pending commit | pending | pending |
+| S90 | README docs | spec-reviewer pass | README plus report evidence | committed | `43e9c66` | `git status --short` clean after commit |
+
+### 2026-05-22 - S99 Final quality gate
+
+#### 対象
+- Step: S99
+- Scope: S01-S90 integrated diff and issue evidence.
+
+#### Final Validation Evidence
+| command | result | notes |
+|---|---|---|
+| `uv run pytest` | failed | environment cache permission: `/Volumes/990p2t/.cache/uv/sdists-v9/.git: Operation not permitted` |
+| `uv --cache-dir /private/tmp/uv-cache run --with pytest pytest` | pass | final run after QA P2 hardening: `420 passed in 13.45s` |
+| `./spec-dock/scripts/spec-dock sync` | pass | active unchanged; generated state refreshed |
+| `./spec-dock/scripts/spec-dock validate` | pass | `nodes=36` |
+| `git diff --check` | pass | no output |
+
+#### Final Fix Loop Evidence
+| trigger | delegated role | changed files | red evidence | green evidence | ledger note |
+|---|---|---|---|---|---|
+| full pytest found `ChangedFileCollection.base_resolution` test fixture drift in targets tests | dev-coder | `tests/targets/test_diff_target_normalize.py` | full pytest: 5 failed, 414 passed | targeted test: 6 passed; full pytest: 419 passed | No material implementation decisions beyond the approved plan. |
+| QA P2 requested stronger fallback / failure-observability coverage | dev-coder | `tests/vcs/test_diff_file_collect.py`, `tests/app/test_diff.py` | QA review identified under-specific fallback and post-VCS failure metadata coverage | targeted tests: 95 passed; full pytest: 420 passed | No material implementation decisions beyond the approved plan. |
+
+#### Reviewer Gate Status
+| gate name | reviewer role | freshness | state | evidence | risk acceptance |
+|---|---|---|---|---|---|
+| Final QA Gate | qa-reviewer | fresh after initial full validation | passed | `review_status: pass`; two P2 coverage findings addressed in S99 fix loop | none |
+| Final Code Review Gate | code-reviewer | fresh after initial full validation | passed | findings empty; `review_status: pass` | none |
+| Final Spec Review Gate | spec-reviewer | fresh after report update | passed | findings empty; `review_status: pass` | none |
 
 ## Final Quality Gate (必須)
 
@@ -348,17 +377,17 @@ spec-dock: ok (new issue auto-sync)
 ### Final QA Gate
 | reviewer | scope | integration test decision | evidence | result |
 |---|---|---|---|---|
-| qa-reviewer | whole issue obligation coverage | pending | pending | pending |
+| qa-reviewer | whole issue obligation coverage | additional P2 coverage requested and implemented | QA pass; targeted tests 95 passed; full pytest 420 passed | pass |
 
 ### Final Code Review Gate
 | reviewer | scope | evidence | result |
 |---|---|---|---|
-| code-reviewer | issue-wide integrated diff | pending | pending |
+| code-reviewer | issue-wide integrated diff | findings empty; final code review `review_status: pass` | pass |
 
 ### Final Spec Review Gate
 | reviewer | scope | evidence | result |
 |---|---|---|---|
-| spec-reviewer | requirement / design / plan / report consistency | pending | pending |
+| spec-reviewer | requirement / design / plan / report / README / implementation / tests consistency | findings empty; final spec review `review_status: pass` | pass |
 
 ### Final Commit Gate
 | scope | evidence | result |
