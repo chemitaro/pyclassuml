@@ -41,6 +41,12 @@ def assert_relation(plantuml_text: str, source_name: str, arrow: str, target_nam
     assert f"{source_alias} {arrow} {target_alias}" in plantuml_text
 
 
+def assert_no_relation(plantuml_text: str, source_name: str, arrow: str, target_name: str) -> None:
+    source_alias = class_alias(plantuml_text, source_name)
+    target_alias = class_alias(plantuml_text, target_name)
+    assert f"{source_alias} {arrow} {target_alias}" not in plantuml_text
+
+
 def class_declaration(plantuml_text: str, class_name: str) -> str:
     match = re.search(rf'^\s*class "{re.escape(class_name)}" as c\d+(?: .*)?$', plantuml_text, re.MULTILINE)
     assert match is not None, f"missing class declaration for {class_name}"
@@ -582,6 +588,54 @@ def test_diff_renders_added_direct_dependency_relation(tmp_path: Path) -> None:
     assert result.outcome_kind == "clean_success"
     assert result.command_result.exit_code == 0
     assert "<<DiffChanged>>" in class_declaration(output, "A")
+    assert_relation(output, "A", "..>", "B")
+
+
+def test_diff_suppresses_self_dashed_relation_and_keeps_non_self_dependency(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "model.py",
+        "\n".join(
+            [
+                "class B:",
+                "    pass",
+                "",
+                "class A:",
+                "    def make(self):",
+                "        return None",
+            ]
+        ),
+    )
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "model.py",
+        "\n".join(
+            [
+                "class B:",
+                "    pass",
+                "",
+                "class A:",
+                "    def from_self_annotation(self) -> A:",
+                "        return self",
+                "    def make_self(self):",
+                "        return A()",
+                "    def make_other(self):",
+                "        return B()",
+            ]
+        ),
+    )
+
+    result = run_diff(
+        diff_request(repo, output=Path("self-dependency.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "self-dependency.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert_no_relation(output, "A", "..>", "A")
     assert_relation(output, "A", "..>", "B")
 
 

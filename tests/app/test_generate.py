@@ -397,6 +397,37 @@ def test_generate_renders_direct_dependency_matrix_end_to_end(tmp_path: Path) ->
     assert_no_relation(self_output, "SelfAssignSource", "o--", "OwnedTarget")
 
 
+def test_generate_suppresses_self_dashed_relation_and_keeps_non_self_dependency(tmp_path: Path) -> None:
+    write_file(
+        tmp_path / "pkg" / "source.py",
+        "\n".join(
+            [
+                "class B:",
+                "    pass",
+                "",
+                "class A:",
+                "    def from_self_annotation(self) -> A:",
+                "        return self",
+                "    def make_self(self):",
+                "        return A()",
+                "    def make_other(self):",
+                "        return B()",
+            ]
+        ),
+    )
+
+    result = run_generate(
+        generate_request(tmp_path, ("pkg/source.py",), output=Path("self-dependency.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (tmp_path / "self-dependency.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert_no_relation(output, "A", "..>", "A")
+    assert_relation(output, "A", "..>", "B")
+
+
 def test_generate_does_not_render_shadowed_direct_call_as_dependency(tmp_path: Path) -> None:
     write_file(
         tmp_path / "pkg" / "source.py",

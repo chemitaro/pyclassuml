@@ -954,6 +954,27 @@ def test_s03_001_dependency_evidence_selects_same_module_target_class() -> None:
     assert result.diagnostics == ()
 
 
+def test_self_dashed_relation_is_suppressed_while_non_self_dependency_remains() -> None:
+    seed = ParsedModule(
+        module_path=Path("pkg/source.py"),
+        classes=("pkg/source.py:A", "pkg/source.py:B"),
+        class_references=(
+            reference("pkg/source.py:A", "A", "direct_class_call", "self@3:15"),
+            reference("pkg/source.py:A", "B", "direct_class_call", "other@4:15"),
+            reference("pkg/source.py:A", "A", "local_annotation_dependency", "local@5:16"),
+            reference("pkg/source.py:A", "A", "method_return_annotation", "return@6:20"),
+        ),
+    )
+
+    result = select((seed,), seeds=("pkg/source.py",), reachable=("pkg/source.py",))
+
+    assert result.selected_classes.class_ids == ("pkg/source.py:A", "pkg/source.py:B")
+    assert result.selected_relations.relations == (
+        SelectedRelation("pkg/source.py:A", "pkg/source.py:B", "dependency", "direct_class_call"),
+    )
+    assert result.diagnostics == ()
+
+
 def test_s03_002_explicit_from_import_resolves_multi_class_target_dependency() -> None:
     source = ParsedModule(
         module_path=Path("pkg/source.py"),

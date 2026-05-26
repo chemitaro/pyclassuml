@@ -3,267 +3,237 @@
 ID: "iss-00042"
 タイトル: "Suppress Self Dependency Relations"
 関連GitHub: ["#42"]
-状態: "draft | approved"
+状態: "draft"
 作成者: "iwasawayuuta"
 最終更新: "2026-05-26"
 依存: ["requirement.md", "design.md"]
 親: ["epic-00039", "init-00038"]
 ---
 
-# iss-00042 Suppress Self Dependency Relations — 実装計画（実行契約 / Execution Contract）
-
-> このテンプレートは最小 scaffold です。`plan.md` は計画済み契約（planned contract）を所有し、実装者が step を上から順に実行できる command queue として書く。実行結果、逸脱、発見された tests、reviewer verdict、commit/no-op evidence は `report.md` の観測証跡台帳（observed evidence ledger）に記録する。実行 policy は `workflow_issue.md`、Issue 計画の書き方は `phase_plan_issue.md` と `docs/authoring/issue-plan.md` を正本にする。
+# iss-00042 Suppress Self Dependency Relations — 実装計画
 
 ## この計画で満たす要件ID
-- AC:
-  - ...
-- EC:
-  - ...
-- 制約:
-  - ...
+
+- AC-001: self dependency を描画しない
+- AC-002: 異なるクラス間の dependency は維持する
+- AC-003: relation policy は generate / diff で一致する
+- EC-001: 他 relation が同じ endpoint にある場合
+- EC-002: type-only / runtime の混在
 
 ## 依存関係から導く実装順序
-- 依存関係の正本:
-  - `design.md` の依存関係、図、ファイル変更計画
-- 順序ルール:
-  - prerequisite / lower-dependency slice から先に閉じる
-  - downstream slice は前提が固定されてから置く
-- step 依存サマリー:
-  - S01:
-    - 依存:
-    - unblock:
-    - 対象ファイル:
+
+- S01:
+  - 依存: `design.md` の selection 層方針
+  - unblock: app-level generate / diff consistency tests
+  - 対象: `src/pyclassuml/analyze/selection.py`, `tests/analyze/test_selection.py`
+- S02:
+  - 依存: S01 の selection contract
+  - unblock: final reviewer / PR delivery
+  - 対象: `tests/app/test_generate.py`, `tests/app/test_diff.py`
+- S90:
+  - 依存: S01 / S02 の実装結果
+  - unblock: final spec review
+  - 対象: README / docs impact inspection
+- S99:
+  - 依存: S01 / S02 / S90
+  - unblock: PR delivery and merge-preparation
+  - 対象: validation, sync, final reviewer gates, commit evidence
 
 ## ステップ一覧
+
 - S01:
-  - 観測可能な振る舞い:
-  - 依存:
-  - unblock:
-  - 対象ファイル:
-  - 閉じる要件:
-  - レビューゲート:
+  - 観測可能な振る舞い: selection 結果に `dependency` self relation が含まれず、non-self dependency は含まれる。
+  - レビューゲート: code-reviewer pass。
 - S02:
-  - ...
+  - 観測可能な振る舞い: generate / diff の `.puml` に self dependency line が出ず、non-self dependency line は出る。
+  - レビューゲート: code-reviewer pass。
+- S90:
+  - 観測可能な振る舞い: public docs 更新の要否が判断され、必要なら反映される。
+  - レビューゲート: spec-reviewer pass。
+- S99:
+  - 観測可能な振る舞い: issue 全体の verification / reviewer / PR delivery evidence が揃う。
+  - レビューゲート: qa-reviewer pass, code-reviewer pass, spec-reviewer pass。
 
-## 要件 ↔ ステップ対応
-- AC-001 -> S01
-- EC-001 -> S02
+## 仕様固定クロージャ索引
 
-## 仕様固定クロージャ索引（Spec-Locked Closure Index）
-
-> これは Issue 全体のテスト一覧ではなく、仕様を縮小解釈・後付けテスト・過剰実装しないための coverage ledger です。実際の step-local obligation と concrete seeds は各 implementation step の `具体テストケース一覧` に置く。
-
-| 識別子（ID） | ステップ（step） | スライス（slice） | 種別（type） | 仕様リンク | 固定する期待値 | 観測可能な入力 / 状態 | 防ぐ bug class | 必須 | 証跡レベル（evidence level） | クロージャ証跡（closure evidence） |
+| ID | ステップ | スライス | 種別 | 仕様リンク | 固定する期待値 | 観測可能な入力 / 状態 | 防ぐ bug class | 必須 | 証跡レベル | クロージャ証跡 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| tc-001 | S01 | <behavior> | 受け入れ（acceptance） | AC-001 | ... | ... | 仕様 drift（spec drift） | yes | red-required | ステップ完了証跡（report step closure） |
-| tc-002 | S01 | <behavior> | 否定系（negative） | EC-001 | ... | ... | 沈黙失敗（silent failure） | yes | inspect-only | ステップ完了証跡（report step closure） |
+| tc-s01-001 | S01 | selection | acceptance | AC-001, AC-002, EC-002 | `dependency` / `uses` self relation は除外され、non-self dependency は残る | 同一 class 参照と別 class 参照を含む ParsedModule | self dashed relation ノイズ再発 / non-self dependency 消失 | yes | red-required | report S01 |
+| tc-s02-001 | S02 | generate | acceptance | AC-001, AC-002, AC-003 | generate の `.puml` で `A ..> A` は出ず `A ..> B` は出る | generate fixture | command 別 policy drift | yes | red-required | report S02 |
+| tc-s02-002 | S02 | diff | acceptance | AC-001, AC-002, AC-003 | diff の `.puml` で `A ..> A` は出ず `A ..> B` は出る | diff fixture | command 別 policy drift | yes | red-required | report S02 |
+| tc-s90-001 | S90 | docs impact | inspection | 禁止事項 / scope | README / docs 更新が不要または必要最小限に反映済み | docs inspection | user-facing semantics の説明漏れ | yes | inspect-only | report S90 |
 
-- 証跡レベル（evidence level）:
-  - red-required: 実装前に失敗する新規 test / characterization を固定する。
-  - covered-existing: 既存 test が対象 behavior を検出できる根拠を固定する。
-  - inspect-only: docs / template / config などを inspection、structural assertion、review evidence で閉じる。
-  - manual-required: 自動化できない確認手順、期待結果、記録先を固定する。
-- 詳細化方針:
-  - 件数ではなく、AC、changed contract、failure mode、regression risk、invariant、manual / integration risk から必要な obligation を決める。
-  - private method、実装アルゴリズム、mock 構造、assert 細部は原則固定しない。
+## 実行ルール
 
-## レビュー / QA ゲート方針
-- RG1 step review:
-  - 実施タイミング: 各 implementation step の commit 前
-  - reviewer: code-reviewer（code / runtime / tests / scaffold behavior）; spec-reviewer（docs-only / template-only / skill-text-only）
-  - pass 条件: review_status: pass
-- QG1 final QA:
-  - reviewer: qa-reviewer
-  - 範囲: Issue 全体の obligation coverage、missing high-value tests、manual / integration test 要否
-- SG1 final spec review:
-  - reviewer: spec-reviewer
-  - 範囲: requirement / design / plan / report / docs 整合
+- 実装は active issue を正本として進める。
+- runtime code / tests は `dev-coder` へ委任する。委任不可の場合のみ親実装例外を `report.md` に記録する。
+- 各 step は Red evidence、Green evidence、reviewer pass を `report.md` に記録する。
+- material な仕様解釈が発生したら、実装を広げる前に `report.md` の Decision Ledger に統合し、必要なら plan amendment と再レビューを行う。
 
-## 実行ルール（全ステップ共通）
-- 各 implementation step は原則として 1 behavior slice / 1 review scope / 1 commit boundary とする。
-- `plan.md` には planned requirements、evidence destination、closure 条件だけを書く。observed result は `report.md` に書く。
-- docs-only / inspect-only / manual-required step は code test 前提にせず、代替 evidence path と rationale を implementation 前に固定する。
-- implementation 中に新しい仕様、bug class、外部 contract risk、未計画の closure が見つかった場合は、report 記録だけで足りるか、plan amendment と re-review が必要かを判断する。
+## 実装ステップ S01 — selection contract
 
-## 実装ステップ
-
-### 実装ステップ S01 — <観測可能な振る舞い>
-- 振る舞いの目標（behavior goal）:
-  - ...
-- design 参照:
-  - ...
-- 依存:
-  - ...
-- unblock:
-  - ...
-- 対象ファイル:
-  - ...
-- 計画済み契約（planned contract）:
-  - scope:
-    - 実装・文書化する範囲:
-  - テスト義務（test obligation）:
-    - closure id:
-      - tc-001
-    - coverage rationale:
-      - AC / changed contract / failure mode / regression risk / invariant / manual risk から必要性を書く:
-  - Red / 代替証跡の要件:
-    - red-required / covered-existing:
-      - 実装前に確認する failing test、characterization、または既存 test sensitivity:
-    - docs-only / inspect-only / manual-required:
-      - code test を置かない理由:
-      - 代替 evidence path:
-      - manual 手順と期待結果:
-  - 実装範囲（implementation scope）:
-    - allowed paths:
-      - ...
-    - forbidden changes:
-      - ...
-  - Green 検証:
-    - command / inspection / manual evidence:
-      - ...
-  - Refactor / cleanup ガードレール:
-    - 目的:
-    - 禁止する広がり:
-  - closure 証跡要件:
-    - Step Contract Closure:
-    - Test Contract Closure:
-    - Closure Coverage:
-  - report 証跡の記録先:
-    - `report.md` の対象 section / ledger:
-  - amendment trigger（plan amendment が必要になる契機）:
-    - plan amendment と re-review が必要になる発見:
-
-#### 委任契約（delegation contract）
-- 委任ロール（delegated role）:
-  - dev-coder / doc-writer / other named worker / N/A
-- 入力 docs:
+- behavior goal:
+  - `SelectedRelations.relations` に `dependency` / `uses` self relation を含めない。
+  - 同じ入力に含まれる non-self dependency relation は残す。
+- input docs / source of truth:
   - `requirement.md`
   - `design.md`
   - `plan.md`
-  - workflow / authoring docs:
-  - current target files:
+  - `spec-dock/docs/workflow_issue.md`
+- design 参照:
+  - `design.md` の「採用方針」「インターフェース契約」。
+- 対象ファイル:
+  - `src/pyclassuml/analyze/selection.py`
+  - `tests/analyze/test_selection.py`
+- Red:
+  - `uv run pytest tests/analyze/test_selection.py -k self_dependency`
+  - 実装前に新規 test が self dependency の残存で失敗することを確認する。
+- Green:
+  - `uv run pytest tests/analyze/test_selection.py -k "dependency or self_dependency"`
+- forbidden changes:
+  - relation type の追加・変更。
+  - CLI / render 表記の変更。
+  - parse 層の reference 抽出仕様変更。
+- closure:
+  - `tc-s01-001` が pass。
+  - code-reviewer が pass。
+- report evidence destination:
+  - `report.md` の TDD / Red / Green、Step Contract Closure、Test Contract Closure、Delegated Worker Evidence。
+- amendment trigger:
+  - `dependency` / `uses` 以外の self relation 抑制が必要になる場合。
+  - allowed paths 外の変更が必要になる場合。
+  - diagnostics / CLI / render arrow semantics の変更が必要になる場合。
+
+### 具体テストケース S01
+
+- `tc-s01-001`: selection は self dashed relation を除外し non-self dependency を残す。
+  - 前提: `ParsedModule` に `A -> A` の `direct_class_call`、`A -> A` の `local_annotation_dependency`、`A -> A` の `method_return_annotation`、`A -> B` の `direct_class_call` がある。
+  - 操作: `select((seed,), seeds=("pkg/source.py",), reachable=("pkg/source.py",))` を実行する。
+  - 期待結果: `SelectedRelation("pkg/source.py:A", "pkg/source.py:B", "dependency", "direct_class_call")` だけが残り、`A -> A` dependency は残らない。
+  - 失敗検出: production suppression なしでは `A -> A` dependency が relations に残る。
+  - 検証方法: `uv run pytest tests/analyze/test_selection.py -k self_dependency`。
+
+### 委任契約 S01
+
+- delegated role:
+  - dev-coder
+- source of truth:
+  - active issue docs: `requirement.md`, `design.md`, `plan.md`
+- acceptance criteria:
+  - AC-001, AC-002, EC-002
 - 許可 paths:
-  - ...
+  - `src/pyclassuml/analyze/selection.py`
+  - `tests/analyze/test_selection.py`
 - 禁止 changes:
-  - ...
-- 受け入れ条件:
-  - closure id / step close condition:
-- 必須 tests または docs-only verification:
-  - targeted command / inspection / docs diff / manual evidence:
+  - 上記以外の runtime code / docs 変更。
+  - CLI option、設定、render arrow 変更。
+- 必須出力:
+  - 変更ファイル、Red / Green command と結果、material decision の有無。
 - reviewer focus:
-  - code-reviewer（code / runtime / tests / scaffold behavior）; spec-reviewer（docs-only / template-only / skill-text-only docs/spec alignment）
-- 必須出力（output required）:
-  - changed files:
-  - verification result:
-  - report evidence to update:
-  - unresolved risks:
-- 停止条件（stop conditions）:
-  - input docs conflict / path outside allowed scope / verification cannot run / acceptance cannot be met:
+  - code-reviewer: `_normalize_relations()` で `dependency` / `uses` self relation だけが除外され、non-self dashed relation と他 relation type に副作用がないこと。
+- report evidence destination:
+  - `report.md` の Delegated Worker Evidence と S01 closure rows。
+- 停止条件:
+  - 要件と設計の衝突。
+  - allowed paths 以外の変更が必要。
+  - Red / Green を実行できない。
 
-#### 具体テストケース一覧
+## 実装ステップ S02 — generate / diff consistency
 
-> この欄は full test inventory ではありません。step-local obligation と concrete red / characterization / inspect / manual seeds を、実装前に固定するための欄です。
+- behavior goal:
+  - `generate` と `diff` の `.puml` 出力で同じ self dependency suppression policy が観測できる。
+- input docs / source of truth:
+  - `requirement.md`
+  - `design.md`
+  - `plan.md`
+  - `spec-dock/docs/workflow_issue.md`
+- 対象ファイル:
+  - `tests/app/test_generate.py`
+  - `tests/app/test_diff.py`
+- Red:
+  - `uv run pytest tests/app/test_generate.py tests/app/test_diff.py -k self_dependency`
+  - 実装前または S01 実装を一時的に戻した状態で失敗する test sensitivity を確認する。S01 後に追加する場合は、test が実装 contract を直接検出することを inspection で補足する。
+- Green:
+  - `uv run pytest tests/app/test_generate.py tests/app/test_diff.py -k "self_dependency or direct_dependency"`
+- forbidden changes:
+  - app CLI behavior や command line contract の変更。
+  - PlantUML arrow mapping の変更。
+- closure:
+  - `tc-s02-001` / `tc-s02-002` が pass。
+  - code-reviewer が pass。
+- report evidence destination:
+  - `report.md` の TDD / Red / Green、Step Contract Closure、Test Contract Closure、Delegated Worker Evidence。
+- amendment trigger:
+  - S02 で production code 変更が必要になった場合。
+  - generate と diff で異なる relation policy が必要になる場合。
 
-- `tc-s01-001` acceptance: <短い説明>
-  - 前提: ...
-  - 操作: ...
-  - 期待結果: ...
-  - 失敗検出: ...
-  - 検証方法: ...
-  - 関連 closure id: tc-001
+### 具体テストケース S02
 
-- `tc-s01-002` inspect-only / manual-required: <短い説明>
-  - テスト不要理由: <自動テスト不要の理由>
-  - 代替検証方法: <確認手順>
-  - 期待結果: <期待される状態>
-  - 記録先: <証跡の保存先>
-  - 関連 closure id: tc-002
+- `tc-s02-001`: generate は self dependency を出力せず non-self dependency を出力する。
+  - 前提: `pkg/source.py` に class `A` と `B` があり、`A.make_self()` が `A()`、`A.make_other()` が `B()` を返す。
+  - 操作: `run_generate(... output=Path("self-dependency.puml"))` を実行する。
+  - 期待結果: `A ..> A` は出ず、`A ..> B` は出る。
+  - 失敗検出: production suppression なしでは `.puml` に `c001 ..> c001` が出る。
+  - 検証方法: `uv run pytest tests/app/test_generate.py -k self_dependency`。
+- `tc-s02-002`: diff は self dependency を出力せず non-self dependency を出力する。
+  - 前提: base では `A.make()` が `None` を返し、working tree で `A.make_self()` が `A()`、`A.make_other()` が `B()` を返す。
+  - 操作: `run_diff(... output=Path("self-dependency.puml"))` を実行する。
+  - 期待結果: `A ..> A` は出ず、`A ..> B` は出る。
+  - 失敗検出: production suppression なしでは `.puml` に `c001 ..> c001` が出る。
+  - 検証方法: `uv run pytest tests/app/test_diff.py -k self_dependency`。
 
-#### ステップ完了契約（step closure contract）
-- closure id:
-  - tc-001
-- close 条件:
-  - ...
-- 検証 evidence:
-  - targeted command / inspection / manual evidence:
-- report evidence:
-  - Step Contract Closure:
-  - Test Contract Closure:
-  - Closure Coverage:
-  - Closure Delta:
-- 残リスク:
-  - ...
+### 委任契約 S02
 
-#### ステップゲート（step gate）
-- step reviewer gate:
-  - reviewer:
-  - review 範囲:
-  - pass 条件: review_status: pass
-  - re-review rule: 指摘を修正し pass まで再実行
-- commit / no-op gate:
-  - closure 状態: committed / approved-no-op
-  - commit 範囲:
-  - no-op の場合の確認対象、差分なし確認コマンド、read-only evidence:
+- delegated role:
+  - dev-coder
+- source of truth:
+  - active issue docs: `requirement.md`, `design.md`, `plan.md`
+- acceptance criteria:
+  - AC-001, AC-002, AC-003
+- 許可 paths:
+  - `tests/app/test_generate.py`
+  - `tests/app/test_diff.py`
+- 禁止 changes:
+  - production code 変更。S02 で production code 変更が必要になった場合は S01 へ戻す。
+- 必須出力:
+  - 変更ファイル、Red / Green command と結果、material decision の有無。
+- reviewer focus:
+  - code-reviewer: app-level tests が generate / diff の共通 selection policy を検出し、CLI contract や arrow mapping を変えていないこと。
+- report evidence destination:
+  - `report.md` の Delegated Worker Evidence と S02 closure rows。
 
-### 実装ステップ Sxx — <次に観測可能な振る舞い>
-- S01 の subsections を複製して記入する。
-- `planned contract`、`delegation contract`、`具体テストケース一覧`、`step closure contract`、`step gate` がない implementation step は implementation-ready ではない。
+## ドキュメント影響の解消ステップ S90
 
-### ドキュメント影響の解消ステップ S90（docs impact resolution / docs refresh）
 - 対象:
-  - docs / templates / README / workflow / skill / migration notes / none
+  - README / docs / examples の user-facing relation semantics。
 - 対応:
-  - ...
-- doc update owner:
-  - doc-writer when updates are required
-- spec/doc review:
-  - reviewer: spec-reviewer
-  - pass 条件: docs が requirement / design / plan と整合し、未解決の必須 docs 影響が残っていない
+  - self dependency suppression は bugfix-level の internal policy であり、公開 CLI contract を変えない。既存 docs に self dependency を明示する箇所がなければ no-op とする。
+- 検証:
+  - `rg "self dependency|dependency|\\.\\.>" README.md spec-dock -g '*.md'`
+- closure:
+  - `tc-s90-001` が inspection で pass。
+  - spec-reviewer が pass。
 
-### 最終品質ゲートステップ S99（final quality gate）
-- branch diff 範囲:
-  - ...
-- 必須 validation:
-  - ...
-- final QA gate:
-  - reviewer: qa-reviewer
-  - 範囲: Issue 全体の obligation coverage と integration test 要否
-  - pass 条件: reviewer pass
-- final code review ゲート:
-  - reviewer: code-reviewer
-  - 範囲: issue-wide integrated diff、構造、責務境界、回帰リスク、保守性
-  - pass 条件: review_status: pass
-- final spec review ゲート:
-  - reviewer: spec-reviewer
-  - 範囲: requirement / design / plan / report / implementation / tests / docs 整合
-  - pass 条件: reviewer pass
-- final commit gate:
-  - commit 範囲:
-  - final report ledger:
-  - post-commit external evidence destination:
+## 最終品質ゲート S99
 
-## 未確定事項
-- Q-001:
-  - 質問:
-  - 推奨案:
-  - 影響範囲:
+- 実行:
+  - `uv run pytest`
+  - `./spec-dock/scripts/spec-dock validate`
+  - `./spec-dock/scripts/spec-dock sync`
+  - `git diff --check`
+- reviewer:
+  - qa-reviewer: obligation coverage / test adequacy
+  - code-reviewer: issue-wide runtime diff
+  - spec-reviewer: requirement / design / plan / report alignment
+- PR:
+  - base: `main`
+  - 関連 Issue: `Closes #42`
+  - merge-preparation evidence を report に記録する。
 
-## 最終完了条件
-- AC/EC 達成:
-  - ...
-- docs 影響解決:
-  - ...
-- 全 implementation step 完了:
-  - committed / approved-no-op:
-- final quality gate pass:
-  - qa-reviewer:
-  - issue-wide code-reviewer:
-  - spec-reviewer:
-- final commit 完了:
-  - ...
-- 必須 closure id 完了:
-  - Step Contract Closure:
-  - Test Contract Closure:
-  - Closure Coverage:
-- final clean state:
-  - no unintended staged / unstaged changes:
+## 要件 ↔ ステップ対応
+
+- AC-001 -> S01, S02
+- AC-002 -> S01, S02
+- AC-003 -> S02
+- EC-001 -> S01
+- EC-002 -> S01
