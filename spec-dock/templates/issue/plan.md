@@ -10,9 +10,9 @@ ID: "<ISS_ID>"
 親: ["<EPIC_ID>", "<INIT_ID>"]
 ---
 
-# <ISS_ID> <ISS_TITLE> — 実装計画（Execution Contract）
+# <ISS_ID> <ISS_TITLE> — 実装計画（実行契約 / Execution Contract）
 
-> このテンプレートは最小 scaffold です。`plan.md` は planned contract を所有し、実装者が step を上から順に実行できる command queue として書く。実行結果、逸脱、discovered tests、reviewer verdict、commit/no-op evidence は `report.md` の observed evidence ledger に記録する。実行 policy は `workflow_issue.md`、Issue 計画の書き方は `phase_plan_issue.md` と `docs/authoring/issue-plan.md` を正本にする。
+> このテンプレートは最小 scaffold です。`plan.md` は計画済み契約（planned contract）を所有し、実装者が step を上から順に実行できる command queue として書く。実行結果、逸脱、発見された tests、reviewer verdict、commit/no-op evidence は `report.md` の観測証跡台帳（observed evidence ledger）に記録する。実行 policy は `workflow_issue.md`、Issue 計画の書き方は `phase_plan_issue.md` と `docs/authoring/issue-plan.md` を正本にする。
 
 ## この計画で満たす要件ID
 - AC:
@@ -28,7 +28,7 @@ ID: "<ISS_ID>"
 - 順序ルール:
   - prerequisite / lower-dependency slice から先に閉じる
   - downstream slice は前提が固定されてから置く
-- step 依存 summary:
+- step 依存サマリー:
   - S01:
     - 依存:
     - unblock:
@@ -49,16 +49,16 @@ ID: "<ISS_ID>"
 - AC-001 -> S01
 - EC-001 -> S02
 
-## Spec-Locked Closure Index（仕様固定クロージャ索引）
+## 仕様固定クロージャ索引（Spec-Locked Closure Index）
 
 > これは Issue 全体のテスト一覧ではなく、仕様を縮小解釈・後付けテスト・過剰実装しないための coverage ledger です。実際の step-local obligation と concrete seeds は各 implementation step の `具体テストケース一覧` に置く。
 
-| id | step | slice | type | spec link | locked expectation | observable input/state | bug class guarded | required | evidence level | closure evidence |
+| 識別子（ID） | ステップ（step） | スライス（slice） | 種別（type） | 仕様リンク | 固定する期待値 | 観測可能な入力 / 状態 | 防ぐ bug class | 必須 | 証跡レベル（evidence level） | クロージャ証跡（closure evidence） |
 |---|---|---|---|---|---|---|---|---|---|---|
-| tc-001 | S01 | <behavior> | acceptance | AC-001 | ... | ... | spec drift | yes | red-required | report step closure |
-| tc-002 | S01 | <behavior> | negative | EC-001 | ... | ... | silent failure | yes | inspect-only | report step closure |
+| tc-001 | S01 | <behavior> | 受け入れ（acceptance） | AC-001 | ... | ... | 仕様 drift（spec drift） | yes | red-required | ステップ完了証跡（report step closure） |
+| tc-002 | S01 | <behavior> | 否定系（negative） | EC-001 | ... | ... | 沈黙失敗（silent failure） | yes | inspect-only | ステップ完了証跡（report step closure） |
 
-- evidence level:
+- 証跡レベル（evidence level）:
   - red-required: 実装前に失敗する新規 test / characterization を固定する。
   - covered-existing: 既存 test が対象 behavior を検出できる根拠を固定する。
   - inspect-only: docs / template / config などを inspection、structural assertion、review evidence で閉じる。
@@ -70,7 +70,7 @@ ID: "<ISS_ID>"
 ## レビュー / QA ゲート方針
 - RG1 step review:
   - 実施タイミング: 各 implementation step の commit 前
-  - reviewer: code-reviewer for code / runtime / tests / scaffold behavior; spec-reviewer for docs-only / template-only / skill-text-only
+  - reviewer: code-reviewer（code / runtime / tests / scaffold behavior）; spec-reviewer（docs-only / template-only / skill-text-only）
   - pass 条件: review_status: pass
 - QG1 final QA:
   - reviewer: qa-reviewer
@@ -87,8 +87,8 @@ ID: "<ISS_ID>"
 
 ## 実装ステップ
 
-### S01 — <観測可能な振る舞い>
-- behavior goal:
+### 実装ステップ S01 — <観測可能な振る舞い>
+- 振る舞いの目標（behavior goal）:
   - ...
 - design 参照:
   - ...
@@ -98,66 +98,66 @@ ID: "<ISS_ID>"
   - ...
 - 対象ファイル:
   - ...
-- planned contract:
+- 計画済み契約（planned contract）:
   - scope:
     - 実装・文書化する範囲:
-  - test obligation:
+  - テスト義務（test obligation）:
     - closure id:
       - tc-001
     - coverage rationale:
       - AC / changed contract / failure mode / regression risk / invariant / manual risk から必要性を書く:
-  - Red / alternative evidence requirement:
+  - Red / 代替証跡の要件:
     - red-required / covered-existing:
       - 実装前に確認する failing test、characterization、または既存 test sensitivity:
     - docs-only / inspect-only / manual-required:
       - code test を置かない理由:
       - 代替 evidence path:
       - manual 手順と期待結果:
-  - implementation scope:
+  - 実装範囲（implementation scope）:
     - allowed paths:
       - ...
     - forbidden changes:
       - ...
-  - Green verification:
+  - Green 検証:
     - command / inspection / manual evidence:
       - ...
-  - Refactor / cleanup guardrail:
+  - Refactor / cleanup ガードレール:
     - 目的:
     - 禁止する広がり:
-  - closure evidence requirements:
+  - closure 証跡要件:
     - Step Contract Closure:
     - Test Contract Closure:
     - Closure Coverage:
-  - report evidence destination:
+  - report 証跡の記録先:
     - `report.md` の対象 section / ledger:
-  - amendment trigger:
+  - amendment trigger（plan amendment が必要になる契機）:
     - plan amendment と re-review が必要になる発見:
 
-#### delegation contract
-- delegated role:
+#### 委任契約（delegation contract）
+- 委任ロール（delegated role）:
   - dev-coder / doc-writer / other named worker / N/A
-- input docs:
+- 入力 docs:
   - `requirement.md`
   - `design.md`
   - `plan.md`
   - workflow / authoring docs:
   - current target files:
-- allowed paths:
+- 許可 paths:
   - ...
-- forbidden changes:
+- 禁止 changes:
   - ...
-- acceptance criteria:
+- 受け入れ条件:
   - closure id / step close condition:
-- required tests or docs-only verification:
+- 必須 tests または docs-only verification:
   - targeted command / inspection / docs diff / manual evidence:
 - reviewer focus:
-  - code-reviewer for code / runtime / tests / scaffold behavior; spec-reviewer for docs-only / template-only / skill-text-only docs/spec alignment
-- output required:
+  - code-reviewer（code / runtime / tests / scaffold behavior）; spec-reviewer（docs-only / template-only / skill-text-only docs/spec alignment）
+- 必須出力（output required）:
   - changed files:
   - verification result:
   - report evidence to update:
   - unresolved risks:
-- stop conditions:
+- 停止条件（stop conditions）:
   - input docs conflict / path outside allowed scope / verification cannot run / acceptance cannot be met:
 
 #### 具体テストケース一覧
@@ -179,7 +179,7 @@ ID: "<ISS_ID>"
   - 記録先: <証跡の保存先>
   - 関連 closure id: tc-002
 
-#### step closure contract
+#### ステップ完了契約（step closure contract）
 - closure id:
   - tc-001
 - close 条件:
@@ -194,7 +194,7 @@ ID: "<ISS_ID>"
 - 残リスク:
   - ...
 
-#### step gate
+#### ステップゲート（step gate）
 - step reviewer gate:
   - reviewer:
   - review 範囲:
@@ -205,11 +205,11 @@ ID: "<ISS_ID>"
   - commit 範囲:
   - no-op の場合の確認対象、差分なし確認コマンド、read-only evidence:
 
-### Sxx — <next observable behavior>
+### 実装ステップ Sxx — <次に観測可能な振る舞い>
 - S01 の subsections を複製して記入する。
 - `planned contract`、`delegation contract`、`具体テストケース一覧`、`step closure contract`、`step gate` がない implementation step は implementation-ready ではない。
 
-### S90 — docs impact resolution / docs refresh
+### ドキュメント影響の解消ステップ S90（docs impact resolution / docs refresh）
 - 対象:
   - docs / templates / README / workflow / skill / migration notes / none
 - 対応:
@@ -220,7 +220,7 @@ ID: "<ISS_ID>"
   - reviewer: spec-reviewer
   - pass 条件: docs が requirement / design / plan と整合し、未解決の必須 docs 影響が残っていない
 
-### S99 — final quality gate
+### 最終品質ゲートステップ S99（final quality gate）
 - branch diff 範囲:
   - ...
 - 必須 validation:

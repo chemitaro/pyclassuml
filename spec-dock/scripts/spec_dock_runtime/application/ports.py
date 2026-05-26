@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Literal
 from typing import Protocol
 
-from .contracts import ArtifactWriteResult, SyncCommandResult, SyncRequest
+from .contracts import ArtifactWriteResult
+from .contracts import BootstrapResult
+from .contracts import GitWorktreeRecord
+from .contracts import SyncCommandResult
+from .contracts import SyncRequest
 from ..domain.models import IssueSnapshot, SpecGraph
 from ..infra.contracts import ActiveManifest
 from ..infra.contracts import ActiveManifestLoadResult
@@ -153,6 +157,17 @@ class GitGateway(Protocol):
     def origin_github_repo_slug(self, repo_root: Path) -> str | None:
         ...
 
+    def worktree_list(self, repo_root: Path) -> list[GitWorktreeRecord]:
+        ...
+
+    def add_worktree_with_new_branch(self, repo_root: Path, *, path: Path, branch: str) -> None:
+        ...
+
+
+class BootstrapGateway(Protocol):
+    def run_make_init_if_available(self, worktree_path: Path) -> BootstrapResult:
+        ...
+
 
 class ArtifactWriter(Protocol):
     def write(self, specdock_dir: Path, bundle: ArtifactBundle) -> ArtifactWriteResult:
@@ -201,3 +216,4 @@ class Ports:
     clock: Clock | None = None
     artifact_writer: ArtifactWriter | None = None
     sync_legacy_runner: SyncLegacyRunner | None = None
+    bootstrap_gateway: BootstrapGateway | None = None

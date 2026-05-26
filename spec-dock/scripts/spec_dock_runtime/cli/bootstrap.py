@@ -24,6 +24,7 @@ from ..application.set_active import set_active as application_set_active
 from ..application.set_active import show_active as application_show_active
 from ..application.sync_state import sync as application_sync
 from ..application.validate_tree import validate_tree as application_validate_tree
+from ..application.worktree import worktree_create as application_worktree_create
 from ..infra import active_store as infra_active_store
 from ..infra import artifact_writer as infra_artifact_writer
 from ..infra import clock as infra_clock
@@ -33,6 +34,7 @@ from ..infra import fs_repo as infra_fs_repo
 from ..infra import git_cli as infra_git_cli
 from ..infra import github_cli as infra_github_cli
 from ..infra import json_store as infra_json_store
+from ..infra import make_cli as infra_make_cli
 from ..infra import template_scaffolder as infra_template_scaffolder
 
 
@@ -187,6 +189,18 @@ class _GitGateway:
     def origin_github_repo_slug(self, repo_root: Path) -> str | None:
         return infra_git_cli.origin_github_repo_slug(repo_root)
 
+    def worktree_list(self, repo_root: Path):
+        return infra_git_cli.worktree_list(repo_root)
+
+    def add_worktree_with_new_branch(self, repo_root: Path, *, path: Path, branch: str) -> None:
+        infra_git_cli.add_worktree_with_new_branch(repo_root, path=path, branch=branch)
+
+
+@dataclass(frozen=True)
+class _BootstrapGateway:
+    def run_make_init_if_available(self, worktree_path: Path):
+        return infra_make_cli.run_make_init_if_available(worktree_path)
+
 
 @dataclass(frozen=True)
 class _JsonStore:
@@ -224,6 +238,7 @@ def build_runtime(specdock_dir: Path, *, repo_root: Path | None = None) -> Boots
         active_state_store=_ActiveStateStore(),
         deps_topology_reader=_DepsTopologyReader(),
         git_gateway=_GitGateway(),
+        bootstrap_gateway=_BootstrapGateway(),
         json_store=_JsonStore(),
         clock=_Clock(),
         artifact_writer=_ArtifactWriter(),
@@ -248,5 +263,8 @@ def build_runtime(specdock_dir: Path, *, repo_root: Path | None = None) -> Boots
         issue_finish=lambda req: application_issue_finish(req, ports),
         validate_tree=lambda req: application_validate_tree(req, ports),
         doctor=lambda req: application_doctor(req, ports),
+        worktree_create=lambda req: application_worktree_create(req, ports),
+        repo_root=ports.repo_root,
+        specdock_dir=ports.specdock_dir,
     )
     return BootstrapContext(use_cases=use_cases)

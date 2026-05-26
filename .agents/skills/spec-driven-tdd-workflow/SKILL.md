@@ -22,6 +22,8 @@ description: Entry skill that routes work to the correct spec-dock leaf workflow
 - `spec-dock-initiative-planning`: initiative-level requirement/design/plan planning.
 - `spec-dock-epic-planning`: epic-level requirement/design/plan planning.
 - `spec-dock-issue-execution`: issue-level TDD execution and report updates.
+- `spec-dock-system-architect`: delegated architecture analysis and draft design evidence written as scope-local flat `discussions/<ts>-<kind>-<slug>.md` Markdown. Canonical docs remain main-orchestrator-only.
+- `spec-dock-implementation-planner`: delegated planning analysis and draft plan evidence written as scope-local flat `discussions/<ts>-<kind>-<slug>.md` Markdown. Canonical docs remain main-orchestrator-only.
 - `spec-dock-adr-facilitation`: ADR drafting/decision facilitation linked to the current workflow.
 
 ## Direct references
@@ -39,6 +41,7 @@ description: Entry skill that routes work to the correct spec-dock leaf workflow
 - Do not default to create/import for initiative/epic; inspect existing nodes first.
 - Keep boundary rationale in `discussions/`; docs remain the source of truth for the rule itself.
 - Put interview and investigation notes under `discussions/` in the active node.
+- Sub-agent authoring outputs may be direct-written under the target scope `discussions/` direct child, but they do not become canonical authority until the main orchestrator adopts them in canonical docs and records the adoption in `report.md`.
 - Record `Spec Authoring Gate` evidence in the active node's `report.md` for each requirement / design / plan promotion.
 - `spec-dock/active/context-pack.md` is the execution entrypoint for active issue work.
 - Discussion doc example: `./spec-dock/scripts/spec-dock new doc adr --issue iss-00123 --title "..."`

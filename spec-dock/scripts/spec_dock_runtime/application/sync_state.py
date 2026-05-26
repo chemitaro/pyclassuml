@@ -34,7 +34,6 @@ from ..domain.validation import (
 from ..infra.contracts import ActiveManifest, StoredMetaRecord
 from ..presentation.contracts import ArtifactBundle
 from ..presentation.json_state import (
-    render_context_pack,
     render_deps_issues_artifact,
     render_index_artifact,
     render_tree_artifact,
@@ -59,7 +58,7 @@ from .ports import Ports
 from .repo_context import (
     resolve_current_repo_slug,
 )
-from .set_active import build_active_manifest, commit_active_state
+from .set_active import build_active_manifest, build_context_pack_text, commit_active_state
 from .status_context import resolve_issue_status_context
 
 
@@ -641,7 +640,7 @@ def maybe_auto_update_from_branch(
         return (state, ActiveUpdateOutcome(applied=False, reason=reason or "already active"))
 
     manifest = build_active_manifest(selection, state.graph, repo_root=ports.repo_root)
-    context_pack_text = render_context_pack(selection)
+    context_pack_text = build_context_pack_text(manifest, repo_root=ports.repo_root)
     commit_active_state(
         persisted_manifest=manifest,
         patch_manifest=manifest,

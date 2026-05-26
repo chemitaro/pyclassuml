@@ -1,16 +1,17 @@
-# guide（全体像 / 導線）
+# 全体ガイド（guide）
 
 spec-dock の docs レイヤ、概念、生成物を最短で把握するための入口です。
 scope 固有の手順は `workflow_*.md`、仕様書作成の phase promotion は `workflow_spec_authoring.md`、shared な requirement / design の作法は `phase_*.md`、plan は `phase_plan.md` と `phase_plan_<scope>.md` の二段構成、コマンドや制約は `reference_*.md` を正本とします。
 runtime command の現行 contract は `./spec-dock/scripts/spec-dock ...` です。
 
-## docs の読み分け
+## 文書の読み分け（docs）
 
 - `workflow_*.md`: Initiative / Epic / Issue / ADR の scope 固有 workflow
 - `workflow_spec_authoring.md`: Initiative / Epic / Issue 共通の requirement / design / plan 作成 workflow
 - `phase_*.md`: shared phase playbook（共通の作り方）
 - `phase_plan_<scope>.md`: scope 固有の plan authoring rule
 - `reference_*.md`: GitHub / naming / deps / sync などの参照仕様
+- Worktree: [reference_worktree.md](reference_worktree.md)
 - `discussions/`: raw capture、ヒアリング、調査、議論、ADR の作業面
 
 phase playbook:
@@ -44,11 +45,11 @@ Initiative
     └── Issue
 ```
 
-## discussion docs catalog
+## 議論文書カタログ（discussion docs catalog）
 
-current catalog は `scratch` / `interview` / `research` / `disc` / `adr` です。
+current catalog は `scratch` / `interview` / `research` / `disc` / `adr` / `draft-requirement` / `draft-design` / `draft-plan` です。
 
-| type | lifecycle | authority default | 使う場面 |
+| 種別（type） | ライフサイクル（lifecycle） | 既定 authority（authority default） | 使う場面 |
 |---|---|---:|---|
 | `scratch` | capture | `raw` | 未整理の発話、観察、思考、会話ログ、下書きを低摩擦に置く |
 | `interview` | elicitation | `raw` | 人間から目的、制約、期待、判断基準、未決事項を引き出す |
@@ -60,7 +61,7 @@ current catalog は `scratch` / `interview` / `research` / `disc` / `adr` です
 
 `note` は新規作成 catalog から retired されています。軽量メモと raw capture の境界が曖昧で `scratch` と役割が重複するため、未整理の記録先を `scratch` に一本化します。これは raw capture type の重複を避け、選択時の認知的曖昧さを減らすためです。既存 `note` artifact は grandfathered として壊さず、以後の raw capture は `scratch` に置きます。
 
-reflection rules:
+reflection rules（反映ルール）:
 - `scratch`: 事実確認が必要なら `research`、論点整理が必要なら `disc`、人間判断が必要なら `interview`、長期判断なら `adr` を新規作成する。
 - `interview`: 回答は `requirement.md` / `design.md` / `plan.md` / `adr` の反映先を明示する。回答が新しい論点や調査を生む場合は `disc` / `research` へつなぐ。
 - `research`: 調査結果が比較を必要とする場合は `disc`、長期判断を支える場合は `adr` へつなぐ。
@@ -126,6 +127,7 @@ spec-dock/
 ./spec-dock/scripts/spec-dock deps check <target>
 ./spec-dock/scripts/spec-dock deps add --from <issue-id> --to <issue-id>
 ./spec-dock/scripts/spec-dock deps remove --from <issue-id> --to <issue-id>
+./spec-dock/scripts/spec-dock worktree create [label]
 ./spec-dock/scripts/spec-dock validate
 ./spec-dock/scripts/spec-dock sync
 ```

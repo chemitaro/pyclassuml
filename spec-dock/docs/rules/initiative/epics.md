@@ -1,4 +1,4 @@
-# epics/rules.md
+# エピック一覧ルール（epics/rules.md）
 
 このディレクトリには initiative 配下の epic を作成します。
 

@@ -9,7 +9,7 @@ ID: "<ISS_ID>"
 親: ["<EPIC_ID>", "<INIT_ID>"]
 ---
 
-# <ISS_ID> <ISS_TITLE> — 要件定義（WHAT / WHY）
+# <ISS_ID> <ISS_TITLE> — 要件定義（何を、なぜ行うか）
 
 ## 目的
 - （1〜3行）...

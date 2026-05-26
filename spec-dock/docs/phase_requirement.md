@@ -1,4 +1,4 @@
-# phase playbook: requirement
+# 要件フェーズ playbook（phase playbook: requirement）
 
 Initiative / Epic / Issue に共通する requirement の shared playbook です。
 scope 固有の entry / quality gate は `workflow_*.md` が additive に定義します。議論資料の置き方は対象 scope 配下の `discussions/rules.md`、命名は [reference_naming.md](reference_naming.md) を参照してください。
@@ -9,17 +9,17 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 - Scope workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
 - 議論資料の置き方と命名: 対象 scope 配下の `discussions/rules.md`, [reference_naming.md](reference_naming.md)
 
-## phase contract
+## フェーズ契約（phase contract）
 
 - 位置: 全体 workflow の `調査分析 → requirement → design → plan → 実装/品質ゲート` の `requirement`
-- 責務: 調査分析の結果を `WHAT / WHY / scope / success` に固定する
+- 責務: 調査分析の結果を `何を / なぜ / スコープ / 成功条件（WHAT / WHY / scope / success）` に固定する
 - 前提入力: 対象 scope、As-Is の一次情報、対象 `workflow_*.md`、既存 `discussions/` / ADR
 - 固定すること: 目的、背景・現状、成功条件、スコープ / 非スコープ、主要 TBD の置き場
 - 出力: reviewer が design へ送れる `requirement.md` と必要な `research` / `disc` / `adr`
 - 非ゴール: HOW の先取り、source のない断定、未確定論点の隠蔽
 - 正本参照: この playbook の `review / handoff gate` が shared minimum gate。scope 固有 gate は `workflow_*.md` が additive に定義する
 
-## scope ownership
+## 範囲所有（scope ownership）
 
 - Initiative requirement:
   - 所有する判断:
@@ -49,7 +49,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 5. `requirement.md` を固めて fresh `spec-reviewer` loop を `review_status: pass` まで回す
 6. 関連 docs を束ねて design へ handoff する
 
-## entry checklist
+## 入場 checklist（entry checklist）
 
 - 対象が Initiative / Epic / Issue のどれかを `workflow_*.md` で確認した
 - 対応 template を開き、先に埋める節を把握した
@@ -65,10 +65,10 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
   - Epic: `spec-dock/templates/epic/requirement.md`
   - Issue: `spec-dock/templates/issue/requirement.md`
 
-## requirement checklist
+## 要件 checklist（requirement checklist）
 
 - As-Is は一次情報を根拠にし、事実 / 推測 / 未確定を混ぜない
-- `WHAT / WHY / scope / success` を先に固め、HOW は入れすぎない
+- `何を / なぜ / スコープ / 成功条件（WHAT / WHY / scope / success）` を先に固め、HOW は入れすぎない
 - `MUST / MUST NOT / OUT OF SCOPE` と `Always / Ask / Never` を早めに仮置きする
 - requirement 本文には結論と制約を残し、長い比較や調査ログは `discussions/` へ逃がす
 - generic DoR / DoD や `省略/例外メモ` は template に戻さない
@@ -77,7 +77,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
   - Epic: `目的`, `ユースケース`, `Epic requirements`, `Epic acceptance criteria`, `スコープ`, `境界`, `依存 / 影響範囲`, `未確定事項`
   - Issue: `目的`, `背景・現状`, `スコープ`, `境界`, `受け入れ条件`, `例外・エッジケース`, `未確定事項`
 
-## diagram guidance
+## 図表指針（diagram guidance）
 
 - requirement の図表は、要求の理解や trace を助ける場合だけ置く
 - Initiative:
@@ -125,7 +125,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
   - 非交渉制約や運用ルールを固定しないと success が閉じない
   - 将来参照したい採択理由を残す必要がある
 
-## review / handoff gate
+## レビュー / 引き継ぎゲート（review / handoff gate）
 
 この節は shared minimum gate です。通過後も scope 固有 gate は対応する `workflow_*.md` に追加で従います。
 
@@ -139,9 +139,9 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 - reviewer が「design へ進めてよい」と判断できる
 - `report.md` の `Spec Authoring Gate` に調査、ヒアリング、review、修正、promotion evidence が残っている
 
-## short rules
+## 短縮ルール要約（short rules）
 
-- subagent は `researcher / consultant = 調査比較`, `doc writer = 文面整合`, `reviewer = WHAT / WHY 逸脱検出` で使い分ける
+- subagent は `researcher / consultant = 調査比較`, `doc writer = 文面整合`, `reviewer = 何を / なぜ（WHAT / WHY）逸脱検出` で使い分ける
 - subagent には `対象 scope / 未確定論点 / 欲しい出力` を最小セットで渡す
 - 迷ったら `追加調査 → ヒアリング → disc → adr → pause` の順で判断する
 - scope / non-scope / user intent / acceptance criteria に影響する未確認事項が残る場合は design へ進めない

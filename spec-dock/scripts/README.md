@@ -8,7 +8,7 @@ v2 では、日常運用（initiative/epic/issue/doc の作成、active 切り�
 - `new initiative` / `new epic` / `new issue` はデフォルトで GitHub Issue を作成します。
 - 既存 current-repo Issue へ紐づける場合は `--github-issue <n>` を使います。
 - `--no-github` は互換 option として残っていますが、node creation の成功経路ではなく contract error で reject されます。
-- discussion docs は `new doc <type>` のみを使います（current catalog: `scratch` / `interview` / `research` / `disc` / `adr`）。
+- discussion docs は `new doc <type>` のみを使います（current catalog: `scratch` / `interview` / `research` / `disc` / `adr` / `draft-requirement` / `draft-design` / `draft-plan`）。
 - `note` は retired です。既存 `note` artifact は grandfathered として壊さず、新規 raw capture は `scratch` を使います。
 - `new/import {initiative,epic,issue}` と `new doc <type>` の `--slug` は kebab-case が必要です（詳細は `spec-dock/docs/reference_naming.md`）。
 

@@ -1,4 +1,4 @@
-# workflow: epic
+# エピックワークフロー（workflow: epic）
 
 Epic は設計の背骨です。
 この workflow は、Epic 固有の再利用判定、作成、Issue 分割、品質ゲートを正本として扱います。
@@ -44,7 +44,7 @@ Epic は設計の背骨です。
 - `design.md`: 契約、移行、観測性、リスク
 - `plan.md`: Issue 分割、依存順、品質ゲート。shared axiom は `phase_plan.md`、Epic 固有の書き方は `phase_plan_epic.md`
 - Requirement / design / plan の phase promotion は `workflow_spec_authoring.md` を正本にし、各 artifact ごとに fresh `spec-reviewer` の `review_status: pass` まで次 phase へ進めない
-- `discussions/`: `new doc <type> --epic <epic-id> --title "..."` で、この epic の `discussions/` 配下に timestamp-prefixed original を作成する。current catalog は `scratch` / `interview` / `research` / `disc` / `adr`。標準形は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md`。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
+- `discussions/`: `new doc <type> --epic <epic-id> --title "..."` で、この epic の `discussions/` 配下に timestamp-prefixed original を作成する。current catalog は `scratch` / `interview` / `research` / `disc` / `adr` / `draft-requirement` / `draft-design` / `draft-plan`。標準形は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md`。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
 - `note` は新規作成 catalog から retired。既存 `note` artifact は grandfathered として壊さない。
 - shared な書き方は `phase_*.md`、lifecycle / governance と Epic 固有の分割判断はこの workflow を正本とする
 
@@ -65,6 +65,13 @@ Epic は設計の背骨です。
   - requirement / design / plan の各 promotion gate が `Spec Authoring Gate` として `report.md` に記録されている
   - scope / acceptance criteria / Issue 分割に影響する未確認事項が残っていない
   - plan gate pass 後に Issue 分割へ進む
+- epic-wide pre-PR:
+  - Epic の全 Issue 実装が完了し、Epic PR を更新する前に、開発ベースラインから最終実装状態までの全差分を対象に品質ゲートを置く
+  - `gh pr view <pr> --json baseRefName,baseRefOid,headRefName,headRefOid` で base endpoint を記録し、local `HEAD` を final endpoint として固定する
+  - `git diff --stat <baseRefOid>...HEAD` と `git diff --name-status <baseRefOid>...HEAD` を `report.md` または `discussions/` の共有証跡に残す
+  - fresh `deep-consultant` と fresh `spec-reviewer` が同じ共有証跡と endpoint を参照して Epic 全体をレビューする
+  - すべての指摘は `fixed` / `superseded` / `explicitly_deferred_with_user_acceptance` のいずれかに disposition されるまで PR update / push を行わない
+  - `fixed` または `superseded` の指摘は再検証と fresh re-review を通してから PR update / push に進む
 
 ## 仕上げ
 

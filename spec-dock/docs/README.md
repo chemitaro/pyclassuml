@@ -1,4 +1,4 @@
-# spec-dock docs（入口）
+# 文書入口（spec-dock docs）
 
 このディレクトリは `spec-dock init/update` により導入先リポジトリへ配置されます。  
 まず `guide.md` で全体像を掴み、仕様書作成は `workflow_spec_authoring.md`、scope 固有の lifecycle / governance は対象 scope の `workflow_*.md` を入口にしてください。
@@ -65,7 +65,7 @@ runtime command の現行 contract は `./spec-dock/scripts/spec-dock ...` で�
 ./spec-dock/scripts/spec-dock validate
 ./spec-dock/scripts/spec-dock sync
 
-# managed files/docs/templates/scripts/skills refresh
+# 管理対象 files/docs/templates/scripts/skills の更新（refresh）
 ./spec-dock/scripts/spec-dock update
 ./spec-dock/scripts/spec-dock update /path/to/project
 ```

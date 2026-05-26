@@ -1,4 +1,4 @@
-# reference: deps（依存関係管理）
+# 依存関係管理参照（reference: deps）
 
 対象コマンド:
 
@@ -79,14 +79,14 @@
 - shorthand 展開結果が空でもエラーにはせず、warning `deps_ref_expanded_to_empty` を出します。
 - no dual-read / no auto-migration / rollback-by-revert を前提にします。
 
-## 3. reader contract
+## 3. 読み取り契約（reader contract）
 
 - `infra/deps_reader.py` は node 直下 `.meta.json` から `depends_on` を読みます。
 - shorthand 解決、issue-level direct edge compile、dedupe、deterministic sort、descendant/self reject、warning `deps_ref_expanded_to_empty` は current contract を維持します。
 - downstream consumer 向けの return shape は既存 `DepsTopologyLoadResult(issue_depends_on_map, warnings)` のままです。
-- `deps add/remove` の mutation contract は次節の通りで、delete scrub と `validate` / `sync` / `active set` parity の詳細はこの reference の主題に含めません。
+- `deps add/remove` の変更契約（mutation contract）は次節の通りで、delete scrub と `validate` / `sync` / `active set` parity の詳細はこの reference の主題に含めません。
 
-## 4. mutation contract
+## 4. 変更契約（mutation contract）
 
 コマンド surface:
 
@@ -105,25 +105,25 @@
 - mutation write path は node 直下 `.meta.json` の `depends_on` のみです。`deps.json` fallback write や互換モードはありません。
 - write failure は `write_failed` error で返し、temp file + replace の atomic write により partial write を残しません。rollback は compatibility mode ではなく issue diff revert 前提です。
 
-## 5. downstream boundary note
+## 5. 下流境界メモ（downstream boundary note）
 
 - `deps check`、`active set`、`validate`、`sync`、`delete` は compiled dependency result を消費する downstream consumer です。
 - 運用では `deps add/remove` の後に `./spec-dock/scripts/spec-dock deps check <target>`、`./spec-dock/scripts/spec-dock validate`、`./spec-dock/scripts/spec-dock sync` を順に実行して、標準の GitHub live state で整合を確認します。GitHub を呼ばない cache/local 確認が必要な場合だけ `--no-github` を指定します。
 - この文書は `.meta.json` schema / reader / `deps check` / `deps add/remove` の command contract を固定するもので、downstream parity や hard cutover 完了を意味しません。
 - provider-side のこのファイルが dependency reference の正本であり、dogfooding 側 copy は secondary verification です。
 
-## 6. migration / rollback guardrails
+## 6. 移行 / ロールバックのガードレール（migration / rollback guardrails）
 
 - no dual-read: reader は `.meta.json` のみを対象にし、`deps.json` fallback read を持ちません。
 - no auto-migration: runtime は `deps.json` から `.meta.json` への自動変換・救済を行いません。
 - rollback-by-revert: compatibility mode は導入せず、issue diff revert で戻します。
 
-## 7. hard cutover owner boundary
+## 7. ハードカットオーバーの所有境界（hard cutover owner boundary）
 
 - legacy `deps.json` checked-in data manual fix と dogfooding `./spec-dock/scripts/spec-dock validate` / `sync` evidence、hard cutover judgment の primary owner は `iss-00062` です。
-- `iss-00060` / `iss-00061` がこの reference で固定するのは `.meta.json` schema、reader contract、mutation command contract、provider-side dependency docs 正本更新までです。
+- `iss-00060` / `iss-00061` がこの reference で固定するのは `.meta.json` schema、読み取り契約（reader contract）、変更コマンド契約（mutation command contract）、provider-side dependency docs 正本更新までです。
 
-## 8. hard cutover entry contract（T3/T4 split）
+## 8. ハードカットオーバー開始契約（hard cutover entry contract / T3/T4 split）
 
 - hard cutover entry 条件は次の 3 点に固定します:
   - docs 更新（provider-side 正本 + dogfooding mirror）

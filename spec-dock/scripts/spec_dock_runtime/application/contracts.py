@@ -21,6 +21,7 @@ from ..infra.contracts import StoredMetaRecord
 
 
 POST_MUTATION_FATAL_WARNING_CODES: tuple[str, ...] = ("gh_fetch_failed",)
+BootstrapStatus = Literal["skipped", "succeeded", "failed", "detection_failed"]
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,41 @@ class DoctorFinding:
 class DoctorResult:
     ok: bool
     findings: list[DoctorFinding]
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class GitWorktreeRecord:
+    path: Path
+    head: str | None
+    branch: str | None
+    detached: bool = False
+    bare: bool = False
+
+
+@dataclass(frozen=True)
+class BootstrapResult:
+    status: BootstrapStatus
+    command: str | None
+    exit_code: int | None
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class WorktreeCreateRequest:
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class WorktreeCreateResult:
+    id: str
+    main_worktree_path: Path
+    container_path: Path
+    worktree_path: Path
+    branch_name: str
+    bootstrap_status: BootstrapStatus
+    bootstrap_command: str | None
+    bootstrap_exit_code: int | None
     warnings: list[str]
 
 
@@ -120,7 +156,17 @@ class ImportNodeResult:
 
 @dataclass(frozen=True)
 class CreateDiscussionDocRequest:
-    doc_type: Literal["adr", "disc", "research", "interview", "scratch", "note"]
+    doc_type: Literal[
+        "adr",
+        "disc",
+        "research",
+        "interview",
+        "scratch",
+        "draft-requirement",
+        "draft-design",
+        "draft-plan",
+        "note",
+    ]
     scope_node_id: str
     title: str
     slug: str | None
@@ -513,3 +559,8 @@ class UseCases:
     doctor: Callable[[DoctorRequest], DoctorResult] = (
         lambda _req: DoctorResult(ok=True, findings=[], warnings=[])
     )
+    worktree_create: Callable[[WorktreeCreateRequest], WorktreeCreateResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("worktree_create is not configured")
+    )
+    repo_root: Path | None = None
+    specdock_dir: Path | None = None

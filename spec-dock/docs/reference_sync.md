@@ -1,4 +1,4 @@
-# reference: sync（状態集計）
+# 状態集計参照（reference: sync）
 
 対象コマンド:
 
@@ -44,7 +44,7 @@ legacy v1 生成物（廃止）:
 
 上記3つは `sync` 実行時に常に削除されます（stale防止）。
 
-## 2. all / todo projection
+## 2. 全体 / TODO 投影（all / todo projection）
 
 `*-all.json` は全件を保持します。
 
@@ -54,7 +54,7 @@ legacy v1 生成物（廃止）:
 - `deps.issue_edges` は端点が todo issue の edge のみ保持
 - `index.json` と `tree.json` のノード集合は一致
 
-## 3. deps情報の埋め込み
+## 3. 依存情報の埋め込み（deps）
 
 `index-*.json` / `tree-*.json` のトップレベルには `deps` が入り、少なくとも以下を持ちます:
 - `valid: bool`
@@ -80,7 +80,7 @@ deps 構造エラー（未解決参照 / self / cycle / descendant依存 / schem
 削除ではなく上書きにすることで、stale 参照を防ぎます。
 `--force` 実行後に active を更新したい場合は、`./spec-dock/scripts/spec-dock active set <target>` を使って明示更新してください。
 
-## 5. GitHub default と `--no-github`
+## 5. GitHub の既定動作（GitHub default）と `--no-github`
 
 `sync` / `sync --github`:
 - `gh issue list` の読み取り結果で issue status を enrich（OPEN/CLOSED -> open/done）
@@ -94,7 +94,7 @@ deps 構造エラー（未解決参照 / self / cycle / descendant依存 / schem
 
 `--github` と `--no-github` は同時に指定できません。
 
-## 6. active更新
+## 6. アクティブ更新（active update）
 
 デフォルトでは、ブランチ名から active を best-effort 推定して更新します。
 
@@ -110,7 +110,7 @@ deps 構造エラー（未解決参照 / self / cycle / descendant依存 / schem
 
 同じ依存を、機械向けと可視化向けで向きを分けて表現しています。
 
-## 8. PlantUML（処理フロー）
+## 8. 処理フロー（PlantUML）
 
 ```plantuml
 @startuml
@@ -155,7 +155,7 @@ end
 @enduml
 ```
 
-## 9. hard cutover verification contract（iss-00062 / iss-00063）
+## 9. ハードカットオーバー検証契約（hard cutover verification contract / iss-00062 / iss-00063）
 
 - hard cutover entry 条件は `docs 更新 + checked-in data manual fix + validate/sync evidence` の 3 点を満たしたときだけ充足です。
 - `validate` / `sync` evidence は少なくとも次を issue-level `report.md` に記録します:

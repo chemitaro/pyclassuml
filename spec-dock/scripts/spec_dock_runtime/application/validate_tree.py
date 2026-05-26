@@ -3,6 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import cast
 
+from ..domain.authority import (
+    evaluate_evidence_adoption_ledger_gate,
+    load_evidence_adoption_ledger_entries,
+    validate_delegated_authority_artifact,
+)
 from ..domain.models import SpecNodeKind, SpecNodeSeed, ValidationReport
 from ..domain.tree import build_graph
 from ..domain.validation import validate_graph_and_deps
@@ -56,4 +61,47 @@ def validate_tree(req: ValidateTreeRequest, ports: Ports) -> ValidationResult:
             validate_required_artifacts_for_graph(graph, repo_root=ports.repo_root)
         except RuntimeError as error:
             report = ValidationReport(errors=[str(error)], warnings=list(report.warnings))
+    if not report.errors and ports.repo_root is not None:
+        authority_errors = _validate_delegated_authority_artifacts(graph, repo_root=ports.repo_root)
+        if authority_errors:
+            report = ValidationReport(errors=authority_errors, warnings=list(report.warnings))
+    if not report.errors and ports.repo_root is not None:
+        ledger_errors = _validate_evidence_adoption_ledgers(graph, repo_root=ports.repo_root)
+        if ledger_errors:
+            report = ValidationReport(errors=ledger_errors, warnings=list(report.warnings))
     return ValidationResult(report=report, checked_node_count=len(records))
+
+
+def _validate_delegated_authority_artifacts(graph, *, repo_root: Path) -> list[str]:
+    errors: list[str] = []
+    for node in graph.nodes_by_id.values():
+        for artifact_name in ("design.md", "plan.md"):
+            artifact_path = repo_root / node.path / artifact_name
+            result = validate_delegated_authority_artifact(artifact_path, purpose="validate")
+            if result.ok:
+                continue
+            detail = " ".join(result.details)
+            errors.append(
+                "Delegated draft authority incomplete/blocked: "
+                f"path={artifact_path.as_posix()} reason={result.reason}"
+                + (f" details={detail}" if detail else "")
+            )
+    return errors
+
+
+def _validate_evidence_adoption_ledgers(graph, *, repo_root: Path) -> list[str]:
+    errors: list[str] = []
+    for node in graph.nodes_by_id.values():
+        report_path = repo_root / node.path / "report.md"
+        entries = load_evidence_adoption_ledger_entries(report_path)
+        result = evaluate_evidence_adoption_ledger_gate(entries, target_artifact="*", purpose="validate")
+        if result.ok:
+            continue
+        detail = " ".join(result.details)
+        errors.append(
+            "Evidence Adoption Ledger incomplete/blocked: "
+            f"path={report_path.as_posix()} reason={result.reason} "
+            f"blocking_entry_id={result.blocking_entry_id}"
+            + (f" details={detail}" if detail else "")
+        )
+    return errors

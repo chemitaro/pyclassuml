@@ -20,6 +20,7 @@ from ..application.contracts import (
     PostMutationSyncOutcome,
     SyncCommandResult,
     ValidationResult,
+    WorktreeCreateResult,
 )
 from .contracts import CliText
 
@@ -352,6 +353,20 @@ def render_issue_finish_text(result: IssueFinishResult) -> CliText:
         ),
         warnings=_post_sync_warnings(list(result.warnings), result.post_sync),
     )
+
+
+def render_worktree_create_text(result: WorktreeCreateResult) -> CliText:
+    stdout_lines = [
+        (
+            "spec-dock: ok (worktree create) "
+            f"id={result.id} branch={result.branch_name} path={result.worktree_path}"
+        ),
+        (
+            "spec-dock: worktree bootstrap "
+            f"status={result.bootstrap_status} command={result.bootstrap_command or '-'}"
+        ),
+    ]
+    return CliText(stdout_lines=stdout_lines, stderr_lines=[], warnings=list(result.warnings))
 
 
 def _delete_remote_close_payload(result: DeleteNodeResult) -> dict[str, list[str]]:

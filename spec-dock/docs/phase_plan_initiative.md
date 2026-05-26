@@ -1,9 +1,9 @@
-# phase playbook: plan (initiative)
+# イニシアチブ計画フェーズ playbook（phase playbook: plan / initiative）
 
 Initiative plan の playbook です。
 shared axiom は [phase_plan.md](phase_plan.md)、Initiative の lifecycle / governance は [workflow_initiative.md](workflow_initiative.md) を参照します。
 
-## scope contract
+## スコープ契約（scope contract）
 
 - plan の単位: roadmap / milestone / epic portfolio
 - plan の責務: initiative requirement / design を、epic 分解、順序、意思決定ゲート、指標レビューへ変換する
@@ -19,13 +19,13 @@ shared axiom は [phase_plan.md](phase_plan.md)、Initiative の lifecycle / gov
   - test command
   - per-step review cadence
 
-## entry focus
+## 着手時の焦点（entry focus）
 
 - 目的と成功指標が requirement で固定されている
 - target architecture / guardrails が design で整理されている
 - epic 分解前提と外部依存が見えている
 
-## authoring checklist
+## 作成 checklist（authoring checklist）
 
 - `この計画が達成する Goal / Metric` を先に埋める
 - `マイルストーン` を exit 付きで置く
@@ -36,13 +36,13 @@ shared axiom は [phase_plan.md](phase_plan.md)、Initiative の lifecycle / gov
 - `Epic readiness contract` を置く
 - `final exit contract` を置く
 
-## diagram / trace guidance
+## 図表 / trace 指針（diagram / trace guidance）
 
 - 必要な場合だけ roadmap、Epic dependency map、Metric / Epic / evidence の対応表を置く
 - 図表は `Epic ポートフォリオ`、`順序と理由`、`意思決定ゲート` の理解を助ける用途に限定する
 - 個別 Issue の作業手順、test command、file-level dependency は図表化しない
 
-## review gate
+## レビューゲート（review gate）
 
 - Epic へ handoff できる粒度まで分解されている
 - 指標レビューの timing がある

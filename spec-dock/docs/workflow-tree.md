@@ -1,4 +1,4 @@
-# Workflow: Initiative → Epic → Issue（ツリー運用）
+# ツリー運用（Workflow: Initiative → Epic → Issue）
 
 このドキュメントは、`Initiative → Epic → Issue` を **複数ネスト・複数同時**に扱うためのワークフローです。  
 目的は「巨大Issue化」「Why/What/How/Do の混線」「承認前に実装が走る」を防ぎ、Codex CLI（コーディングエージェント）と人間が同じ前提で運用できる状態を作ることです。
@@ -46,7 +46,7 @@
 
 ---
 
-## 2. Initiative を固める（Outcome とガードレールを固定）
+## 2. 取り組みを固める（Initiative / Outcome とガードレールを固定）
 
 対象ファイル（Initiative配下）:
 - `requirement.md`（Outcome / 成功指標 / スコープ境界 / DoR）
@@ -62,7 +62,7 @@
 
 ---
 
-## 3. Epic を設計の背骨として作る（Issue分割が破綻しない状態）
+## 3. エピックを設計の背骨として作る（Epic / Issue分割が破綻しない状態）
 
 対象ファイル（Epic配下）:
 - `requirement.md`（E-RQ / E-AC / NFR / 境界）
@@ -77,7 +77,7 @@
 
 ---
 
-## 4. Issue を“単独完結”の作業単位として作る（ただし親に従う）
+## 4. 課題を“単独完結”の作業単位として作る（Issue / ただし親に従う）
 
 Issueは単独で「要件→設計→計画→実装→報告」まで完結する作業単位です。  
 一方で、親（Initiative/Epic）のガードレール・契約・E2E受入（E-AC/NFR）に従います。

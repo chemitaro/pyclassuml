@@ -1,4 +1,4 @@
-# workflow: ADR
+# アーキテクチャ判断ワークフロー（workflow: ADR）
 
 ADR（Architecture Decision Record）は、意思決定を仕様（requirement/design/plan）から **切り離して**記録するための仕組みです。
 
@@ -28,13 +28,13 @@ Issue/Epic/Initiative のいずれかに紐づけて作成します。
 runtime command（scope を明示）:
 
 ```bash
-# issue スコープ
+# 課題スコープ（issue scope）
 ./spec-dock/scripts/spec-dock new doc adr --issue <issue-id> --title "..."
 
-# epic スコープ
+# エピックスコープ（epic scope）
 ./spec-dock/scripts/spec-dock new doc adr --epic <epic-id> --title "..."
 
-# initiative スコープ
+# イニシアチブスコープ（initiative scope）
 ./spec-dock/scripts/spec-dock new doc adr --initiative <initiative-id> --title "..."
 ```
 

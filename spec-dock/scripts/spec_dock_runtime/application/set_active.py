@@ -4,6 +4,17 @@ from pathlib import Path
 from typing import cast
 
 from ..domain.active import resolve_branch_decision
+from ..domain.authority import (
+    AUTHORITY_APPROVED,
+    GRANT_IMPLEMENTATION_START,
+    GRANT_ISSUE_FINISH,
+    approved_runtime_grants,
+    approved_runtime_promotion_record,
+    evaluate_authority_gate,
+    evaluate_evidence_adoption_ledger_gate,
+    load_evidence_adoption_ledger_entries,
+    validate_delegated_authority_artifact,
+)
 from ..domain.deps import evaluate_readiness, validate_deps_cycles
 from ..domain.ids import format_id, parse_id
 from ..domain.models import ActiveSelection, BranchDecision, NodeId, SpecGraph, SpecNodeKind, SpecNodeSeed
@@ -186,7 +197,7 @@ def _load_cached_issue_last_sync_at_by_id(ports: Ports, specdock_dir: Path) -> d
     return out
 
 
-def _build_context_pack_text(manifest: ActiveManifest) -> str:
+def build_context_pack_text(manifest: ActiveManifest, *, repo_root: Path | None = None) -> str:
     has_init = manifest.initiative is not None
     has_epic = manifest.epic is not None
     has_issue = manifest.issue is not None
@@ -201,6 +212,45 @@ def _build_context_pack_text(manifest: ActiveManifest) -> str:
     lines.append(f"- initiative: {init_id}")
     lines.append(f"- epic: {epic_id}")
     lines.append(f"- issue: {issue_id}")
+    lines.append("")
+    lines.append("## Authority")
+    lines.append("- source: `spec-dock/.agent/active.json`")
+    lines.append("- rule: proposed or missing authority cannot authorize implementation, issue ready, issue finish, or phase completion.")
+    for label, entry in (
+        ("initiative", manifest.initiative if has_init else None),
+        ("epic", manifest.epic if has_epic else None),
+        ("issue", manifest.issue if has_issue else None),
+    ):
+        if entry is None:
+            lines.append(f"- {label}: authority=(none), grants=[]")
+            continue
+        authority = entry.authority or "missing"
+        grants = ", ".join(entry.grants) if entry.grants else ""
+        lines.append(f"- {label}: authority={authority}, grants=[{grants}]")
+        implementation_result = evaluate_authority_gate(
+            authority=entry.authority,
+            grants=entry.grants,
+            promotion_record=entry.promotion_record,
+            required_grant=GRANT_IMPLEMENTATION_START,
+            purpose="context_pack_implementation",
+        )
+        finish_result = evaluate_authority_gate(
+            authority=entry.authority,
+            grants=entry.grants,
+            promotion_record=entry.promotion_record,
+            required_grant=GRANT_ISSUE_FINISH,
+            purpose="context_pack_finish",
+        )
+        downstream_blocks = _context_pack_scope_downstream_blocks(label, entry, repo_root=repo_root)
+        if implementation_result.ok and finish_result.ok and not downstream_blocks:
+            lines.append(f"- {label}: authoritative_input=implementation,finish")
+        else:
+            reasons = _ordered_unique(
+                reason
+                for reason in (implementation_result.reason, finish_result.reason, *downstream_blocks)
+                if reason != "ok"
+            )
+            lines.append(f"- {label}: authoritative_input=none, downstream_block={','.join(reasons)}")
     lines.append("")
     lines.append("## Generated state")
     lines.append("- entry: `spec-dock/.agent/active.json`")
@@ -245,6 +295,48 @@ def _build_context_pack_text(manifest: ActiveManifest) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _build_context_pack_text(manifest: ActiveManifest, *, repo_root: Path | None = None) -> str:
+    return build_context_pack_text(manifest, repo_root=repo_root)
+
+
+def _context_pack_scope_downstream_blocks(
+    label: str,
+    entry: ActiveManifestEntry,
+    *,
+    repo_root: Path | None,
+) -> tuple[str, ...]:
+    del label
+    if repo_root is None or entry.path is None:
+        return ()
+    scope_dir = repo_root / entry.path
+    blocks: list[str] = []
+    for artifact_name in ("design.md", "plan.md"):
+        artifact_path = scope_dir / artifact_name
+        for purpose in ("context_pack_implementation", "context_pack_finish"):
+            result = validate_delegated_authority_artifact(artifact_path, purpose=purpose)
+            if result.ok:
+                continue
+            blocks.append(result.reason)
+    ledger_result = evaluate_evidence_adoption_ledger_gate(
+        load_evidence_adoption_ledger_entries(scope_dir / "report.md"),
+        target_artifact="*",
+        purpose="context_pack",
+    )
+    if not ledger_result.ok:
+        blocks.append(ledger_result.reason)
+        if ledger_result.blocking_entry_id is not None:
+            blocks.append(f"blocking_entry_id={ledger_result.blocking_entry_id}")
+    return tuple(blocks)
+
+
+def _ordered_unique(values) -> list[str]:
+    out: list[str] = []
+    for value in values:
+        if value not in out:
+            out.append(value)
+    return out
+
+
 def show_active(req: ShowActiveRequest, ports: Ports) -> ActiveViewResult:
     del req
     if ports.active_state_store is None:
@@ -272,6 +364,9 @@ def build_active_manifest(selection: ActiveSelection, graph: SpecGraph, *, repo_
         return ActiveManifestEntry(
             id=node.id,
             path=_to_repo_relative_specdock_path(node.path, repo_root=repo_root),
+            authority=AUTHORITY_APPROVED,
+            grants=approved_runtime_grants(),
+            promotion_record=approved_runtime_promotion_record(node_id=node.id),
         )
 
     return ActiveManifest(
@@ -447,7 +542,7 @@ def set_active(req: SetActiveRequest, ports: Ports) -> ActiveSetResult:
         branch = _checkout_before_write(graph=graph, target_id=target_id, ports=ports, warnings=warnings)
 
     manifest = build_active_manifest(selection, graph, repo_root=_resolve_repo_root(ports))
-    context_pack_text = _build_context_pack_text(manifest)
+    context_pack_text = _build_context_pack_text(manifest, repo_root=_resolve_repo_root(ports))
     commit_active_state(
         persisted_manifest=manifest,
         patch_manifest=manifest,
@@ -474,7 +569,7 @@ def clear_active(req: ClearActiveRequest, ports: Ports) -> ActiveClearResult:
     previous = _to_active_selection(load_result.manifest)
     empty_selection = ActiveSelection(initiative_id=None, epic_id=None, issue_id=None)
     manifest = build_active_manifest(empty_selection, graph, repo_root=_resolve_repo_root(ports))
-    context_pack_text = _build_context_pack_text(manifest)
+    context_pack_text = _build_context_pack_text(manifest, repo_root=_resolve_repo_root(ports))
     commit_active_state(
         persisted_manifest=manifest,
         patch_manifest=None,

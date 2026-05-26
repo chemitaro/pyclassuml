@@ -1,4 +1,4 @@
-# phase playbook: plan
+# 計画フェーズ playbook（phase playbook: plan）
 
 Initiative / Epic / Issue に共通する plan の shared axiom です。
 scope 固有の plan authoring rule は `phase_plan_<scope>.md` を参照してください。
@@ -10,7 +10,7 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - Spec authoring workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Scope plan playbook: [phase_plan_initiative.md](phase_plan_initiative.md), [phase_plan_epic.md](phase_plan_epic.md), [phase_plan_issue.md](phase_plan_issue.md)
 
-## phase contract
+## フェーズ契約（phase contract）
 
 - 位置: `調査分析 → requirement → design → plan → 実装/品質ゲート` の `plan`
 - 責務: 確定した requirement / design を、実行可能な分解・順序・停止点・品質ゲートへ変換する
@@ -25,7 +25,7 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - 出力: reviewer が handoff できる `plan.md` と必要な `disc` / `research` / `adr`
 - 非ゴール: requirement / design の再議論、設計不足の隠蔽、将来作業の過剰先読み
 
-## scope ownership
+## 範囲所有（scope ownership）
 
 - Initiative plan:
   - 所有する判断:
@@ -46,13 +46,13 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
   - 各 plan item は requirement item または design decision に紐づける
   - trace できない step / issue / epic は scope creep として削るか、前 phase に戻す
 
-## shared terminology
+## 共有 terminology（shared terminology）
 
 - `shared minimum gate`: 全 scope に共通して満たす最小 gate
 - `scope-specific readiness contract`: 次の実行単位へ handoff するために対象 scope が追加で満たす条件
 - `final exit contract`: この plan が閉じたと判断する最終条件
 
-## shared entry checklist
+## 共有 entry checklist（shared entry checklist）
 
 - `requirement.md` と `design.md` が reviewer 承認レベルにある
 - `requirement.md` と `design.md` が `workflow_spec_authoring.md` の promotion gate を pass している
@@ -61,7 +61,39 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - 分割案や順序案の比較が必要なら `disc` に逃がすと決めた
 - 対象 scope の `phase_plan_<scope>.md` と `workflow_<scope>.md` を確認した
 
-## shared review / handoff gate
+## 委任 plan authoring ゲート（delegated plan authoring gate）
+
+Delegated plan authoring は、対象 scope の `discussions/` 直下へ flat Markdown draft / analysis / discussion-local report を直接保存できる支援です。proposal-only ではありませんが、canonical `requirement.md` / `design.md` / `plan.md` / `report.md` は main orchestrator の single-writer authority であり、sub-agent は直接編集しません。Delegated draft は evidence であり、fresh `spec-reviewer` pass の代替ではありません。
+
+Delegated plan draft を使う場合、orchestrator は draft 生成前に次を確認します。
+
+- fresh requirement reviewer pass と fresh design reviewer pass があり、pass 対象 revision を特定できる
+- design dependency analysis、file/module change plan、verification strategy、rollback / compatibility が plan 入力として確認できる
+- invocation contract が scope、source artifacts、allowed actions、forbidden actions、boundary、invalidation conditions を含む
+- read-only specialist consent と scope-local discussion direct-write consent は分離されている
+- allowed actions は、対象 scope の `discussions/` direct child にある naming-rule compliant Markdown の新規作成、または orchestrator が明示指定した既存 proposed discussion draft の更新に限定される
+- filename は既存 discussion rules に従い、標準は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md` とする
+- forbidden actions は canonical `requirement.md` / `design.md` / `plan.md` / `report.md`、implementation、tests、package/config、`.agents`、`.codex`、`.github`、`.env*`、GitHub mutation、phase promotion、reviewer-pass claim、implementation-readiness claim、user への直接質問を含む
+- forbidden locations は per-agent directory、run/task directory、global draft store、`discussions/delegated-authoring/` を含む
+- required plan draft output contract が、計画要約（Plan Summary）、要件 / 設計 traceability（Requirement / Design Traceability）、milestone（Milestones）、依存関係から導く実行順序（Dependency-Derived Execution Order）、Issue / step 分割（Issue / Step Slicing）、テスト戦略 mapping（Test Strategy Mapping）、review gate（Review Gates）、rollback / compatibility（Rollback / Compatibility）、docs impact（Docs Impact）、最終品質ゲート（Final Quality Gate）、plan blocker（Plan Blockers）、integration notes（Integration Notes）を含む
+- static adapter は scope-local `discussions/` Markdown draft だけに write-capable とし、broad write や canonical target write を許可しない。run ごとの permission context 生成に依存せず、run は post-run diff guard pass と `report.md` ledger 記録まで adoption-ineligible とする
+
+Sub-agent-created draft は lightweight provenance として `created_by_role`、`scope_id`、`source_paths`、`intended_targets`、`adoption_status: unreviewed`、`reflected_to: []`、`diff_guard_result`、adoption ledger note を持ちます。標準 delegated draft evidence として task manifest hash、Permission Profile hash、session invocation hash、probe run id を要求しません。これらは historical evidence または明示された例外証跡としてだけ扱います。
+
+Delegated plan draft を統合する場合、main orchestrator が canonical `report.md` の Evidence Adoption Ledger に採否を残し、採用部分だけ canonical `plan.md` へ再記述します。Accepted ADR は architecture decision authority を持ち得ますが、discussion draft は evidence であり、implementation / phase authority は canonical docs への反映後に成立します。既存 `iss-00126` delegated-authoring manifest/Profile/probe/session artifacts は grandfathered historical evidence として残し、削除・rename・validation failure 化しません。
+
+Reviewer は delegated draft を含む plan を review するとき、次を fail / incomplete 条件として扱います。
+
+- delegated draft provenance が不明
+- draft が `authority: accepted`、`adoption_status: adopted`、non-empty `reflected_to` を自己主張している
+- draft が stale / superseded / rejected / blocked のまま promotion evidence に使われている
+- approved requirement / design への traceability がない
+- delegated content が scope creep または parent non-scope の破り込みを含む
+- post-run diff guard が failed / not run のまま採用されている
+- phase gate bypass、reviewer gate bypass、または delegated draft を reviewer pass とみなす記述がある
+- delegated authoring unavailable / skipped のときに manual authoring path が閉じられている
+
+## 共有 review / handoff gate（shared review / handoff gate）
 
 - 順序の理由が説明できる
 - 粒度が対象 scope に対して妥当である
@@ -72,7 +104,7 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - reviewer が「この計画で次へ進める」と判断できる
 - `report.md` の `Spec Authoring Gate` に調査、ヒアリング、review、修正、promotion evidence が残っている
 
-## diagram guidance
+## 図表指針（diagram guidance）
 
 - Initiative:
   - 推奨:
@@ -87,13 +119,13 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - Issue:
   - 推奨:
     - step dependency graph
-    - Spec-Locked Closure Index（AC / EC / constraint / step-local closure contract の仕様ロック索引）
+    - 仕様固定クロージャ索引（Spec-Locked Closure Index。AC / EC / constraint / step-local closure contract の索引）
     - rollback map
 - review:
   - 図表の依存関係が本文の順序・depends on・gate と一致している
   - 図表だけにしか存在しない作業や gate がない
 
-## escape hatch
+## 退避手順（escape hatch）
 
 - 分割案 / 順序案 / gate 案の比較は `disc`
 - 外部制約や運用条件は `research`

@@ -1,4 +1,4 @@
-# GitHub 連携（`gh`）の挙動
+# 連携仕様（GitHub / `gh`）
 
 このドキュメントは、`new {initiative,epic,issue}` が **GitHub Issue を自動作成する**挙動を、コーディングエージェント向けに明確化するためのものです。詳細の正本は `reference_github.md` を参照してください。
 
@@ -74,7 +74,7 @@ create 系では spec-dock は `--repo owner/repo` を指定しません。
 - GitHub Issue を新規作成したくない場合は、current repo の既存 Issue を `--github-issue <n>` で指定してください
 - `gh` 未導入 / 未認証 / repo 未解決の状態では create は失敗します。先に GitHub linkage を整えてください
 
-## 4) PlantUML（内部処理のイメージ）
+## 4) 内部処理のイメージ（PlantUML）
 
 ```plantuml
 @startuml

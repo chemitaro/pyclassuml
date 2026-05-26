@@ -5,6 +5,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from ..application.contracts import GitWorktreeRecord
+
 
 def _ensure_git_available() -> None:
     if shutil.which("git") is None:
@@ -156,3 +158,68 @@ def origin_github_repo_slug(repo_root: Path) -> str | None:
             f"fetch={fetch_slug} push={push_slug}"
         )
     return fetch_slug
+
+
+def worktree_list(repo_root: Path) -> list[GitWorktreeRecord]:
+    _ensure_git_available()
+    cmd = ["git", "worktree", "list", "--porcelain"]
+    try:
+        p = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"git failed: {' '.join(cmd)}\n{(e.stderr or '').strip()}") from e
+    return _parse_worktree_porcelain(p.stdout or "")
+
+
+def add_worktree_with_new_branch(repo_root: Path, *, path: Path, branch: str) -> None:
+    _ensure_git_available()
+    cmd = ["git", "worktree", "add", "-b", branch, str(path)]
+    try:
+        subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or "").strip()
+        stdout = (e.stdout or "").strip()
+        details = "\n".join(part for part in (stderr, stdout) if part)
+        raise RuntimeError(f"git failed: {' '.join(cmd)}\n{details}") from e
+
+
+def _parse_worktree_porcelain(text: str) -> list[GitWorktreeRecord]:
+    records: list[GitWorktreeRecord] = []
+    current: dict[str, object] = {}
+
+    def flush() -> None:
+        if "path" not in current:
+            return
+        branch_ref = current.get("branch")
+        branch = None
+        if isinstance(branch_ref, str):
+            prefix = "refs/heads/"
+            branch = branch_ref[len(prefix):] if branch_ref.startswith(prefix) else branch_ref
+        records.append(
+            GitWorktreeRecord(
+                path=Path(str(current["path"])),
+                head=current.get("head") if isinstance(current.get("head"), str) else None,
+                branch=branch,
+                detached=bool(current.get("detached", False)),
+                bare=bool(current.get("bare", False)),
+            )
+        )
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            flush()
+            current = {}
+            continue
+        if line.startswith("worktree "):
+            flush()
+            current = {"path": line[len("worktree "):]}
+        elif line.startswith("HEAD "):
+            current["head"] = line[len("HEAD "):]
+        elif line.startswith("branch "):
+            current["branch"] = line[len("branch "):]
+        elif line == "detached":
+            current["detached"] = True
+        elif line == "bare":
+            current["bare"] = True
+    flush()
+    return records

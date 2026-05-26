@@ -1,4 +1,4 @@
-# issues/rules.md
+# 課題一覧ルール（issues/rules.md）
 
 このディレクトリには epic 配下の issue を作成します。
 

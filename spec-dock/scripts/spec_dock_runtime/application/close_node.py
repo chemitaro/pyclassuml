@@ -43,6 +43,14 @@ def _resolve_issue_gateway(ports: Ports):
     return ports.issue_gateway
 
 
+def _resolve_specdock_dir(ports: Ports) -> Path:
+    if ports.specdock_dir is not None:
+        return ports.specdock_dir
+    if ports.repo_root is not None:
+        return ports.repo_root / "spec-dock"
+    raise RuntimeError("specdock_dir is required")
+
+
 def _find_existing_id_by_num(graph: SpecGraph, *, prefix: str, num: int, local: bool) -> str | None:
     for node_id in graph.nodes_by_id.keys():
         try:
@@ -131,7 +139,6 @@ def close_node(req: CloseNodeRequest, ports: Ports) -> CloseNodeResult:
         raise RuntimeError(f"Node not found: {target_id}")
     if node.github_issue_number is None:
         raise RuntimeError(f"Node is not linked to a GitHub issue: {node.id}")
-
     issue_number = int(node.github_issue_number)
     repo_slug = normalize_repo_slug(node.github_repo_owner, node.github_repo_name) or current_repo_slug
 

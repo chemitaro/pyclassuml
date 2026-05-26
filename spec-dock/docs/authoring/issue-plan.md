@@ -1,4 +1,4 @@
-# authoring: issue plan
+# 課題 plan 作成（authoring: issue plan）
 
 Issue の `plan.md` を作成・更新するときの agent-facing entrypoint です。
 共通正本は `workflow_spec_authoring.md`、`phase_plan.md`、`phase_plan_issue.md`、`workflow_issue.md` です。
@@ -16,14 +16,14 @@ Issue の `plan.md` を作成・更新するときの agent-facing entrypoint �
 
 ## この artifact の責務
 
-- reviewer-pass 済みの `requirement.md` と `design.md` を、実装可能な step、検証、review gate、commit gate、final quality gate へ変換する。
+- reviewer-pass 済みの `requirement.md` と `design.md` を、実装可能な step、検証、review gate、commit gate、最終品質ゲート（final quality gate）へ変換する。
 - `plan.md` を planned contract として扱い、実装者が step を上から順に実行できる command queue にする。
 - `report.md` を observed evidence ledger として扱い、実際の Red / Green / Refactor 結果、discovered tests、closure delta、reviewer verdict、commit/no-op evidence の記録先にする。
-- `Spec-Locked Closure Index` で仕様 coverage を固定し、各 implementation step の `具体テストケース一覧` で step-local obligation と concrete red / characterization / inspect / manual seeds を固定する。
+- 仕様固定クロージャ索引（`Spec-Locked Closure Index`）で仕様 coverage を固定し、各 implementation step の `具体テストケース一覧` で step-local obligation と concrete red / characterization / inspect / manual seeds を固定する。
 - step 順、依存、対象ファイル、検証方法、report evidence destination、amendment trigger を実装者が判断せずに実行できる粒度へ落とす。
 - `workflow_issue.md` の delegated-by-default policy を再定義せず、各 implementation step の `delegation contract` として委任先、入力、許可範囲、検証、reviewer focus、停止条件、出力を具体化する。
 
-## planned contract / observed evidence ledger
+## 計画契約 / 観測 evidence 台帳（planned contract / observed evidence ledger）
 
 - `plan.md` は planned executable workflow contract である。
   - behavior goal
@@ -44,7 +44,7 @@ Issue の `plan.md` を作成・更新するときの agent-facing entrypoint �
   - delegated worker evidence
   - reviewer gate status
   - step commit / approved-no-op evidence
-- `report.md` は `Spec Interpretation / Decision Ledger` も持つ。実行中に発生した material な仕様解釈、判断、plan 逸脱、tradeoff、open question、promotion / follow-up は report 側に記録し、`plan.md` を実行中判断の追記先にしない。
+- `report.md` は仕様解釈 / 判断台帳（`Spec Interpretation / Decision Ledger`）も持つ。実行中に発生した material な仕様解釈、判断、plan 逸脱、tradeoff、open question、promotion / follow-up は report 側に記録し、`plan.md` を実行中判断の追記先にしない。
 - `plan.md` は decision result を所有しない。将来も効く durable decision が実行中に見つかった場合は、report に evidence と disposition を残したうえで、必要に応じて `design.md`、ADR、plan amendment、follow-up issue へ昇格する。
 - 実行中に見つかった新しい bug class、外部 contract risk、仕様差分が既存 plan obligation の範囲外なら、report に発見を残すだけで閉じず、plan amendment と re-review を先に行う。
 
@@ -54,17 +54,17 @@ Issue の `plan.md` を作成・更新するときの agent-facing entrypoint �
 - `依存関係から導く実装順序`
 - `ステップ一覧`
 - `要件 ↔ ステップ対応`
-- `Spec-Locked Closure Index`
+- 仕様固定クロージャ索引（`Spec-Locked Closure Index`）
 - 各 implementation step の `delegation contract`
 - 各 implementation step の `具体テストケース一覧`
-- 各 implementation step の `step closure contract`
+- 各 implementation step の step クロージャ契約（`step closure contract`）
 - 各 implementation step の `behavior slice execution`
 - 各 implementation step の `step gate`
-- `S90 docs impact resolution / docs refresh`
-- `S99 final quality gate`
+- `S90 docs 影響解決 / docs 更新（S90 docs impact resolution / docs refresh）`
+- `S99 最終品質ゲート（S99 final quality gate）`
 - `Final Exit Contract`
 
-## executable step schema
+## 実行可能 step schema（executable step schema）
 
 各 implementation step は、少なくとも次の意味を表現できる構造にする。
 
@@ -80,7 +80,7 @@ Sxx behavior slice
 |   `-- amendment trigger
 |-- delegation contract
 |-- 具体テストケース一覧
-|-- step closure contract
+|-- step closure contract（step クロージャ契約）
 |-- report evidence destination
 `-- step gate
 ```
@@ -89,9 +89,11 @@ Sxx behavior slice
 - `red or alternative evidence requirement` は `red-required`、`covered-existing`、`inspect-only`、`manual-required` のいずれかを使い、failing-first を完全要求できない場合も test sensitivity または代替 evidence path を固定する。
 - docs-only / template-only / skill-text-only step は code test を無理に作らず、inspection、structural assertion、manual evidence、docs diff、spec-review evidence を planned verification として書く。
 - `report evidence destination` は、実行結果を `report.md` のどの ledger に残すかを明示する。`plan.md` へ observed evidence を戻して正本を二重化しない。
+- scope-local discussion direct-write step は、target scope `discussions/` direct child、filename rule、allowed paths、forbidden paths、post-run diff guard、fallback decision、lightweight provenance、report evidence destination を step-local contract に置く。最低 fields は `created_by_role`、`scope_id`、`source_paths`、`intended_targets`、`adoption_status: unreviewed`、`reflected_to: []`、`diff_guard_result`、allowed paths、forbidden paths、fallback decision、report evidence destination。
+- report evidence destination は、candidate evidence path だけでなく scope-local `report.md` の Evidence Adoption Ledger、Delegated Draft Evidence、Workflow Delegation Consent、Step Contract Closure、Test Contract Closure のどこへ採否・diff guard・fallback を記録するかを示す。Evidence Adoption Ledger に採否がない delegated evidence は downstream authority に使えない。
 - `amendment trigger` は、どの発見が report 記録だけで足りず plan amendment / re-review を必要にするかを示す。
 
-## delegation contract
+## 委任 contract（delegation contract）
 
 各 implementation step は、`workflow_issue.md` の `Parent Agent Invariant`、`Implementation Delegation Gate`、delegated worker handoff、reviewer gate mapping を参照し、その step 固有の handoff contract を持つ。
 この欄は execution policy の再定義ではない。plan author は、worker が追加判断なしに作業でき、reviewer が scope / verification / report evidence を確認できるように、次の項目を step-local に埋める。
@@ -107,7 +109,7 @@ Sxx behavior slice
 - `forbidden changes`:
   - scope 外ファイル、別 step の変更、source-of-truth 逸脱、runtime と docs の不用意な混在など。
 - `acceptance criteria`:
-  - closure index と step closure contract へ追跡できる、観測可能な完了条件。
+  - closure index と step クロージャ契約（step closure contract）へ追跡できる、観測可能な完了条件。
 - `required tests or docs-only verification`:
   - targeted command、manual evidence、inspection、docs diff など、その step の検証方法。
 - `reviewer focus`:
@@ -116,6 +118,7 @@ Sxx behavior slice
   - 入力 docs の矛盾、許可パス外変更が必要、検証不能、delegated role 不適合、host policy / tool 制約、acceptance 未達など。
 - `output required`:
   - changed files、worker summary、verification result、unresolved risks、report へ転記する delegation evidence。
+  - scope-local discussion direct-write authoring の場合は discussion draft path、lightweight provenance、diff guard result、fallback decision、draft artifact metadata、Evidence Adoption Ledger に転記できる採否 note。
   - `Ledger Note` または `No material implementation decisions beyond the approved plan.`。
   - `Ledger Note` は worker の一次情報であり accepted decision ではない。material な仕様解釈、判断、逸脱、tradeoff、open question、follow-up がある場合は、source-agent、topic、trigger、ambiguity / constraint、observed facts、options considered、proposed decision、rationale、affected files、affected tests、risk if wrong、rollback or revisit、confidence、needs orchestrator decision を含める。
 
@@ -125,7 +128,7 @@ Sxx behavior slice
 
 各 implementation step は、PC の Markdown preview / GitHub 表示で読みやすいカード型のネストリストで具体テストケースを書く。横長テーブルに押し込まない。
 この見出しは完全な test inventory ではない。step 開始前に実装を後付けにしないための concrete red / characterization / inspect / manual seeds と、risk-calibrated obligation coverage への対応を固定する欄である。
-ここで先頭に置く ID は concrete test case id であり、`Spec-Locked Closure Index` の closure `id` や `test ids` alias とは別物として扱う。step に複数の closure id または複数の concrete test case がある場合は、各 case に `関連 closure id` を置いて紐付ける。1 step = 1 closure id = 1 concrete case で対応が明らかな場合だけ省略してよい。
+ここで先頭に置く ID は concrete test case id であり、仕様固定クロージャ索引（`Spec-Locked Closure Index`）の closure `id` や `test ids` alias とは別物として扱う。step に複数の closure id または複数の concrete test case がある場合は、各 case に `関連 closure id` を置いて紐付ける。1 step = 1 closure id = 1 concrete case で対応が明らかな場合だけ省略してよい。
 
 標準形:
 
@@ -149,7 +152,7 @@ Sxx behavior slice
   - 関連 closure id: `tc-002`
 ```
 
-## reviewer fail 条件
+## レビュー失敗条件（reviewer fail conditions）
 
 - implementation step に `具体テストケース一覧` がない。
 - implementation step に `delegation contract` がない、または `delegated role`、`input docs`、`allowed paths`、`forbidden changes`、`acceptance criteria`、`required tests or docs-only verification`、`reviewer focus`、`stop conditions`、`output required` のいずれかが欠けている。
@@ -169,4 +172,4 @@ Sxx behavior slice
 - 必要な場合だけ `対象ファイル`、`fixture`、`manual evidence` を追加する。
 - `関連 closure id` は、step に複数の closure id または複数の concrete test case がある場合は必須にする。1 step = 1 closure id = 1 concrete case で対応が明らかな場合だけ省略してよい。
 - 1項目が長くなりすぎる場合は2文までに抑え、詳細は `discussions/` または `report.md` に分離する。
-- `Spec-Locked Closure Index` は coverage ledger なので table のままでよい。具体テストケース本文とは役割を分ける。
+- 仕様固定クロージャ索引（`Spec-Locked Closure Index`）は coverage ledger なので table のままでよい。具体テストケース本文とは役割を分ける。

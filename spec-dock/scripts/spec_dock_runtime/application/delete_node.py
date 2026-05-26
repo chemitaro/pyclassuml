@@ -1050,7 +1050,7 @@ def _repair_active_after_clear_failure(
             from .set_active import _build_context_pack_text, commit_active_state
 
             assert repaired_manifest is not None
-            context_pack_text = _build_context_pack_text(repaired_manifest)
+            context_pack_text = _build_context_pack_text(repaired_manifest, repo_root=ports.repo_root)
             commit_active_state(
                 persisted_manifest=repaired_manifest,
                 patch_manifest=repaired_manifest,

@@ -33,6 +33,15 @@ lifecycle policy to `workflow_issue.md` instead of duplicating the workflow.
 Verify closure traceability from AC / EC and design decisions to plan
 obligations, closure ids, report evidence, reviewer gate status, and final
 completion evidence.
+For delegated authoring, treat the updated phase docs as authoritative review
+criteria: read `phase_design.md`, `phase_plan.md`, `phase_plan_epic.md`, and
+`phase_plan_issue.md` when delegated draft content is in scope. Fail or mark
+incomplete when delegated draft provenance is missing, stale / superseded /
+rejected / blocked draft evidence is used for promotion, traceability to the
+freshly approved previous phase is absent, delegated content introduces scope
+creep or phase gate bypass, delegated draft is treated as `spec-reviewer` pass,
+or manual authoring is no longer valid when delegation is unavailable or
+skipped.
 Also audit `Spec Interpretation / Decision Ledger` when `report.md` is in
 scope: flag missing ledger section for new / updated issue reports,
 `Status=open` at completion, missing disposition evidence, report-only durable

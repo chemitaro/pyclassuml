@@ -1,4 +1,4 @@
-# Active Epic: （なし）
+# アクティブエピック（Active Epic: なし）
 
 現在アクティブな Epic はありません。
 

@@ -1,4 +1,4 @@
-# spec-dock/templates
+# テンプレート一覧（spec-dock/templates）
 
 このディレクトリは、ローカルスクリプト `./spec-dock/scripts/spec-dock new ...` が
 新規ノードを作成する際に参照するテンプレート群です。
@@ -7,11 +7,13 @@
 - `epic/` → `.../epics/epic-xxxx-<slug>/`
 - `issue/` → `.../issues/iss-xxxx-<slug>/`
 - `discussions/{scratch,interview,research,disc,adr}.md` → `<scope>/discussions/<ts>-<kind>-<slug>.md`
+- `draft-requirement` / `draft-design` / `draft-plan` は draft 専用 template file を持たず、scope kind に応じた canonical `templates/{initiative,epic,issue}/{requirement,design,plan}.md` を直接 source として render します。
 - same-second collision 時は `<scope>/discussions/<ts>-<nn>-<kind>-<slug>.md`
 
 注意:
 - discussion docs の公開 CLI は `new doc <type>` のみです。
-- current catalog は `scratch` / `interview` / `research` / `disc` / `adr` です。
+- current catalog は `scratch` / `interview` / `research` / `disc` / `adr` / `draft-requirement` / `draft-design` / `draft-plan` です。
+- `draft-requirement` / `draft-design` / `draft-plan` は `discussions/` 配置と draft filename で draft artifact として扱います。canonical docs remain main-orchestrator-only; canonical docs direct-write success path はありません。
 - `note` は retired です。既存 `note` artifact は grandfathered として壊さず、新規 raw capture は `scratch` を使います。
 - discussion docs の filename contract は timestamp-prefix です（標準: `<ts>-<kind>-<slug>.md` / same-second collision: `<ts>-<nn>-<kind>-<slug>.md`）。
 - `ts = yyyymmddthhmmssz`（UTC, lowercase `t` / `z`）、`nn = 01..99` です。

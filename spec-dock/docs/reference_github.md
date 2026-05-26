@@ -1,4 +1,4 @@
-# reference: GitHub（`gh` 連携）
+# 連携参照（reference: GitHub）
 
 このドキュメントは、spec-dock が GitHub CLI（`gh`）を使う箇所と、その前提/副作用/注意点をまとめた参照です。
 
@@ -46,7 +46,7 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 - `issue finish` は active issue lifecycle の通常終了 command です
   - `./spec-dock/scripts/spec-dock issue finish` を受け付けます
   - active issue の linked GitHub issue を close し、already-closed も success として扱います
-  - `issue finish` is lifecycle closure only: it closes or confirms the linked GitHub issue and clears active state, but it does not guarantee commit, push, PR, merge, validate, test, or review completion; delivery completion still requires separate evidence in tests, reviews, reports, and PR/merge workflow.
+  - `issue finish` は lifecycle closure 専用です。linked GitHub issue を close または already-closed と確認し、active state を解除しますが、commit、push、PR、merge、validate、test、review の完了は保証しません。delivery completion には tests、reviews、reports、PR/merge workflow の別証跡が必要です。
   - active state は close / already-closed の確認成功後にだけ解除されます
 - `delete` は local spec node を削除し、linked GitHub Issue があれば close-only で扱います
   - top-level command として `./spec-dock/scripts/spec-dock delete <target> --yes` / `--id <node-id> --yes` / `--github-issue <n> --yes` を受け付けます
@@ -67,7 +67,7 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
   - `meta.json`（レガシー名）が混在しているツリーは非対応です（`.meta.json` へ手動移行後に実行してください）
   - linkage mismatch / current-repo mismatch は手動 normalize 前提で reject され、auto-repair / auto-migrate は行いません
 
-### GitHub を呼ばない（ローカルのみ）
+### ローカルのみの実行（no GitHub calls）
 
 - `new {initiative,epic,issue} --github-issue <n>` は「既存番号へリンク」するだけで、GitHub Issue は作りません（`gh` を呼びません）
 - `./spec-dock/scripts/spec-dock update [path]` は `gh` を呼びません。固定 upstream の installer update を `uvx --no-cache` で呼び出し、managed files/docs/templates/scripts/skills を更新します

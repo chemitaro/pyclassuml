@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Literal
 
 
@@ -36,6 +37,9 @@ class DirectDependencyResolution:
 class ActiveManifestEntry:
     id: str
     path: str | None
+    authority: str | None = None
+    grants: tuple[str, ...] = field(default_factory=tuple)
+    promotion_record: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

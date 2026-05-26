@@ -9,7 +9,7 @@ ID: "<EPIC_ID>"
 親: ["<INIT_ID>"]
 ---
 
-# <EPIC_ID> <EPIC_TITLE> — 要件定義（WHAT / WHY）
+# <EPIC_ID> <EPIC_TITLE> — 要件定義（何を、なぜ行うか）
 
 ## 目的（Initiative との紐づき）
 - Initiative 目標 / 指標:
@@ -23,13 +23,13 @@ ID: "<EPIC_ID>"
 - 例外 / 運用シナリオ:
   - ...
 
-## Epic 要件
+## エピック要件（Epic requirements）
 - E-RQ-001:
   - ...
 - E-RQ-002:
   - ...
 
-## Epic 受け入れ条件
+## エピック受け入れ条件（Epic acceptance criteria）
 - E-AC-001:
   - 前提:
   - 操作:

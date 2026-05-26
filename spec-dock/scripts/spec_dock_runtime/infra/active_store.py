@@ -5,6 +5,14 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from ..domain.authority import (
+    GRANT_IMPLEMENTATION_START,
+    GRANT_ISSUE_FINISH,
+    evaluate_authority_gate,
+    evaluate_evidence_adoption_ledger_gate,
+    load_evidence_adoption_ledger_entries,
+    validate_delegated_authority_artifact,
+)
 from .clock import now_iso
 from .contracts import (
     ActiveManifest,
@@ -27,7 +35,23 @@ def _normalize_entry(entry: Any) -> ActiveManifestEntry | None:
         return None
     raw_path = entry.get("path")
     path_value = raw_path if isinstance(raw_path, str) and raw_path.strip() else None
-    return ActiveManifestEntry(id=raw_id.strip(), path=path_value)
+    raw_authority = entry.get("authority")
+    authority = raw_authority.strip() if isinstance(raw_authority, str) and raw_authority.strip() else None
+    raw_grants = entry.get("grants")
+    grants: tuple[str, ...] = ()
+    if isinstance(raw_grants, list):
+        normalized_grants = [grant.strip() for grant in raw_grants if isinstance(grant, str) and grant.strip()]
+        if len(normalized_grants) == len(raw_grants):
+            grants = tuple(normalized_grants)
+    raw_promotion_record = entry.get("promotion_record")
+    promotion_record = raw_promotion_record if isinstance(raw_promotion_record, dict) else None
+    return ActiveManifestEntry(
+        id=raw_id.strip(),
+        path=path_value,
+        authority=authority,
+        grants=grants,
+        promotion_record=promotion_record,
+    )
 
 
 def _normalize_manifest(current: Any) -> ActiveManifest | None:
@@ -44,12 +68,18 @@ def _normalize_manifest(current: Any) -> ActiveManifest | None:
 
 
 def _manifest_to_json_obj(manifest: ActiveManifest | None) -> dict[str, Any]:
-    def _entry(entry: ActiveManifestEntry | None) -> dict[str, str] | None:
+    def _entry(entry: ActiveManifestEntry | None) -> dict[str, Any] | None:
         if entry is None:
             return None
-        out: dict[str, str] = {"id": entry.id}
+        out: dict[str, Any] = {"id": entry.id}
         if entry.path:
             out["path"] = entry.path
+        if entry.authority:
+            out["authority"] = entry.authority
+        if entry.grants:
+            out["grants"] = list(entry.grants)
+        if entry.promotion_record is not None:
+            out["promotion_record"] = entry.promotion_record
         return out
 
     return {
@@ -113,7 +143,7 @@ def _write_pathfile(active_dir: Path, name: str, target: Path) -> None:
     pathfile.write_text(rel_target + "\n", encoding="utf-8")
 
 
-def _render_context_pack(manifest: ActiveManifest | None) -> str:
+def _render_context_pack(manifest: ActiveManifest | None, *, repo_root: Path | None = None) -> str:
     has_init = manifest is not None and manifest.initiative is not None
     has_epic = manifest is not None and manifest.epic is not None
     has_issue = manifest is not None and manifest.issue is not None
@@ -128,6 +158,45 @@ def _render_context_pack(manifest: ActiveManifest | None) -> str:
     lines.append(f"- initiative: {init_id}")
     lines.append(f"- epic: {epic_id}")
     lines.append(f"- issue: {issue_id}")
+    lines.append("")
+    lines.append("## Authority")
+    lines.append("- source: `spec-dock/.agent/active.json`")
+    lines.append("- rule: proposed or missing authority cannot authorize implementation, issue ready, issue finish, or phase completion.")
+    for label, entry in (
+        ("initiative", manifest.initiative if has_init and manifest is not None else None),
+        ("epic", manifest.epic if has_epic and manifest is not None else None),
+        ("issue", manifest.issue if has_issue and manifest is not None else None),
+    ):
+        if entry is None:
+            lines.append(f"- {label}: authority=(none), grants=[]")
+            continue
+        authority = entry.authority or "missing"
+        grants = ", ".join(entry.grants) if entry.grants else ""
+        lines.append(f"- {label}: authority={authority}, grants=[{grants}]")
+        implementation_result = evaluate_authority_gate(
+            authority=entry.authority,
+            grants=entry.grants,
+            promotion_record=entry.promotion_record,
+            required_grant=GRANT_IMPLEMENTATION_START,
+            purpose="context_pack_implementation",
+        )
+        finish_result = evaluate_authority_gate(
+            authority=entry.authority,
+            grants=entry.grants,
+            promotion_record=entry.promotion_record,
+            required_grant=GRANT_ISSUE_FINISH,
+            purpose="context_pack_finish",
+        )
+        downstream_blocks = _context_pack_scope_downstream_blocks(entry, repo_root=repo_root)
+        if implementation_result.ok and finish_result.ok and not downstream_blocks:
+            lines.append(f"- {label}: authoritative_input=implementation,finish")
+        else:
+            reasons = _ordered_unique(
+                reason
+                for reason in (implementation_result.reason, finish_result.reason, *downstream_blocks)
+                if reason != "ok"
+            )
+            lines.append(f"- {label}: authoritative_input=none, downstream_block={','.join(reasons)}")
     lines.append("")
     lines.append("## Generated state")
     lines.append("- entry: `spec-dock/.agent/active.json`")
@@ -170,6 +239,42 @@ def _render_context_pack(manifest: ActiveManifest | None) -> str:
     lines.append("- validate: `./spec-dock/scripts/spec-dock validate`")
     lines.append("")
     return "\n".join(lines) + "\n"
+
+
+def _context_pack_scope_downstream_blocks(
+    entry: ActiveManifestEntry,
+    *,
+    repo_root: Path | None,
+) -> tuple[str, ...]:
+    if repo_root is None or entry.path is None:
+        return ()
+    scope_dir = repo_root / entry.path
+    blocks: list[str] = []
+    for artifact_name in ("design.md", "plan.md"):
+        artifact_path = scope_dir / artifact_name
+        for purpose in ("context_pack_implementation", "context_pack_finish"):
+            result = validate_delegated_authority_artifact(artifact_path, purpose=purpose)
+            if result.ok:
+                continue
+            blocks.append(result.reason)
+    ledger_result = evaluate_evidence_adoption_ledger_gate(
+        load_evidence_adoption_ledger_entries(scope_dir / "report.md"),
+        target_artifact="*",
+        purpose="context_pack",
+    )
+    if not ledger_result.ok:
+        blocks.append(ledger_result.reason)
+        if ledger_result.blocking_entry_id is not None:
+            blocks.append(f"blocking_entry_id={ledger_result.blocking_entry_id}")
+    return tuple(blocks)
+
+
+def _ordered_unique(values) -> list[str]:
+    out: list[str] = []
+    for value in values:
+        if value not in out:
+            out.append(value)
+    return out
 
 
 def load_active_manifest(specdock_dir: Path) -> ActiveManifestLoadResult:
@@ -321,5 +426,5 @@ def restore_previous_state(specdock_dir: Path, snapshot: ActiveStateSnapshot) ->
     restored_manifest = snapshot.manifest
     restored_context_pack = snapshot.context_pack_text
     if restored_context_pack is None:
-        restored_context_pack = _render_context_pack(restored_manifest)
+        restored_context_pack = _render_context_pack(restored_manifest, repo_root=specdock_dir.parent)
     apply_active_pointers(specdock_dir, restored_manifest, restored_context_pack)

@@ -10,14 +10,14 @@ ID: "<ISS_ID>"
 親: ["<EPIC_ID>", "<INIT_ID>"]
 ---
 
-# <ISS_ID> <ISS_TITLE> — 設計（HOW）
+# <ISS_ID> <ISS_TITLE> — 設計（どう実現するか）
 
 > このテンプレートは最小 scaffold です。プロジェクトの目的、作業内容、人間の理解しやすさ、エージェントの実行可能性に合わせて、項目は追加・削除・統合・並べ替えてよい。
 
-## 親 Diagram 参照
-- Epic diagram:
+## 親図（Diagram）参照
+- Epic 図:
   - ...
-- Initiative diagram:
+- Initiative 図:
   - ...
 - 再利用する決定:
   - ...
@@ -70,7 +70,7 @@ ID: "<ISS_ID>"
 - 順序への影響:
   - plan では upstream / prerequisite から順に step を組む
 
-## Module Dependency Diagram
+## モジュール依存図（Module Dependency Diagram）
 - タイトル:
   - ...
 - 答える問い:
@@ -78,13 +78,13 @@ ID: "<ISS_ID>"
 - 範囲:
   - ...
 - 含めない詳細:
-  - exhaustive call graph / 全 method / 全 import は描かない
+  - 網羅的な call graph / 全 method / 全 import は描かない
 - 更新条件:
   - 依存方向、責務境界、実装起点、変更対象 module が変わるとき
 - 図:
   - 下の `plantuml` block を更新する
 
-### UML（原則: module dependency / package dependency delta）
+### 図表（UML / 原則: モジュール依存 / パッケージ依存差分）
 ```plantuml
 @startuml
 top to bottom direction
@@ -97,7 +97,7 @@ A --> B : depends_on
 @enduml
 ```
 
-## Local Diagram Delta（必要時）
+## ローカル図の差分（Local Diagram Delta / 必要時）
 - 変更する境界 / 責務 / 相互作用:
   - N/A: 理由
 
@@ -105,7 +105,7 @@ A --> B : depends_on
 - API / function / protocol / data boundary:
   - ...
 
-## Sequence Delta（必要時）
+## シーケンス差分（Sequence Delta / 必要時）
 - 変更する相互作用:
   - N/A: 理由
 - retry / transaction / external API / queue:
@@ -113,7 +113,7 @@ A --> B : depends_on
 - UML:
   - N/A: 理由
 
-## Domain Model Delta（必要時）
+## ドメインモデル差分（Domain Model Delta / 必要時）
 - 親 model 参照:
   - ...
 - aggregate / entity / value object 変更:
@@ -166,7 +166,7 @@ A --> B : depends_on
 - migration / rollback / feature flag if needed:
   - ...
 
-## 要件 / 例外 -> verification mapping
+## 要件 / 例外 -> 検証マッピング
 - AC-001 -> ...
 - EC-001 -> ...
 - constraint -> ...

@@ -9,7 +9,7 @@ ID: "<INIT_ID>"
 依存: ["requirement.md", "design.md"]
 ---
 
-# <INIT_ID> <INIT_TITLE> — 計画（Roadmap / Epics）
+# <INIT_ID> <INIT_TITLE> — 計画（ロードマップ / Epic）
 
 ## この計画が達成する目標 / 指標
 - 目標:
@@ -24,7 +24,7 @@ ID: "<INIT_ID>"
 - M2:
   - ...
 
-## Epic ポートフォリオ
+## エピックポートフォリオ（Epic portfolio）
 - epic-xxxx-...:
   - 目的:
     - ...
@@ -65,7 +65,7 @@ ID: "<INIT_ID>"
 - リリース / 周知:
   - ...
 
-## Epic 準備完了条件
+## エピック準備完了条件（Epic readiness criteria）
 - Epic に要求する最低条件:
   - ...
 

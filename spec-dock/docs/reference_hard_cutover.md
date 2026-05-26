@@ -1,10 +1,10 @@
-# reference: hard cutover
+# 一括切替参照（reference: hard cutover）
 
 Hard cutover は標準 Issue workflow ではなく、fallback 廃止、dual-read 廃止、checked-in data の手動境界修正、または canonical storage / mutation contract の切替を伴う issue だけが採用する optional pattern です。
 
 通常の Issue は [workflow_issue.md](workflow_issue.md) の lifecycle / execution / reviewer / completion policy と、[authoring/issue-plan.md](authoring/issue-plan.md) の planned contract / observed evidence ledger 境界に従います。Hard cutover を採用する場合は、この reference の entry 条件と evidence keys を `plan.md` の planned contract に取り込み、実結果を `report.md` の observed evidence ledger に残します。
 
-## entry conditions
+## 着手条件（entry conditions）
 
 - issue plan が hard cutover を含む場合、entry 条件は `docs 更新 + checked-in data manual fix + validate/sync evidence` の 3 点を必須にする。
 - T3/T4 owner split は次に固定する:
@@ -12,7 +12,7 @@ Hard cutover は標準 Issue workflow ではなく、fallback 廃止、dual-read
   - T4 closure issue（例: `iss-00063`）は T3 judgment を参照して final parity / close review を実施
 - no fallback / no dual-read contract を崩す救済策は採用しない。Canonical storage / mutation contract の詳細は [reference_deps.md](reference_deps.md) を参照する。
 
-## report evidence keys
+## 報告証跡キー（report evidence keys）
 
 Hard cutover evidence の fixed-key contract は issue-level `report.md` に残す。最低限、以下のキー群を使う:
 

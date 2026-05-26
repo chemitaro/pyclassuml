@@ -7,9 +7,20 @@ from .deps import validate_deps_cycles
 from .ids import parse_id, validate_lowercase, validate_slug
 from .models import SpecGraph, SpecNode, ValidationReport
 
-_DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "interview", "scratch", "note")
+_DISCUSSION_DOC_TYPES = (
+    "adr",
+    "disc",
+    "research",
+    "interview",
+    "scratch",
+    "draft-requirement",
+    "draft-design",
+    "draft-plan",
+    "note",
+)
 _DISCUSSION_DOC_TIMESTAMP_FILENAME_RE = re.compile(
-    r"^(?P<ts>[0-9]{8}t[0-9]{6}z)(?:-(?P<nn>0[1-9]|[1-9][0-9]))?-(?P<doc_type>adr|disc|research|interview|scratch|note)-"
+    r"^(?P<ts>[0-9]{8}t[0-9]{6}z)(?:-(?P<nn>0[1-9]|[1-9][0-9]))?"
+    r"-(?P<doc_type>adr|disc|research|interview|scratch|draft-requirement|draft-design|draft-plan|note)-"
     r"(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
 )
 _DISCUSSION_DOC_LEGACY_FILENAME_RE = re.compile(
@@ -160,6 +171,8 @@ def _is_malformed_discussion_doc_candidate(path: Path) -> bool:
     if re.fullmatch(r"[0-9]{3}", first) is not None:
         return True
     if _DISCUSSION_DOC_LEGACY_SEQUENCE_INTENT_PREFIX_RE.fullmatch(stem) is not None:
+        return True
+    if any(stem.lower().startswith(f"{doc_type}-") for doc_type in _DISCUSSION_DOC_TYPES):
         return True
     if any(stem.lower().startswith(f"{doc_type}_") for doc_type in _DISCUSSION_DOC_TYPES):
         return True

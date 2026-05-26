@@ -1,4 +1,4 @@
-# Active Initiative: （なし）
+# アクティブイニシアチブ（Active Initiative: なし）
 
 現在アクティブな Initiative はありません。
 

@@ -8,15 +8,15 @@ ID: "<INIT_ID>"
 最終更新: "YYYY-MM-DD"
 ---
 
-# <INIT_ID> <INIT_TITLE> — 要件定義（WHAT / WHY）
+# <INIT_ID> <INIT_TITLE> — 要件定義（何を、なぜ行うか）
 
-## 目的（Outcome）
+## 目的（成果）
 - 主目的:
   - ...
 - 副目的:
   - ...
 
-## 背景と Why now
+## 背景と今取り組む理由
 - 現状の課題:
   - ...
 - 影響:

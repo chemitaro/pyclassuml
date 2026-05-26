@@ -9,7 +9,7 @@ ID: "<INIT_ID>"
 依存: ["requirement.md"]
 ---
 
-# <INIT_ID> <INIT_TITLE> — 設計（HOW / Guardrails）
+# <INIT_ID> <INIT_TITLE> — 設計（どう実現し、何を守るか）
 
 ## アーキテクチャ上の狙い
 - ...
@@ -32,7 +32,7 @@ ID: "<INIT_ID>"
 - 更新条件:
   - ...
 
-### UML（推奨: system context / target-state overview）
+### 図表（UML / 推奨: システムコンテキスト / 目指す状態の全体像）
 ```plantuml
 @startuml
 !include C4_Context.puml

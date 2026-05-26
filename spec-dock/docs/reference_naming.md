@@ -1,4 +1,4 @@
-# reference: naming（`--title` / `--slug` / branch / discussions）
+# 命名参照（reference: naming / `--title` / `--slug` / branch / discussions）
 
 このドキュメントは、spec-dock が扱う **命名**（title/slug、discussion docs のファイル名、checkout 後のブランチ名）をまとめた参照です。
 
@@ -14,7 +14,7 @@
 
 - `new {initiative,epic,issue}`
 - `import {initiative,epic,issue}`
-- `new doc <type>`（current catalog: `scratch` / `interview` / `research` / `disc` / `adr`）
+- `new doc <type>`（current catalog: `scratch` / `interview` / `research` / `disc` / `adr` / `draft-requirement` / `draft-design` / `draft-plan`）
 
 補足:
 - `new doc <type>` は explicit basename / `doc_id` override（`--id` / `--seq` など）を提供しません。
@@ -83,16 +83,16 @@
 
 ---
 
-## 4. discussion docs の命名と識別子（`new doc <type>`）
+## 4. 議論文書の命名と識別子（discussion docs / `new doc <type>`）
 
-### 4.1 doc family と保存先
+### 4.1 文書種別と保存先（doc family）
 
 - new creation の discussion doc family は `scratch` / `interview` / `research` / `disc` / `adr` です。
 - `note` は retired です。既存 `note` artifact は grandfathered として validation 対象に残りますが、新規作成 catalog ではありません。
 - original/source file は、対象 Initiative / Epic / Issue ノード配下の `discussions/` に作成されます。
 - ADR も original は常に `discussions/` 配下です。mirror / sync があっても original location は変わりません。
 
-### 4.2 basename contract
+### 4.2 ベース名契約（basename contract）
 
 標準形:
 - `<ts>-<kind>-<slug>.md`
@@ -139,7 +139,7 @@ collision 形の `doc_id`:
 - filename: `20260329t123456z-01-disc-api-options.md`
   - `doc_id`: `20260329t123456z-01-disc`
 
-### 4.4 legacy files と validation 境界
+### 4.4 旧形式ファイルと検証境界（legacy files / validation boundary）
 
 legacy sequential docs は grandfathered only です。
 

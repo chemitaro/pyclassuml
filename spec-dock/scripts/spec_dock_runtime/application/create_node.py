@@ -37,12 +37,19 @@ from .repo_context import require_current_repo_slug, resolve_current_repo_slug, 
 from .sync_state import post_mutation_sync
 
 _META_FILENAME = ".meta.json"
-_CREATABLE_DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "interview", "scratch")
+_DRAFT_DISCUSSION_DOC_TYPES = ("draft-requirement", "draft-design", "draft-plan")
+_CREATABLE_DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "interview", "scratch", *_DRAFT_DISCUSSION_DOC_TYPES)
 _RETIRED_DISCUSSION_DOC_TYPES = ("note",)
 _DISCUSSION_DOC_FILENAME_RE = re.compile(
-    r"^(?P<ts>[0-9]{8}t[0-9]{6}z)(?:-(?P<nn>0[1-9]|[1-9][0-9]))?-(?P<doc_type>adr|disc|research|interview|scratch|note)-"
+    r"^(?P<ts>[0-9]{8}t[0-9]{6}z)(?:-(?P<nn>0[1-9]|[1-9][0-9]))?"
+    r"-(?P<doc_type>adr|disc|research|interview|scratch|draft-requirement|draft-design|draft-plan|note)-"
     r"(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
 )
+_DRAFT_TARGET_BY_DOC_TYPE = {
+    "draft-requirement": "requirement",
+    "draft-design": "design",
+    "draft-plan": "plan",
+}
 _CREATE_LOCK_DIRNAME = ".runtime"
 _CREATE_LOCK_FILENAME = "create.lock"
 _ENV_CREATE_LOCK_WAIT_SECONDS = "SPEC_DOCK_CREATE_LOCK_WAIT_SECONDS"
@@ -1146,6 +1153,13 @@ def _doc_id_from_path(path: Path) -> str:
     return f"{matched.group('ts')}-{suffix_raw}-{matched.group('doc_type')}"
 
 
+def _draft_canonical_template_path(*, specdock_dir: Path, scope_kind: SpecNodeKind, doc_type: str) -> Path | None:
+    target = _DRAFT_TARGET_BY_DOC_TYPE.get(doc_type)
+    if target is None:
+        return None
+    return specdock_dir / "templates" / scope_kind / f"{target}.md"
+
+
 def plan_discussion_doc(
     req: CreateDiscussionDocRequest,
     graph: SpecGraph,
@@ -1157,7 +1171,16 @@ def plan_discussion_doc(
     doc_type, title, slug = _normalize_discussion_doc_inputs(req)
 
     specdock_dir = _resolve_specdock_root(scope.path)
-    template_path = specdock_dir / "templates" / "discussions" / f"{doc_type}.md"
+    if doc_type in _DRAFT_DISCUSSION_DOC_TYPES:
+        template_path = _draft_canonical_template_path(
+            specdock_dir=specdock_dir,
+            scope_kind=scope.kind,
+            doc_type=doc_type,
+        )
+        if template_path is None or not template_path.is_file():
+            raise RuntimeError(f"Missing canonical template source for {scope.kind} {doc_type}: {template_path}")
+    else:
+        template_path = specdock_dir / "templates" / "discussions" / f"{doc_type}.md"
     discussions_dir = scope.path / "discussions"
     effective_timestamp = timestamp if timestamp is not None else _format_discussion_timestamp()
     dest_path, doc_id = _allocate_discussion_doc_filename(
@@ -1169,23 +1192,35 @@ def plan_discussion_doc(
     if dest_path.exists():
         raise RuntimeError(f"Discussion doc already exists: {dest_path}")
 
-    replacements = {
-        "<ADR_ID>": doc_id,
-        "<ADR_TITLE>": title,
-        "<DISC_ID>": doc_id,
-        "<DISC_TITLE>": title,
-        "<RESEARCH_ID>": doc_id,
-        "<RESEARCH_TITLE>": title,
-        "<INTERVIEW_ID>": doc_id,
-        "<INTERVIEW_TITLE>": title,
-        "<SCRATCH_ID>": doc_id,
-        "<SCRATCH_TITLE>": title,
-        "<NOTE_ID>": doc_id,
-        "<NOTE_TITLE>": title,
-        "<SCOPE_ID>": scope.id,
-        "<YOUR_NAME>": os.environ.get("USER", "<YOUR_NAME>"),
-        "YYYY-MM-DD": today if today is not None else date.today().isoformat(),
-    }
+    if doc_type in _DRAFT_DISCUSSION_DOC_TYPES:
+        replacements = _replacements(
+            kind=scope.kind,
+            node_id=scope.id,
+            title=scope.title,
+            parent_id=scope.parent_id,
+            initiative_id=scope.initiative_id,
+            github_issue_number=scope.github_issue_number,
+            today=today if today is not None else date.today().isoformat(),
+        )
+        replacements["<SCOPE_ID>"] = scope.id
+    else:
+        replacements = {
+            "<ADR_ID>": doc_id,
+            "<ADR_TITLE>": title,
+            "<DISC_ID>": doc_id,
+            "<DISC_TITLE>": title,
+            "<RESEARCH_ID>": doc_id,
+            "<RESEARCH_TITLE>": title,
+            "<INTERVIEW_ID>": doc_id,
+            "<INTERVIEW_TITLE>": title,
+            "<SCRATCH_ID>": doc_id,
+            "<SCRATCH_TITLE>": title,
+            "<NOTE_ID>": doc_id,
+            "<NOTE_TITLE>": title,
+            "<SCOPE_ID>": scope.id,
+            "<YOUR_NAME>": os.environ.get("USER", "<YOUR_NAME>"),
+            "YYYY-MM-DD": today if today is not None else date.today().isoformat(),
+        }
     return template_path, dest_path, replacements
 
 

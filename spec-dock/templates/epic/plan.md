@@ -10,7 +10,7 @@ ID: "<EPIC_ID>"
 親: ["<INIT_ID>"]
 ---
 
-# <EPIC_ID> <EPIC_TITLE> — 計画（Issues / Order）
+# <EPIC_ID> <EPIC_TITLE> — 計画（Issue と実施順序）
 
 ## この計画で閉じる E-RQ / E-AC
 - E-RQ:
@@ -18,13 +18,13 @@ ID: "<EPIC_ID>"
 - E-AC:
   - ...
 
-## Issue 分割方針
+## 課題分割方針（Issue slicing policy）
 - 分割原則:
   - ...
 - 例外:
   - ...
 
-## Issue 一覧（順序 / tranche 付き）
+## 課題一覧（Issue list / 順序 / tranche 付き）
 - iss-xxxx-...:
   - 目的:
     - ...
@@ -53,13 +53,13 @@ ID: "<EPIC_ID>"
 - test / observability / migration / docs:
   - ...
 
-## ロールアウト / docs impact
+## ロールアウト / ドキュメント影響
 - ロールアウト順序:
   - ...
 - 契約 / docs 更新:
   - ...
 
-## Issue 準備完了条件
+## 課題準備完了条件（Issue readiness criteria）
 - Issue に要求する最低条件:
   - ...
 

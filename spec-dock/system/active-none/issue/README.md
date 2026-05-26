@@ -1,4 +1,4 @@
-# Active Issue: （なし）
+# アクティブ課題（Active Issue: なし）
 
 現在アクティブな Issue はありません。
 

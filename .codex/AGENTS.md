@@ -54,6 +54,25 @@ For SpecDock usage and workflow details, start here:
 - Run `./spec-dock/scripts/spec-dock validate` after structural changes and before handoff.
 - Use `./spec-dock/scripts/spec-dock sync` only to regenerate CLI-managed views, pointers, or exported state. Do not use it as a general repair step.
 
+## Scoped Discussion Draft Authoring
+
+Canonical `requirement.md` / `design.md` / `plan.md` / `report.md` are main orchestrator single-writer authority. System-architect and implementation-planner style sub-agents must not directly edit those canonical docs.
+
+Sub-agent authoring outputs are not proposal-only. When the active issue contract permits delegated authoring, sub-agents may directly create or edit a scope-local flat Markdown draft, analysis, or discussion-local report under the target `discussions/` direct child.
+
+Filenames follow the existing discussion rules:
+
+- `<ts>-<kind>-<slug>.md`
+- `<ts>-<nn>-<kind>-<slug>.md` for same-second collisions
+
+Do not create per-agent directories, run/task directories, global draft stores, or `discussions/delegated-authoring/` output for new delegated authoring runs.
+
+Sub-agent-created drafts use lightweight provenance: `created_by_role`, `scope_id`, `source_paths`, `intended_targets`, `adoption_status: unreviewed`, `reflected_to: []`, `diff_guard_result`, and an adoption ledger note. Do not require task manifest hash, Permission Profile hash, session invocation hash, or probe run id as standard delegated draft evidence.
+
+Static adapters for `system-architect` and `implementation-planner` are write-capable only for scope-local `discussions/` Markdown drafts. They must not grant broad workspace write access or canonical target write. Delegated authoring may create or update flat Markdown draft/analysis/report files directly under initiative, epic, or issue `discussions/`; the target `discussions/` directories should be clean at baseline time. Dirty or untracked target discussion entries make delegated output adoption-ineligible until post-run diff guard passes and `report.md` records the ledger entry.
+
+Historical `iss-00126` delegated-authoring manifest/Profile/probe/session artifacts are grandfathered evidence. Do not delete, rename, or treat them as validation failures solely because the current contract has changed.
+
 ## Source Boundaries
 - `spec-dock/active/*`: current task contract
 - Repository root `AGENTS.md`: repo, product, and domain rules

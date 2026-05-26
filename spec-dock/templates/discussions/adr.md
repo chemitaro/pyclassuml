@@ -34,7 +34,7 @@ reflected_to: []
 - 前提:
   - ...
 
-### UML（任意） (任意)
+### 図表（UML / 任意） (任意)
 ```plantuml
 @startuml
 ' TODO: 必要なら UML を追加する（形式は自由）
@@ -42,26 +42,26 @@ reflected_to: []
 ```
 
 ## 選択肢（Options considered） (必須)
-- Option A:
+- 選択肢 A（Option A）:
   - 概要:
     - ...
-  - Pros:
+  - 良い点（Pros）:
     - ...
-  - Cons:
+  - 悪い点 / 制約（Cons）:
     - ...
   - 棄却理由（棄却する場合）:
     - ...
-- Option B:
+- 選択肢 B（Option B）:
   - 概要:
     - ...
-  - Pros:
+  - 良い点（Pros）:
     - ...
-  - Cons:
+  - 悪い点 / 制約（Cons）:
     - ...
   - 棄却理由（棄却する場合）:
     - ...
 
-### UML（任意） (任意)
+### 図表（UML / 任意） (任意)
 ```plantuml
 @startuml
 ' TODO: 必要なら UML を追加する（形式は自由）
@@ -71,7 +71,7 @@ reflected_to: []
 ## 判断理由（Rationale） (必須)
 - ...
 
-### UML（任意） (任意)
+### 図表（UML / 任意） (任意)
 ```plantuml
 @startuml
 ' TODO: 必要なら UML を追加する（形式は自由）
@@ -79,18 +79,18 @@ reflected_to: []
 ```
 
 ## 影響（Consequences） (必須)
-- Positive（良い点）:
+- 良い影響（Positive）:
   - ...
-- Negative / Debt（悪い点 / 将来負債）:
+- 悪い影響 / 将来負債（Negative / Debt）:
   - ...
 - 影響範囲（コード/テスト/運用/データ）:
   - ...
 - 移行/ロールバック:
   - ...
-- Follow-ups（追加の Epic/Issue/ADR）:
+- 追加対応（Follow-ups / Epic / Issue / ADR）:
   - ...
 
-### UML（任意） (任意)
+### 図表（UML / 任意） (任意)
 ```plantuml
 @startuml
 ' TODO: 必要なら UML を追加する（形式は自由）
@@ -109,7 +109,7 @@ reflected_to: []
 - 外部資料:
   - ...
 
-### UML（任意） (任意)
+### 図表（UML / 任意） (任意)
 ```plantuml
 @startuml
 ' TODO: 必要なら UML を追加する（形式は自由）

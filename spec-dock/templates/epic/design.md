@@ -10,7 +10,7 @@ ID: "<EPIC_ID>"
 親: ["<INIT_ID>"]
 ---
 
-# <EPIC_ID> <EPIC_TITLE> — 設計（HOW）
+# <EPIC_ID> <EPIC_TITLE> — 設計（どう実現するか）
 
 ## 全体像
 - 対象境界:
@@ -22,7 +22,7 @@ ID: "<EPIC_ID>"
 - 参照する親 diagram:
   - ...
 
-## Component / Module View
+## コンポーネント / モジュール構成（Component / Module View）
 - タイトル:
   - ...
 - 答える問い:
@@ -34,14 +34,14 @@ ID: "<EPIC_ID>"
 - 更新条件:
   - ...
 
-### UML（推奨: component / module）
+### 図表（UML / 推奨: コンポーネント / モジュール）
 ```plantuml
 @startuml
 ' component / module diagram（component / module 図）
 @enduml
 ```
 
-## Package Dependency
+## パッケージ依存（Package Dependency）
 - タイトル:
   - ...
 - 答える問い:
@@ -53,14 +53,14 @@ ID: "<EPIC_ID>"
 - 更新条件:
   - ...
 
-### UML（推奨: package dependency / package dependency delta）
+### 図表（UML / 推奨: パッケージ依存 / 依存差分）
 ```plantuml
 @startuml
 ' package dependency diagram（package 依存図）
 @enduml
 ```
 
-## Domain Model（DDD 必要時）
+## ドメインモデル（Domain Model / DDD 必要時）
 - ユビキタス言語の参照:
   - ...
 - 集約ルート:
@@ -83,17 +83,17 @@ ID: "<EPIC_ID>"
   - 更新条件:
     - aggregate / entity / value object / event / invariant が変わるとき
 
-### UML（任意: domain model / aggregate）
+### 図表（UML / 任意: domain model / aggregate）
 - N/A: 理由
 
 ## 契約
-### API（必要時）
+### インターフェース契約（API / 必要時）
 - API-001:
   - リクエスト:
   - レスポンス:
   - エラー:
 
-### Event（必要時）
+### イベント契約（Event / 必要時）
 - EVT-001:
   - 生成元:
   - 利用先:
@@ -122,7 +122,7 @@ ID: "<EPIC_ID>"
   - 更新条件:
     - persistence model / migration impact が変わるとき
 
-### UML（任意: data model）
+### 図表（UML / 任意: data model）
 - N/A: 理由
 
 ## 主要フロー
@@ -144,14 +144,14 @@ ID: "<EPIC_ID>"
   - 更新条件:
     - participant / message / transaction boundary が変わるとき
 
-### UML（推奨: main sequence）
+### 図表（UML / 推奨: main sequence）
 ```plantuml
 @startuml
 ' main sequence diagram（主要 sequence 図）
 @enduml
 ```
 
-## State / Activity（必要時）
+## 状態 / アクティビティ（State / Activity / 必要時）
 - State:
   - N/A: 理由
 - Activity:
@@ -168,7 +168,7 @@ ID: "<EPIC_ID>"
   - 更新条件:
     - lifecycle / workflow branch / terminal state が変わるとき
 
-### UML（任意: state / activity）
+### 図表（UML / 任意: state / activity）
 - N/A: 理由
 
 ## 失敗設計
