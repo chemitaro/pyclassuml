@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00042",
+  "title": "Suppress Self Dependency Relations",
+  "slug": "suppress-self-dependency-relations",
+  "created_at": "2026-05-26T16:00:42+09:00",
+  "updated_at": "2026-05-26T16:00:42+09:00",
+  "parent_id": "epic-00039",
+  "initiative_id": "init-00038",
+  "epic_id": "epic-00039",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 42,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  }
+}
