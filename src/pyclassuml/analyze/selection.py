@@ -724,6 +724,8 @@ def _dependency_relation_warning_diagnostic(
 def _normalize_relations(relations: list[SelectedRelation]) -> tuple[SelectedRelation, ...]:
     by_triple: dict[tuple[ClassId, ClassId, str], SelectedRelation] = {}
     for relation in relations:
+        if _is_self_dashed_relation(relation):
+            continue
         key = (relation.source_class_id, relation.target_class_id, relation.relation_type)
         current = by_triple.get(key)
         if current is None or _evidence_kind_rank(relation) < _evidence_kind_rank(current):
@@ -736,6 +738,13 @@ def _normalize_relations(relations: list[SelectedRelation]) -> tuple[SelectedRel
         if current is None or _relation_type_rank(relation) < _relation_type_rank(current):
             by_endpoint[key] = relation
     return tuple(by_endpoint.values())
+
+
+def _is_self_dashed_relation(relation: SelectedRelation) -> bool:
+    return (
+        relation.relation_type in {"dependency", "uses"}
+        and relation.source_class_id == relation.target_class_id
+    )
 
 
 def _relation_type_rank(relation: SelectedRelation) -> int:

@@ -26,7 +26,7 @@ ID: "iss-00042"
 
 ### 必須
 
-- `source_class_id == target_class_id` となる `dependency` relation を最終出力に含めない。
+- `source_class_id == target_class_id` となる dashed dependency-style relation（内部 relation type は `dependency` または `uses`）を最終出力に含めない。
 - 既存の異なるクラス間の `dependency` relation は維持する。
 - `generate` と `diff` の両方で同じ relation suppression policy を適用する。
 
@@ -52,9 +52,9 @@ ID: "iss-00042"
 
 ## 受け入れ条件
 
-### AC-001: self dependency を描画しない
+### AC-001: self dashed relation を描画しない
 
-- 前提: 1 つの class が method body、型注釈、classmethod return などで自身を参照する。
+- 前提: 1 つの class が method body 内の class call、member access、local annotation、type-check、cast、method parameter / return annotation など、現行 render で `..>` になる `dependency` / `uses` evidence 経路で自身を参照する。
 - 操作: `generate` または `diff` で PlantUML を生成する。
 - 期待結果: `A ..> A` に相当する relation は出力されない。
 - 観測点: `.puml` relation lines。
@@ -87,5 +87,5 @@ ID: "iss-00042"
 
 ## 調査メモ
 
-- 技術的には relation 正規化層で `relation_type == "dependency"` かつ `source_class_id == target_class_id` を除外する方法が最小と見込む。
+- 技術的には relation 正規化層で `relation_type in {"dependency", "uses"}` かつ `source_class_id == target_class_id` を除外する方法が最小と見込む。
 - 詳細分析は `discussions/20260526t070111z-research-self-dependency-suppression-analysis.md` に記録する。

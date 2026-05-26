@@ -3,186 +3,119 @@
 ID: "iss-00042"
 タイトル: "Suppress Self Dependency Relations"
 関連GitHub: ["#42"]
-状態: "draft | approved"
+状態: "draft"
 作成者: "iwasawayuuta"
 最終更新: "2026-05-26"
 依存: ["requirement.md"]
 親: ["epic-00039", "init-00038"]
 ---
 
-# iss-00042 Suppress Self Dependency Relations — 設計（どう実現するか）
-
-> このテンプレートは最小 scaffold です。プロジェクトの目的、作業内容、人間の理解しやすさ、エージェントの実行可能性に合わせて、項目は追加・削除・統合・並べ替えてよい。
-
-## 親図（Diagram）参照
-- Epic 図:
-  - ...
-- Initiative 図:
-  - ...
-- 再利用する決定:
-  - ...
+# iss-00042 Suppress Self Dependency Relations — 設計
 
 ## 目的・制約
-- 目的:
-  - ...
-- 必須 / 禁止:
-  - ...
-- 非交渉制約:
-  - ...
-- 前提:
-  - ...
 
-## 既存実装 / 規約の理解
-- 参照した実装 / docs:
-  - ...
-- 現状理解:
-  - ...
-- 採用するパターン:
-  - ...
-- 採用しないもの:
-  - ...
-- 影響範囲:
-  - ...
+`dependency` relation の出力強化後に実プロダクト図で観測された `A ..> A` を、図の可読性を損なう self dashed relation ノイズとして抑制する。
 
-## 採用方針 / トレードオフ
-- 論点:
-  - ...
-- 選択肢:
-  - ...
-- 決定:
-  - ...
+この issue では `dependency` の PlantUML 表記、CLI option、設定 schema、型用途と runtime 用途の細分類は変更しない。pyclassuml の外部 CLI、読み取り専用、AST 静的解析のみという前提も変更しない。
 
-## 依存関係分析
-- module 依存:
-  - ...
-- class 依存（必要時）:
-  - ...
-- function 依存（必要時）:
-  - ...
-- file 依存:
-  - ...
-- 上流 / 前提:
-  - ...
-- 下流 / 依存先:
-  - ...
-- 実装起点:
-  - 依存の少ないもの / 先に固定すべき interface / 先に通すべき test を書く
-- 順序への影響:
-  - plan では upstream / prerequisite から順に step を組む
+## 既存実装の理解
 
-## モジュール依存図（Module Dependency Diagram）
-- タイトル:
-  - ...
-- 答える問い:
-  - どの module / class / file / function の依存方向を固定し、どこから実装を始めるか
-- 範囲:
-  - ...
-- 含めない詳細:
-  - 網羅的な call graph / 全 method / 全 import は描かない
-- 更新条件:
-  - 依存方向、責務境界、実装起点、変更対象 module が変わるとき
-- 図:
-  - 下の `plantuml` block を更新する
+- `select_classes_and_relations()` が parse / traversal 結果から `SelectedRelation` 候補を集める。
+- `direct_class_call`、`direct_class_member_access`、`type_check_dependency`、`cast_dependency`、`local_annotation_dependency` は `dependency` relation 候補として扱われる。
+- `_normalize_relations()` は同一 triple の evidence 優先度と同一 endpoint の relation 種別優先度を決め、最終的な `SelectedRelations` を返す。
+- `generate` と `diff` は共通の selection 結果を描画するため、selection 層で suppression すれば両コマンドへ同じ policy が適用される。
+- `src/pyclassuml/render/document.py` は `dependency` を `..>` として描画するだけであり、今回の意味論を render 層へ移す必要はない。
 
-### 図表（UML / 原則: モジュール依存 / パッケージ依存差分）
+## 採用方針
+
+`_normalize_relations()` の入口で、`relation_type in {"dependency", "uses"}` かつ `source_class_id == target_class_id` の候補を除外する。
+
+この位置を採用する理由:
+
+- parse 層の reference 抽出仕様を複雑化しない。
+- render 直前の見た目だけの除外ではなく、selection 結果と render 入力の relation 集合を一致させられる。
+- `generate` / `diff` の共通経路に適用できる。
+- 既存の non-self dependency / uses、association、composition、aggregation、inherits、realizes の semantics を変更しない。
+
+採用しない案:
+
+- render 層で `A ..> A` の行だけ捨てる案は、analysis 結果と描画結果の不一致を生みやすいため採用しない。
+- classmethod return、annotation、factory call など原因別に parse 層で抑える案は、仕様と実装の分岐が増えるため採用しない。
+- type-only / runtime dependency の分類はこの issue の対象外とする。
+
+## モジュール依存図
+
 ```plantuml
 @startuml
 top to bottom direction
-' show module / class / file / function dependencies that affect implementation order
-' do not copy Initiative/Epic diagrams
 
-rectangle "対象module-a" as A
-rectangle "対象module-b" as B
-A --> B : depends_on
+rectangle "parse\nParsedModule / ClassReference" as Parse
+rectangle "analyze.selection\nSelectedRelation candidates\n_normalize_relations()" as Selection
+rectangle "render.document\nPlantUML relation lines" as Render
+rectangle "cli app\ngenerate / diff" as App
+
+Parse --> Selection : class references
+Selection --> Render : SelectedRelations\nself dependency suppressed
+Render --> App : .puml output
 @enduml
 ```
 
-## ローカル図の差分（Local Diagram Delta / 必要時）
-- 変更する境界 / 責務 / 相互作用:
-  - N/A: 理由
-
 ## インターフェース契約
-- API / function / protocol / data boundary:
-  - ...
 
-## シーケンス差分（Sequence Delta / 必要時）
-- 変更する相互作用:
-  - N/A: 理由
-- retry / transaction / external API / queue:
-  - ...
-- UML:
-  - N/A: 理由
-
-## ドメインモデル差分（Domain Model Delta / 必要時）
-- 親 model 参照:
-  - ...
-- aggregate / entity / value object 変更:
-  - N/A: 理由
-- domain event / policy / specification 変更:
-  - ...
-- 不変条件の変更:
-  - ...
-- UML:
-  - N/A: 理由
-
-## クラス / インターフェース詳細設計（必要時）
-- Class / Interface:
-  - ...
-- 責務:
-  - ...
-- 連携:
-  - ...
-- UML:
-  - N/A: 理由
+- public CLI:
+  - 変更しない。
+- model contract:
+  - `SelectedRelation` の型や relation type enum 相当の値は変更しない。
+- selection contract:
+  - `dependency` / `uses` の self relation は `SelectedRelations.relations` に含めない。
+  - non-self dependency / uses は従来通り endpoint / evidence 優先度に従って残す。
+- diagnostics:
+  - self dependency suppression は正常なノイズ除去として扱い、新規 warning / error は出さない。
 
 ## ディレクトリ / ファイル変更計画
+
 ```text
 .
 |-- src/
-|   |-- package/
-|   |   |-- new_module.py        # 追加: 目的; 依存: ...
-|   |   |-- existing_module.py   # 変更: 目的; 依存: ...
-|   |   `-- renamed_module.py    # 移動/rename 元: src/package/old_module.py; 目的
-|   `-- tests/
-|       `-- test_new_module.py   # 追加/変更: 目的; 依存: src/package/new_module.py
-|-- docs/
-|   `-- reference.md             # 読取のみ: 目的
-`-- legacy/
-    `-- obsolete_file.py         # 削除: 目的; 依存: 代替準備完了
+|   `-- pyclassuml/
+|       `-- analyze/
+|           `-- selection.py            # 変更: self dashed relation を正規化時に除外
+`-- tests/
+    |-- analyze/
+    |   `-- test_selection.py           # 変更: self dependency suppression と non-self 維持を確認
+    `-- app/
+        |-- test_generate.py            # 変更: generate 出力で self dependency が出ないことを確認
+        `-- test_diff.py                # 変更: diff 出力で同じ policy が適用されることを確認
 ```
 
 ## 要件 → 設計マッピング
-- AC-001 -> ...
-- EC-001 -> ...
-- constraint -> ...
+
+- AC-001:
+  - `_normalize_relations()` で `dependency` / `uses` self relation を除外する。
+- AC-002:
+  - 除外条件を `dependency` かつ `source == target` に限定し、non-self dependency tests を維持・追加する。
+- AC-003:
+  - selection 層で policy を適用し、app-level の `generate` / `diff` tests で `.puml` 出力を確認する。
+- EC-001:
+  - `dependency` / `uses` 以外の relation は今回の新規仕様化対象外とし、除外条件に含めない。
+- EC-002:
+  - evidence kind の分類は変更せず、self endpoint だけで判定する。
 
 ## テスト戦略
+
 - 単体:
-  - ...
-- 統合:
-  - ...
-- E2E / manual:
-  - ...
-- migration / rollback / feature flag if needed:
-  - ...
+  - `tests/analyze/test_selection.py` に、同一 class 参照が `SelectedRelations` に残らないことと、同じ fixture 内の non-self dependency が残ることを確認する test を追加する。
+- アプリケーション:
+  - `tests/app/test_generate.py` で generate の `.puml` relation lines を確認する。
+  - `tests/app/test_diff.py` で diff の `.puml` relation lines を確認する。
+- 手動:
+  - 今回は自動 test で generate / diff の policy を閉じるため、追加の手動 PlantUML 確認は必須にしない。
 
-## 要件 / 例外 -> 検証マッピング
-- AC-001 -> ...
-- EC-001 -> ...
-- constraint -> ...
+## リスク
 
-## リスク / 移行 / ロールバック（必要時）
-- ...
+- 自己 factory や recursive な設計意図を dependency として見たい利用者には情報が減る可能性がある。
+- ただし class diagram の構造理解では `A ..> A` が読者に与える追加情報は小さく、今回の目的では可読性改善を優先する。
 
 ## 未確定事項
-- Q-001:
-  - 質問:
-  - 選択肢:
-    - A:
-      - ...
-    - B:
-      - ...
-  - 推奨案:
-    - ...
-  - 影響範囲:
-    - ...
+
+なし。

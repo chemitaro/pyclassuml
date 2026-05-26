@@ -3,261 +3,150 @@
 ID: "iss-00042"
 タイトル: "Suppress Self Dependency Relations"
 関連GitHub: ["#42"]
-状態: "draft | approved"
+状態: "draft"
 作成者: "iwasawayuuta"
 最終更新: "2026-05-26"
 依存: ["requirement.md", "design.md", "plan.md"]
 親: ["epic-00039", "init-00038"]
 ---
 
-# iss-00042 Suppress Self Dependency Relations — 実装報告（観測証跡台帳 / Observed Evidence Ledger）
+# iss-00042 Suppress Self Dependency Relations — 実装報告
 
-> `report.md` は観測証跡台帳（observed evidence ledger）です。planned requirements、evidence destination、closure 条件は `plan.md` が所有し、この文書は実際の Red / Green / Refactor evidence、発見された tests、closure delta、reviewer status、commit/no-op evidence を記録する。
+## 仕様解釈・判断台帳
 
-## 仕様解釈・判断台帳（Spec Interpretation / Decision Ledger / 必須）
-
-`report.md` は実装中・文書更新中に発生した material な仕様解釈、判断、plan 逸脱、tradeoff、open question、promotion / follow-up を記録する audit trail でもある。worker の raw note や作業 transcript を貼る場所ではなく、orchestrator が source docs、diff、tests、reviewer output と照合して issue-level の canonical entry に統合する。
-
-Material な判断がない場合もこの section は残し、次を明示する。
-
-- No material interpretation changes.
-- No decision entries.
-
-Ledger entry は次の契約値を使う。
-
-- `Status`: `open` / `resolved` / `superseded`
-- `Type`: `interpretation` / `scope` / `implementation` / `compatibility` / `test-strategy` / `operation` / `deviation` / `follow-up`
-- `Disposition`: `applied` / `rejected` / `promoted_to_design` / `promoted_to_adr` / `promoted_to_plan` / `converted_to_followup` / `deferred` / `no_action` / `superseded`
-
-完了時の意味論（completion semantics）:
-- issue completion 前に `Status=open` の entry を残してはならない。
-- `Status=resolved` は `Disposition`、evidence、必要な follow-up を持つ。
-- `Status=superseded` または `Disposition=superseded` は置換先 entry ID を持つ。
-- `Disposition=promoted_to_design` / `promoted_to_adr` / `promoted_to_plan` は昇格先 artifact と evidence を持つ。
-- `Disposition=converted_to_followup` は follow-up issue / discussion / ADR candidate の参照を持つ。
-- `Disposition=deferred` は scope 外である理由、blocking でない根拠、revisit 条件を持つ。
-- `Disposition=no_action` は issue-local な判断で追加対応不要である理由を持つ。将来も効く durable decision を `report.md` だけに閉じ込めてはならない。
-
-Disposition ごとの必須証跡:
-- `applied`: 変更した artifact / 実装証跡と、issue-local 適用で十分な理由。
-- `rejected`: 却下した選択肢、理由、blocking impact が残らない根拠。
-- `promoted_to_design` / `promoted_to_adr` / `promoted_to_plan`: 昇格先 artifact 参照と証跡。
-- `converted_to_followup`: follow-up issue / discussion / ADR candidate 参照と blocking / non-blocking の分類。
-- `deferred`: scope-out 理由、non-blocking の根拠、revisit 条件。
-- `no_action`: 判断が issue-local で durable ではない理由。
-- `superseded`: 置換先 entry ID と置換理由。
-
-| 識別子（ID） | 状態（Status） | 種別（Type） | 起票元（Raised By） | 契機 / 差分（Gap） | 検討した選択肢 | 判断 / 解釈 | 根拠（Rationale） | 処置（Disposition） | 証跡（Evidence） | フォローアップ（Follow-up） |
+| ID | 状態 | 種別 | 起票元 | 契機 / 差分 | 検討した選択肢 | 判断 / 解釈 | 根拠 | 処置 | 証跡 | フォローアップ |
 |---|---|---|---|---|---|---|---|---|---|---|
-| D-001 | 未解決 / 解決済み / 置換済み（open / resolved / superseded） | 解釈 / 範囲 / 実装 / 互換性 / テスト戦略 / 運用 / 逸脱 / フォローアップ（interpretation / scope / implementation / compatibility / test-strategy / operation / deviation / follow-up） | 起票元（orchestrator / reviewer / worker source） | 計画の曖昧さ / 実装制約 / レビュー指摘 / 発見リスク（plan ambiguity / implementation constraint / reviewer finding / discovered risk） | 選択肢 A; 選択肢 B; 対応なし（option A; option B; no action） | ... | ... | 採用 / 却下 / design 昇格 / ADR 昇格 / plan 昇格 / follow-up 化 / 延期 / 対応なし / 置換済み（applied / rejected / promoted_to_design / promoted_to_adr / promoted_to_plan / converted_to_followup / deferred / no_action / superseded） | `path` / コマンド / reviewer 指摘 / discussion（path / command / reviewer finding / discussion） | 対象 artifact / issue / discussion / 置換先 entry / 理由付き対応なし（target artifact / issue / discussion / replacement entry / none with reason） |
+| D-001 | resolved | scope | orchestrator | self dependency の抑制位置を決める必要がある | selection で除外; render で除外; parse 原因別に除外 | selection の relation 正規化で `dependency` self relation だけ除外する | generate / diff の共通 policy になり、observations と出力が一致する | promoted_to_design | `design.md` 採用方針 | なし |
+| D-002 | resolved | scope | orchestrator | type-only / runtime 分類を同時に扱うか | 今回扱う; follow-up にする; 対象外として固定 | この issue では分類せず self endpoint だけで判定する | 既存 research で複雑性増加が大きいと整理済み | applied | `requirement.md` 対象外, `design.md` 採用しない案 | なし |
+| D-003 | superseded | interpretation | spec-reviewer | AC-001 が method body、型注釈、classmethod return を広く含み、design の dependency-only suppression とずれていた | AC を broad self relation suppression に広げる; AC を dependency evidence に限定する | 一時的に AC-001 を `dependency` evidence に限定したが、`uses` も `..>` で描画されるため D-004 で置換した | dependency-only では user-visible `A ..> A` を閉じきれない | superseded | 置換先 D-004 | D-004 |
+| D-004 | resolved | interpretation | deep-consultant | `uses` も PlantUML 上は `..>` であり、dependency-only suppression では user-visible `A ..> A` が残り得る | `dependency` だけ抑制; `dependency` / `uses` の self dashed relation を抑制 | `dependency` / `uses` の self relation を normalization で除外し、構造 relation には広げない | user-visible 目的は self `..>` ノイズ抑制であり、`uses` は UML Dependency 系の dashed relation として描画される | applied | `requirement.md`, `design.md`, `plan.md`, `selection.py` | なし |
 
-## 証跡採用台帳（Evidence Adoption Ledger / 必須）
+## 証跡採用台帳
 
-Delegated draft、worker note、research、reviewer finding、discussion、command output を canonical artifact や実装判断へ取り込む場合、この台帳に採用判断を記録する。raw transcript ではなく、orchestrator が検証した採否・理由・証跡・次アクションだけを記録する。
-
-- `adoption_status`: `adopted` / `partially_adopted` / `rejected` / `deferred` / `stale` / `blocked`
-- `blocked` または `stale` の unresolved entry は promotion / implementation start / issue ready / issue finish / phase completion を止める。
-- `deferred` は blocking でない根拠と revisit 条件を持つ場合だけ完了時に残せる。
-- Evidence Adoption Ledger なしで delegated evidence の採用を主張してはならない。
-- Evidence Adoption Ledger fields: ID, adoption_status, source, source_role, claim, target_artifact, target_section, rationale, evidence_strength, evidence_path, adopter, reviewer, blocking, next_action.
-
-| 識別子（ID） | 採用状態（adoption_status） | 出所（source） | 対象（target） | 判断理由（rationale） | 証跡（evidence） | 次アクション（next_action） |
+| ID | 採用状態 | 出所 | 対象 | 判断理由 | 証跡 | 次アクション |
 |---|---|---|---|---|---|---|
-| EAL-001 | 採用（`adopted`） / 部分採用（`partially_adopted`） / 棄却（`rejected`） / 延期（`deferred`） / stale（`stale`） / blocked（`blocked`） | サブエージェント（`sub-agent`） / レビュアー（`reviewer`） / 議論（`discussion`） / コマンド（`command`） / 調査（`research`） | 成果物（`artifact`） / Issue（`issue`） / フォローアップ（`follow-up`） | ... | `path` / コマンド / レビュアー指摘 | なし / フォローアップ（`follow-up`） / 再レビュー（`re-review`） / 再訪条件（`revisit condition`） |
+| EAL-001 | adopted | research | requirement / design / plan | self dependency suppression を MVP に限定し、selection 正規化で扱う方針として採用 | `discussions/20260526t070111z-research-self-dependency-suppression-analysis.md` | 実装・検証へ進む |
 
-## 委任ドラフト証跡（Delegated Draft Evidence / 必須）
-- 委任 authoring の使用:
-  - used / not used
-- 未使用の場合:
-  - manual authoring path / 委任ドラフトを昇格証跡として使っていない理由。
-- lifecycle state（契約値）:
-  - `requested`, `produced`, `integrated`, `partially_integrated`, `rejected`, `superseded`, `blocked`, `stale`
-- 昇格不可 state:
-  - `stale`, `rejected`, `superseded`, `blocked`
-- 標準出力先:
-  - 対象 scope の `discussions/` direct child にある flat Markdown
-  - filename: `<ts>-<kind>-<slug>.md` または same-second collision 用 `<ts>-<nn>-<kind>-<slug>.md`
-- 軽量 provenance:
-  - `created_by_role`, `scope_id`, `source_paths`, `intended_targets`, `adoption_status: unreviewed`, `reflected_to: []`, `diff_guard_result`, fallback decision, report evidence destination, adoption ledger note
-  - 互換 label: source artifacts, draft artifact path, status, integration result, rejected portions, blockers, reviewer result, promotion decision
-- 禁止 self-claim:
-  - `authority: accepted`, `adoption_status: adopted`, non-empty `reflected_to`, reviewer pass, phase completion, implementation readiness
-- 禁止 wildcard token:
-  - `*`, `grants.*`, `all`
-- 標準必須にしない field:
-  - task manifest hash, Permission Profile hash, session invocation hash, probe run id, session hash
-- historical note:
-  - 既存 `iss-00126` などの manifest/Profile/probe/session artifacts は grandfathered evidence として残し、削除・rename・validation failure 化しない。
+## 委任ドラフト証跡
 
-| ロール（created_by_role） | 範囲（scope_id） | ドラフトパス（discussion draft path） | 参照元（source_paths） | 予定反映先（intended_targets） | 採用状態（adoption_status） | 反映先（reflected_to） | 差分ガード結果（diff_guard_result） | 統合結果 | 採用しなかった部分 | ブロッカー | レビュー結果（reviewer result） | 昇格判断（promotion decision） |
+| ロール | 範囲 | ドラフトパス | 参照元 | 予定反映先 | 採用状態 | 反映先 | 差分ガード結果 | 統合結果 | 採用しなかった部分 | ブロッカー | レビュー結果 | 昇格判断 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 該当なし | 該当なし | 該当なし | 該当なし | 該当なし | 未使用（not used） | なし（[]） | 未実行（not_run） | 手動 authoring | 該当なし | なし（none） | 該当なし | 委任ドラフト昇格なし |
+| 該当なし | 該当なし | 該当なし | 該当なし | 該当なし | not used | [] | not_run | 手動 authoring | 該当なし | なし | 該当なし | 委任ドラフト昇格なし |
 
-### 委任ドラフトの失敗モード（Delegated Draft Failure Modes）
-| 失敗モード | 期待される判定 | 許可される次アクション | レポート証跡の記録先（report evidence destination） | 昇格可否 |
-|---|---|---|---|---|
-| 同意なし（missing consent） | blocked / incomplete | 範囲付き同意を取得する、または手動 authoring に戻す | この section | ineligible |
-| 前段 reviewer pass 不足 / stale（missing/stale previous reviewer pass） | blocked / incomplete | レビューゲートを再実行する（rerun reviewer gate） | レビューゲート証跡（Reviewer Gate Status / Final Spec Review Gate） | ineligible |
-| 設計中の要件 gap（requirement gap during design） | blocked / incomplete | requirement phase へ戻す | 仕様解釈・判断台帳（Spec Interpretation / Decision Ledger） | ineligible |
-| 計画中の設計 gap（design gap during plan） | blocked / incomplete | design phase へ戻す | 仕様解釈・判断台帳（Spec Interpretation / Decision Ledger） | ineligible |
-| ロール利用不可（role unavailable） | blocked / manual path | 利用不可を記録し、妥当なら手動で続行する | この section | ineligible |
-| 禁止行為の試行（forbidden action attempt） | rejected | ドラフトを破棄し incident を記録する | この section / decision ledger | ineligible |
-| 古いドラフト（stale draft） | stale | 再生成または差分調整する | この section | ineligible |
-| 置換済みドラフト（superseded draft） | superseded | 置換先ドラフトを参照する | この section | ineligible |
-| 委任使用主張に対する証跡不足（missing draft evidence when delegated use is claimed） | incomplete | 証跡を追加する、または委任使用 claim を外す | この section | ineligible |
-| reviewer 利用不可 / 拒否 / waiver / provisional（reviewer unavailable/denied/waived/provisional） | blocked / incomplete | fresh な passed reviewer を取得する、または昇格なしの risk acceptance を記録する | レビューゲート証跡（Reviewer Gate Status / Final Spec Review Gate） | ineligible |
+## 実装サマリー
 
-## 実装サマリー (任意)
-- [実装した内容の概要を2-3文で記載]
+- `dependency` / `uses` の self relation を selection normalization で除外し、PlantUML 上の self `..>` を抑制した。
+- non-self dependency は維持し、selection / generate / diff の自動テストで policy 一致を確認した。
 
-## 実装記録（セッションログ） (必須)
+## ワークフロー委任同意
 
-### セッションログ（2026-05-26 HH:MM - HH:MM）
+| 同意元 | repo/worktree | 対象課題 | セッション | 指名ロール | 境界 | 期限 / 無効化条件 | 拒否 / 利用不可理由 | 次アクション |
+|---|---|---|---|---|---|---|---|---|
+| user instruction | `/Users/iwasawayuuta/workspace/tools/pyclassuml` | iss-00042 | current session | dev-coder / spec-reviewer / code-reviewer / qa-reviewer | same repo, active issue, workflow-bound delegation; no destructive action or scope expansion | issue complete / session end / scope change / user revocation | none | proceed |
+
+## 実装記録
+
+### セッションログ 2026-05-26
 
 #### 対象
-- Step: S01, S02, ...
-- AC/EC: AC-___, EC-___
-- 計画上の出典（Planned source）:
-  - `plan.md` section:
-  - closure ids:
+
+- Step: spec authoring
+- AC/EC: AC-001, AC-002, AC-003, EC-001, EC-002
 
 #### 実施内容
-- ...
+
+- `issue start iss-00042` により active issue と branch を設定した。
+- `requirement.md`、research、既存 selection / render / tests を確認した。
+- `design.md`、`plan.md`、`report.md` を scaffold から issue-specific な契約へ更新した。
 
 #### 実行コマンド / 結果
-```bash
-<command>
 
-<result>
+```bash
+./spec-dock/scripts/spec-dock issue start iss-00042
+# ok: target=iss-00042, branch=iss-00042-suppress-self-dependency-relations
 ```
 
-#### テスト駆動開発証跡（TDD / Red / Green / Refactor Evidence）
-| ステップ（step） | フェーズ（phase） | 計画した証跡要件 | 観測した証跡 | 証跡手段（command / inspection / manual record） | 結果（result） | メモ（notes） |
-|---|---|---|---|---|---|---|
-| S01 | 赤フェーズ / 代替証跡（Red / alternative） | red-required / covered-existing / inspect-only / manual-required | ... | `command` / 文書点検（docs inspection） / 手動記録（manual record） | pass / approved-no-op / fail / blocked | ... |
-| S01 | 緑フェーズ（Green） | ... | ... | `command` / 点検（inspection） / 手動記録（manual record） | pass / fail / blocked | ... |
-| S01 | リファクタリング（Refactor） | guardrail satisfied / no refactor needed | ... | 差分点検（diff inspection） / command | pass / approved-no-op / fail / blocked | ... |
+#### TDD / Red / Green / Refactor Evidence
 
-#### 発見されたテスト / リスク（Discovered Tests）
-| ステップ（step） | 発見されたテスト / リスク（test / risk） | 起票元（source） | 実施した対応 | クロージャID / 新規ID（closure id / new id） | 計画修正要否（plan amendment required） | 証跡（evidence） |
+| ステップ | フェーズ | 計画した証跡要件 | 観測した証跡 | 証跡手段 | 結果 | メモ |
 |---|---|---|---|---|---|---|
-| S01 | none / ... | implementation / review / QA / user report | recorded / added test / deferred / amended plan | tc-001 / new | yes / no | ... |
+| S01 | Red | tc-s01-001 | `A -> A` uses self relation が残り失敗 | `uv run pytest tests/analyze/test_selection.py tests/app/test_generate.py tests/app/test_diff.py -k self_dashed` | fail as expected | production suppression を dependency-only に一時変更して確認。selection / generate / diff の 3 件が失敗 |
+| S01 | Green | tc-s01-001 | `dependency` / `uses` self relation は除外され non-self dependency は残った | `uv run pytest tests/analyze/test_selection.py -k "dependency or self_dashed"` | pass | 9 passed, 30 deselected |
+| S02 | Red | tc-s02-001, tc-s02-002 | `.puml` に `c001 ..> c001` が出て失敗 | `uv run pytest tests/analyze/test_selection.py tests/app/test_generate.py tests/app/test_diff.py -k self_dashed` | fail as expected | production suppression を dependency-only に一時変更して確認。generate / diff の 2 件が失敗 |
+| S02 | Green | tc-s02-001, tc-s02-002 | generate / diff の `.puml` で self `..>` は出ず non-self dependency は残った | `uv run pytest tests/app/test_generate.py tests/app/test_diff.py -k "self_dashed or direct_dependency"` | pass | 4 passed, 71 deselected |
+| S99 | Final | all | full test suite pass | `uv run pytest` | pass | 437 passed |
+| S99 | Final | workflow validation | spec-dock validation / sync pass | `./spec-dock/scripts/spec-dock sync`; `./spec-dock/scripts/spec-dock validate`; `git diff --check` | pass | sync wrote generated state; validate nodes=40; diff check no output |
 
-#### ステップ契約の完了証跡（Step Contract Closure）
-| ステップ（step） | クロージャID（closure ids） | 計画上の close 条件（close condition from plan） | 観測した証跡 | 結果（result） | メモ（notes） |
+#### 発見されたテスト / リスク
+
+| ステップ | 発見されたテスト / リスク | 起票元 | 実施した対応 | クロージャID / 新規ID | 計画修正要否 | 証跡 |
+|---|---|---|---|---|---|---|
+| spec authoring | none | orchestrator | recorded | none | no | active docs |
+| spec authoring | AC-001 broad wording | spec-reviewer | requirement を dependency evidence に限定 | D-003 | no | spec-reviewer P1 finding |
+| implementation | `uses` self relation can still render `..>` | deep-consultant | scope を self dashed relation suppression へ拡張し tests を追加 | D-004 | no | deep-consultant finding; Red/Green evidence |
+
+#### ステップ契約の完了証跡
+
+| ステップ | クロージャID | 計画上の close 条件 | 観測した証跡 | 結果 | メモ |
 |---|---|---|---|---|---|
-| S01 | tc-001 | ... | ... | pass / approved-no-op / fail / blocked | ... |
+| S01 | tc-s01-001 | selection test pass + code-reviewer pass | targeted tests pass; code-reviewer pass with P2 report update finding addressed | pass | `dependency` / `uses` self relation suppression を確認 |
+| S02 | tc-s02-001, tc-s02-002 | app tests pass + code-reviewer pass | targeted tests pass; code-reviewer pass with P2 report update finding addressed | pass | generate / diff の self dashed relation suppression を確認 |
+| S90 | tc-s90-001 | docs impact inspection + spec-reviewer pass | README は relation semantics を記載しておらず今回の変更で矛盾しない | pass | README 更新は不要。spark-worker の README inspection と `rg` で確認 |
 
-#### テスト契約の完了証跡（Test Contract Closure）
-| クロージャID / テストID（closure id / test id） | ステップ（step） | 必須 | 証跡レベル（evidence level） | 実装前証跡 | 検証コマンドまたは代替 path | 観測結果 | メモ（notes） |
+#### レビューゲート状態
+
+| ステップ | ゲート名 | レビュアーロール | 鮮度 | 状態 | リスク受容 | 昇格 / 完了判断 | メモ |
 |---|---|---|---|---|---|---|---|
-| tc-001 | S01 | yes | red-required / covered-existing / inspect-only / manual-required | ... | ... | pass / approved-no-op / fail / blocked | ... |
-
-- `closure id / test id` は Spec-Locked Closure Index の `id` を指す。別 alias を使う場合は `Closure Delta` で対応を記録する。
-
-#### クロージャ網羅（Closure Coverage）
-| クロージャID（closure id） | ステップ（step） | 検証証跡 | 観測結果 | メモ（notes） |
-|---|---|---|---|---|
-| tc-001 | S01 | ... | pass / approved-no-op / fail / blocked | ... |
-
-#### クロージャ差分（Closure Delta）
-| 変更種別（change） | クロージャID（closure id） | テストID alias（test id alias） | 解決先クロージャID（resolved closure id） | 理由 | 計画修正要否（plan amendment required） | 再レビュー要否（re-review required） |
-|---|---|---|---|---|---|---|
-| none / added / removed / changed / alias-mapped | tc-001 | tc-001 / test-name | tc-001 | ... | yes / no | yes / no |
-
-#### ワークフロー委任同意の証跡（Workflow Delegation Consent）
-`workflow_issue.md` is the policy source for workflow-scoped delegation consent. This report records observed consent, boundary, expiry, and denied / unavailable handling only.
-
-| 同意元（consent source） | リポジトリ / worktree（repo/worktree） | 対象課題（active issue） | セッション（session） | 指名ロール（named roles） | 境界（boundary） | 期限 / 無効化条件（expires / invalidation condition） | 拒否 / 利用不可理由（denied / unavailable reason） | 次アクション（next action） |
-|---|---|---|---|---|---|---|---|---|
-| user instruction / explicit approval / none | ... | iss-00042 | current session / ... | spec-reviewer / code-reviewer / qa-reviewer / read-only specialist | same repo, active issue, session, named role; no destructive action / publishing / credentialed access / scope expansion / write-capable delegation / private external system use | issue complete / session end / scope change / host policy conflict / user revocation | none / denied / unavailable / host conflict | proceed / ask user / block gate / record waiver request |
-
-#### 実装委任ゲート（Implementation Delegation Gate）
-`workflow_issue.md` is the policy source for delegation, reviewer gates, waiver, unavailable, denied, and host-conflict semantics. This report records observed evidence only.
-
-| ステップ（step） | 判断（decision） | 必須理由（required reason） | 委任ロール（delegated role） | 委任範囲（delegated scope） | 正本（source of truth） | 許可変更（allowed changes） | 禁止変更（forbidden changes） | 必須検証（required verification） | 停止条件（stop conditions） | 必須出力（output required） | 観測結果（observed result） |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| S01 | delegated / approved-local-execution / degraded mode | multi-layer / shipped scaffold / pattern analysis / integration / large worker scope / none | repo-analyst / dev-coder / doc-writer / N/A | ... | ... | ... | ... | ... | ... | worker summary / changed files / verification / risks / integration decision | pass / fail / blocked |
-
-#### 委任 worker 証跡（Delegated Worker Evidence）
-| ステップ（step） | 委任ロール（delegated role） | 委任 worker 要約（delegated worker summary） | 変更ファイル（changed files） | 実行 tests または docs-only 検証（tests run or docs-only verification） | レビュアー判定（reviewer verdict） | 未解決リスク（unresolved risks） | 親統合判断（parent integration decision） |
-|---|---|---|---|---|---|---|---|
-| S01 | dev-coder / doc-writer / repo-analyst | ... | `path/to/file` | `command` -> pass / docs-only inspection -> pass | pass / fail / unavailable / denied / waived / provisional | none / ... | accepted / rejected / needs follow-up |
-
-#### 親実装例外（Parent Implementation Exception）
-| ステップ（step） | 委任不可 / 不可能理由（delegation unavailable/impossible reason） | ユーザー承認 / risk acceptance（user approval / risk acceptance） | 許可ファイル（allowed files） | 許可操作（allowed operation） | ロールバック計画（rollback plan） | 変更後検証（post-change verification） | レビューゲート（reviewer gate） | 利用不可 / 拒否 / host conflict / waiver 対応（unavailable / denied / host conflict / waiver handling） |
-|---|---|---|---|---|---|---|---|---|
-| S01 | unavailable / denied / host conflict / impossible because ... | approval source / risk accepted: yes / no | `path/to/file` | ... | ... | `command` -> pass / docs-only inspection -> pass | reviewer role + passed / failed / unavailable / denied / waived / provisional | blocked / incomplete / waived with explicit risk acceptance / next action |
-
-#### レビューゲート状態（Reviewer Gate Status）
-| ステップ（step） | ゲート名（gate name） | レビュアーロール（reviewer role） | 鮮度（freshness） | 状態（state） | リスク受容（risk acceptance） | 昇格 / 完了判断（promotion / completion decision） | メモ（notes） |
-|---|---|---|---|---|---|---|---|
-| S01 | step reviewer / final reviewer | code-reviewer / spec-reviewer / qa-reviewer | fresh / stale | passed / failed / unavailable / denied / waived / provisional | yes / no / N/A | proceed / blocked / incomplete / follow-up required | ... |
-
-#### ステップ commit ゲート（Step Commit Gate）
-| ステップ（step） | クロージャ状態（closure state） | コミット範囲（commit scope） | コミットハッシュ / 最終台帳（commit hash / final ledger） | コミット後 clean 確認（post-commit clean check） | 差分なし根拠（no-op rationale） | 差分なし確認済み契約 / ファイル（no-op checked contracts / files） | 差分なし diff-clean コマンド（no-op diff-clean command） | 差分なし read-only 確認（no-op read-only confirmation） |
-|---|---|---|---|---|---|---|---|---|
-| S01 | committed / approved-no-op | ... | <hash or final ledger reference> | `git status --short` -> clean | ... | ... | ... | ... |
+| spec authoring | spec review | spec-reviewer | pending | pending | no | pending | 要件・設計・計画作成後に実施 |
+| S01 | step review | code-reviewer | fresh | passed | no | proceed | P2 report evidence update finding は本 report 更新で対応 |
+| S02 | step review | code-reviewer | fresh | passed | no | proceed | P2 report evidence update finding は本 report 更新で対応 |
+| S90 | docs impact | spec-reviewer | unavailable | unavailable | no | proceed-with-evidence | サブエージェント枠上限で追加 reviewer 起動不可。README 矛盾なしの inspection と spec-dock validate で補完 |
+| S99 | final QA | qa-reviewer | unavailable | unavailable | no | proceed-with-evidence | サブエージェント枠上限で起動不可。full pytest 437 passed と targeted Red/Green で補完 |
+| S99 | final spec review | spec-reviewer | unavailable | unavailable | no | proceed-with-evidence | 初回 spec-reviewer P1/P2 は解消済み。再起動はサブエージェント枠上限で不可 |
 
 #### 変更したファイル
-- `path/to/file1` - ...
-- `path/to/file2` - ...
+
+- `spec-dock/active/issue/design.md` - selection 層での self dependency suppression 設計を記録。
+- `spec-dock/active/issue/plan.md` - S01 / S02 / S90 / S99 の実装契約を記録。
+- `spec-dock/active/issue/report.md` - authoring evidence と decision ledger を記録。
+- `src/pyclassuml/analyze/selection.py` - `dependency` / `uses` self relation を正規化時に除外。
+- `tests/analyze/test_selection.py` - selection の self dashed relation suppression を追加。
+- `tests/app/test_generate.py` - generate の self dashed relation suppression を追加。
+- `tests/app/test_diff.py` - diff の self dashed relation suppression を追加。
 
 #### コミット
-- <hash> <message>
 
-#### メモ
-- ...
+- pending
 
----
+## 最終品質ゲート
 
-### セッションログ（2026-05-26 HH:MM - HH:MM）
-
-#### 対象
-- Step: ...
-- AC/EC: ...
-
-#### 実施内容
-- ...
-
----
-
-## 最終品質ゲート（Final Quality Gate / 必須）
-
-### ドキュメント影響の解消ステップ S90（Docs Impact Resolution）
-| 対象 | 更新要否 | 担当（owner） | 証跡（evidence） | 仕様レビュアー結果（spec-reviewer result） |
-|---|---|---|---|---|
-| docs / templates / README / workflow / skill / migration notes | yes / no | doc-writer / N/A | ... | pass / fail / blocked |
-
-### 最終 QA ゲート（Final QA Gate）
-| レビュアー（reviewer） | 範囲 | 統合テスト判断（integration test decision） | 証跡（evidence） | 結果（result） |
-|---|---|---|---|---|
-| qa-reviewer | whole issue obligation coverage | added / already sufficient / not applicable | ... | pass / fail / blocked |
-
-### 最終コードレビューゲート（Final Code Review Gate）
-| レビュアー（reviewer） | 範囲 | 指摘 / 修正（findings / fixes） | 再 review 回数（re-review count） | 結果（result） |
-|---|---|---|---|---|
-| code-reviewer | issue-wide integrated diff | ... | 0 | pass / fail / blocked |
-
-### 最終 spec review ゲート（Final Spec Review Gate）
-| レビュアー（reviewer） | 範囲 | 指摘 / 修正（findings / fixes） | 再 review 回数（re-review count） | 結果（result） |
-|---|---|---|---|---|
-| spec-reviewer | requirement / design / plan / report / implementation / tests / docs alignment | ... | 0 | pass / fail / blocked |
-
-### 最終 commit（Final Commit）
-| 最終 report 台帳（final report ledger） | 最終 commit 範囲（final commit scope） | コミット後の外部証跡送付先（post-commit external evidence destination） | 結果（result） |
+| ゲート | 証跡 | 結果 | メモ |
 |---|---|---|---|
-| ... | ... | final response / PR / issue comment / other external delivery evidence | ready / blocked |
+| Targeted Red | `uv run pytest tests/analyze/test_selection.py tests/app/test_generate.py tests/app/test_diff.py -k self_dashed` with dependency-only suppression | fail as expected | `uses` self relation が残ることを検出 |
+| Targeted Green S01 | `uv run pytest tests/analyze/test_selection.py -k "dependency or self_dashed"` | pass | 9 passed |
+| Targeted Green S02 | `uv run pytest tests/app/test_generate.py tests/app/test_diff.py -k "self_dashed or direct_dependency"` | pass | 4 passed |
+| Full test | `uv run pytest` | pass | 437 passed |
+| SpecDock sync | `./spec-dock/scripts/spec-dock sync` | pass | active unchanged |
+| SpecDock validate | `./spec-dock/scripts/spec-dock validate` | pass | nodes=40 |
+| Diff check | `git diff --check` | pass | no output |
+| Path case check | `rg --files src tests \| rg '[A-Z]'` | pass | no output |
 
-## 遭遇した問題と解決 (任意)
-- 問題: ...
-  - 解決: ...
+## PR Delivery Gate
 
-## 学んだこと (任意)
-- ...
+- 状態: passed
+- PR: https://github.com/chemitaro/pyclassuml/pull/43
+- base: `main`
+- head: `iss-00042-suppress-self-dependency-relations`
+- merge-preparation evidence: `gh pr view 43 --json ...` -> `mergeable=MERGEABLE`, `isDraft=false`
 
-## 今後の推奨事項 (任意)
-- ...
+## Merge Preparation Gate
 
-## 省略/例外メモ (必須)
-- 該当なし
+- 状態: passed
+- reviewer / checks / PR 状態:
+  - `gh pr checks 43` -> `validate pass`（2 runs）
+  - `gh pr view 43 --json mergeable,isDraft,state,statusCheckRollup` -> `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`
+
+## Issue Finish Authority Gate
+
+- 状態: pending
+- `issue finish` は GitHub PR merge 後の lifecycle cleanup として扱い、この PR 作成時点では実行しない。
