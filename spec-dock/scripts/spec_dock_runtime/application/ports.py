@@ -163,9 +163,25 @@ class GitGateway(Protocol):
     def add_worktree_with_new_branch(self, repo_root: Path, *, path: Path, branch: str) -> None:
         ...
 
+    def remove_worktree(self, repo_root: Path, *, path: Path, force: bool) -> None:
+        ...
+
 
 class BootstrapGateway(Protocol):
     def run_make_init_if_available(self, worktree_path: Path) -> BootstrapResult:
+        ...
+
+
+class FilesystemGateway(Protocol):
+    def path_exists(self, path: Path) -> bool:
+        ...
+
+    def remove_tree(self, path: Path) -> None:
+        ...
+
+
+class EnvironmentGateway(Protocol):
+    def getenv(self, name: str) -> str | None:
         ...
 
 
@@ -217,3 +233,5 @@ class Ports:
     artifact_writer: ArtifactWriter | None = None
     sync_legacy_runner: SyncLegacyRunner | None = None
     bootstrap_gateway: BootstrapGateway | None = None
+    environment_gateway: EnvironmentGateway | None = None
+    filesystem_gateway: FilesystemGateway | None = None

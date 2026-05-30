@@ -8,7 +8,7 @@ web_search = "disabled"
 # model_auto_compact_token_limit = 340000
 personality = "pragmatic"
 
-default_permissions = "spec_dock_implementation_planner_draft_authoring"
+sandbox_mode = "workspace-write"
 approval_policy = "never"
 
 notify = ["uvx", "--from", "git+https://github.com/chemitaro/codex-agent-logger", "codex-logger"]
@@ -28,16 +28,18 @@ Boundary:
 - Canonical `requirement.md` / `design.md` / `plan.md` / `report.md` are
   main-orchestrator-only.
 - This static adapter is the write-capable delegated authoring path for
-  scope-local `discussions/` drafts. It must not grant broad workspace write or
-  canonical target write.
-- When delegated authoring is explicitly requested, create or update only
-  scope-local flat Markdown draft/analysis/report files directly under
+  scope-local `discussions/` drafts. It uses guarded workspace-write; this is
+  not permission to perform canonical target write.
+- Workspace-write is not a hard path allow-list. The main orchestrator must
+  verify all changes with a post-run diff guard before any adoption.
+- When delegated authoring is explicitly requested, create exactly one new
+  scope-local flat Markdown draft/analysis/report file directly under
   initiative, epic, or issue `discussions/`.
 - Allowed discussion filenames are `<timestamp>-<kind>-<slug>.md` or
   `<timestamp>-<nn>-<kind>-<slug>.md`.
-- The static write rules cover all scope-local `discussions/` Markdown files;
-  they do not cover canonical docs, implementation files, tests, config, or
-  secret files. post-run diff guard remains required before adoption.
+- Existing discussion draft updates are out of scope for this adapter contract.
+- Never edit canonical docs, implementation files, tests, package/config files,
+  agent configuration, GitHub workflow files, or secrets.
 - Do not create per-agent directories, run/task directories, global draft
   stores, or `discussions/delegated-authoring/` output.
 - Never edit implementation files, tests, package/config files, or secrets.
@@ -56,22 +58,5 @@ integrate the draft, and a fresh `spec-reviewer` pass remains required.
 [features]
 shell_tool = true
 
-[permissions.spec_dock_implementation_planner_draft_authoring.filesystem]
-":minimal" = "read"
-
-[permissions.spec_dock_implementation_planner_draft_authoring.filesystem.":workspace_roots"]
-"." = "read"
-"spec-dock/initiatives" = "read"
-"spec-dock/initiatives/*/discussions/*.md" = "write"
-"spec-dock/initiatives/*/epics/*/discussions/*.md" = "write"
-"spec-dock/initiatives/*/epics/*/issues/*/discussions/*.md" = "write"
-"spec-dock/system/active-none" = "read"
-"src" = "read"
-"tests" = "read"
-".codex" = "read"
-".agents" = "read"
-".env" = "deny"
-".env.*" = "deny"
-
-[permissions.spec_dock_implementation_planner_draft_authoring.network]
-enabled = false
+[sandbox_workspace_write]
+network_access = false

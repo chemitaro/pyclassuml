@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,11 +26,15 @@ from ..application.set_active import show_active as application_show_active
 from ..application.sync_state import sync as application_sync
 from ..application.validate_tree import validate_tree as application_validate_tree
 from ..application.worktree import worktree_create as application_worktree_create
+from ..application.worktree import worktree_list as application_worktree_list
+from ..application.worktree import worktree_remove as application_worktree_remove
+from ..application.worktree import worktree_show as application_worktree_show
 from ..infra import active_store as infra_active_store
 from ..infra import artifact_writer as infra_artifact_writer
 from ..infra import clock as infra_clock
 from ..infra import deps_reader as infra_deps_reader
 from ..infra import derived_state_reader as infra_derived_state_reader
+from ..infra import fs_cli as infra_fs_cli
 from ..infra import fs_repo as infra_fs_repo
 from ..infra import git_cli as infra_git_cli
 from ..infra import github_cli as infra_github_cli
@@ -195,11 +200,29 @@ class _GitGateway:
     def add_worktree_with_new_branch(self, repo_root: Path, *, path: Path, branch: str) -> None:
         infra_git_cli.add_worktree_with_new_branch(repo_root, path=path, branch=branch)
 
+    def remove_worktree(self, repo_root: Path, *, path: Path, force: bool) -> None:
+        infra_git_cli.remove_worktree(repo_root, path=path, force=force)
+
 
 @dataclass(frozen=True)
 class _BootstrapGateway:
     def run_make_init_if_available(self, worktree_path: Path):
         return infra_make_cli.run_make_init_if_available(worktree_path)
+
+
+@dataclass(frozen=True)
+class _FilesystemGateway:
+    def path_exists(self, path: Path) -> bool:
+        return infra_fs_cli.path_exists(path)
+
+    def remove_tree(self, path: Path) -> None:
+        infra_fs_cli.remove_tree(path)
+
+
+@dataclass(frozen=True)
+class _EnvironmentGateway:
+    def getenv(self, name: str) -> str | None:
+        return os.environ.get(name)
 
 
 @dataclass(frozen=True)
@@ -239,6 +262,8 @@ def build_runtime(specdock_dir: Path, *, repo_root: Path | None = None) -> Boots
         deps_topology_reader=_DepsTopologyReader(),
         git_gateway=_GitGateway(),
         bootstrap_gateway=_BootstrapGateway(),
+        environment_gateway=_EnvironmentGateway(),
+        filesystem_gateway=_FilesystemGateway(),
         json_store=_JsonStore(),
         clock=_Clock(),
         artifact_writer=_ArtifactWriter(),
@@ -264,6 +289,9 @@ def build_runtime(specdock_dir: Path, *, repo_root: Path | None = None) -> Boots
         validate_tree=lambda req: application_validate_tree(req, ports),
         doctor=lambda req: application_doctor(req, ports),
         worktree_create=lambda req: application_worktree_create(req, ports),
+        worktree_list=lambda req: application_worktree_list(req, ports),
+        worktree_show=lambda req: application_worktree_show(req, ports),
+        worktree_remove=lambda req: application_worktree_remove(req, ports),
         repo_root=ports.repo_root,
         specdock_dir=ports.specdock_dir,
     )

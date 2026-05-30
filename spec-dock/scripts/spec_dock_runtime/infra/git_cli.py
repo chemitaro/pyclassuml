@@ -182,6 +182,21 @@ def add_worktree_with_new_branch(repo_root: Path, *, path: Path, branch: str) ->
         raise RuntimeError(f"git failed: {' '.join(cmd)}\n{details}") from e
 
 
+def remove_worktree(repo_root: Path, *, path: Path, force: bool) -> None:
+    _ensure_git_available()
+    cmd = ["git", "worktree", "remove"]
+    if force:
+        cmd.extend(["--force", "--force"])
+    cmd.append(str(path))
+    try:
+        subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or "").strip()
+        stdout = (e.stdout or "").strip()
+        details = "\n".join(part for part in (stderr, stdout) if part)
+        raise RuntimeError(f"git failed: {' '.join(cmd)}\n{details}") from e
+
+
 def _parse_worktree_porcelain(text: str) -> list[GitWorktreeRecord]:
     records: list[GitWorktreeRecord] = []
     current: dict[str, object] = {}
@@ -201,6 +216,7 @@ def _parse_worktree_porcelain(text: str) -> list[GitWorktreeRecord]:
                 branch=branch,
                 detached=bool(current.get("detached", False)),
                 bare=bool(current.get("bare", False)),
+                locked=bool(current.get("locked", False)),
             )
         )
 
@@ -221,5 +237,7 @@ def _parse_worktree_porcelain(text: str) -> list[GitWorktreeRecord]:
             current["detached"] = True
         elif line == "bare":
             current["bare"] = True
+        elif line == "locked" or line.startswith("locked "):
+            current["locked"] = True
     flush()
     return records

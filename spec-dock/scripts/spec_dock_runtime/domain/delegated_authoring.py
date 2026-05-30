@@ -18,6 +18,37 @@ NON_EDITABLE_DISCUSSION_STATE_RE = re.compile(
 EDITABLE_DISCUSSION_STATE_RE = re.compile(
     r"(?im)^\s*(?:status\s*:\s*proposed|adoption_status\s*:\s*unreviewed)\b"
 )
+REQUIRED_DISCUSSION_FRONTMATTER_FIELDS: tuple[str, ...] = (
+    "created_by_role",
+    "scope_id",
+    "source_paths",
+    "intended_targets",
+    "adoption_status",
+    "reflected_to",
+    "diff_guard_result",
+)
+REQUIRED_DISCUSSION_FRONTMATTER_RE: dict[str, re.Pattern[str]] = {
+    "created_by_role": re.compile(
+        r"(?m)^\s*created_by_role\s*:\s*"
+        r"(?:"
+        r"spec-dock-system-architect|spec-dock-implementation-planner|"
+        r"\"(?:spec-dock-system-architect|spec-dock-implementation-planner)\"|"
+        r"'(?:spec-dock-system-architect|spec-dock-implementation-planner)'"
+        r")\s*$"
+    ),
+    "scope_id": re.compile(r"(?m)^\s*scope_id\s*:\s*(?:\S+|\"[^\"]+\"|'[^']+')\s*$"),
+    "source_paths": re.compile(r"(?m)^\s*source_paths\s*:"),
+    "intended_targets": re.compile(r"(?m)^\s*intended_targets\s*:"),
+    "adoption_status": re.compile(r"(?im)^\s*adoption_status\s*:\s*['\"]?unreviewed['\"]?\s*$"),
+    "reflected_to": re.compile(r"(?m)^\s*reflected_to\s*:\s*\[\s*\]\s*$"),
+    "diff_guard_result": re.compile(
+        r"(?m)^\s*diff_guard_result\s*:\s*['\"]?(?:pending|passed|failed|not_run)['\"]?\s*$"
+    ),
+}
+AUTHORIZED_ROLE_FRONTMATTER: dict[str, str] = {
+    "system-architect": "spec-dock-system-architect",
+    "implementation-planner": "spec-dock-implementation-planner",
+}
 
 
 @dataclass(frozen=True)
@@ -71,6 +102,7 @@ def deprecated_manifest_result(
 
 def evaluate_diff_guard(
     *,
+    authorized_role: str | None = None,
     scope_id: str,
     repo_root: Path,
     scope_dir: Path,
@@ -81,6 +113,7 @@ def evaluate_diff_guard(
     allowed_updates = {_normalize_repo_path(path, repo_root) for path in allow_existing_discussions}
     details: list[str] = []
     ok = True
+    allowed_new_discussion_count = 0
 
     discussion_boundary_errors = _discussion_boundary_errors(
         repo_root=repo_root,
@@ -91,13 +124,8 @@ def evaluate_diff_guard(
         details.extend(discussion_boundary_errors)
 
     for allowed_path in sorted(allowed_updates):
-        allowed_abs = repo_root / allowed_path
-        if not _is_direct_child_of(allowed_abs, discussions_dir):
-            ok = False
-            details.append(f"blocked path={allowed_path.as_posix()} reason=allowed_existing_outside_target_discussions")
-        elif not _is_valid_discussion_markdown_name(allowed_abs):
-            ok = False
-            details.append(f"blocked path={allowed_path.as_posix()} reason=allowed_existing_name_noncompliant")
+        ok = False
+        details.append(f"blocked path={allowed_path.as_posix()} reason=existing_discussion_update_unsupported")
 
     if not entries:
         details.append("detail=no_diff")
@@ -107,16 +135,27 @@ def evaluate_diff_guard(
         rel_path = _display_path(path, repo_root)
         reason = _classify_entry(
             entry,
+            scope_id=scope_id,
+            authorized_role=authorized_role,
             repo_root=repo_root,
             scope_dir=scope_dir,
             discussions_dir=discussions_dir,
             allowed_updates=allowed_updates,
         )
         if reason is None:
+            if _is_create_status(entry.status):
+                allowed_new_discussion_count += 1
             details.append(f"allowed path={rel_path}")
         else:
             ok = False
             details.append(f"blocked path={rel_path} reason={reason}")
+
+    if allowed_new_discussion_count != 1:
+        ok = False
+        details.append(
+            f"blocked path={_display_path(discussions_dir, repo_root)} "
+            f"reason=expected_exactly_one_new_discussion_draft count={allowed_new_discussion_count}"
+        )
 
     return DiffGuardResult(
         ok=ok,
@@ -152,6 +191,8 @@ def _discussion_boundary_errors(*, repo_root: Path, discussions_dir: Path) -> tu
 def _classify_entry(
     entry: DiffGuardEntry,
     *,
+    scope_id: str,
+    authorized_role: str | None,
     repo_root: Path,
     scope_dir: Path,
     discussions_dir: Path,
@@ -185,21 +226,12 @@ def _classify_entry(
     if _is_mixed_index_and_worktree_status(status):
         return "mixed_staged_unstaged_discussion"
     if _is_create_status(status):
-        create_error = _validate_new_discussion_create(abs_path)
+        create_error = _validate_new_discussion_create(abs_path, scope_id=scope_id, authorized_role=authorized_role)
         if create_error is not None:
             return create_error
         return None
     if _is_update_status(status):
-        if rel_path in allowed_updates:
-            eligibility_error = _validate_existing_discussion_update(
-                abs_path,
-                pre_change_text=entry.pre_change_text,
-                pre_change_error=entry.pre_change_error,
-            )
-            if eligibility_error is not None:
-                return eligibility_error
-            return None
-        return "existing_discussion_not_allowlisted"
+        return "existing_discussion_update_unsupported"
     return "unsupported_status"
 
 
@@ -240,7 +272,7 @@ def _validate_existing_discussion_update(
     return _validate_existing_discussion_text(text, path=path)
 
 
-def _validate_new_discussion_create(path: Path) -> str | None:
+def _validate_new_discussion_create(path: Path, *, scope_id: str, authorized_role: str | None) -> str | None:
     if not path.is_file():
         return "new_discussion_missing"
     try:
@@ -250,10 +282,84 @@ def _validate_new_discussion_create(path: Path) -> str | None:
     metadata = _discussion_frontmatter_metadata(text)
     if NON_EDITABLE_DISCUSSION_STATE_RE.search(metadata):
         return "new_discussion_claims_non_editable_state"
-    if _is_draft_artifact_name(path):
-        return None
     if not EDITABLE_DISCUSSION_STATE_RE.search(metadata):
         return "new_discussion_missing_proposed_state"
+    provenance_error = _validate_required_discussion_frontmatter(
+        metadata, scope_id=scope_id, authorized_role=authorized_role
+    )
+    if provenance_error is not None:
+        return provenance_error
+    return None
+
+
+def _validate_required_discussion_frontmatter(
+    metadata: str, *, scope_id: str, authorized_role: str | None
+) -> str | None:
+    duplicated_key = _duplicate_discussion_frontmatter_provenance_key(metadata)
+    if duplicated_key is not None:
+        return f"new_discussion_duplicate_provenance:{duplicated_key}"
+    missing = tuple(
+        field
+        for field in REQUIRED_DISCUSSION_FRONTMATTER_FIELDS
+        if not REQUIRED_DISCUSSION_FRONTMATTER_RE[field].search(metadata)
+    )
+    if missing:
+        return f"new_discussion_missing_provenance:{','.join(missing)}"
+    if _frontmatter_scalar_value(metadata, "scope_id") != scope_id:
+        return "new_discussion_scope_id_mismatch"
+    if authorized_role is not None:
+        expected_created_by_role = AUTHORIZED_ROLE_FRONTMATTER.get(authorized_role)
+        if expected_created_by_role is None:
+            return "new_discussion_authorized_role_unknown"
+        if _frontmatter_scalar_value(metadata, "created_by_role") != expected_created_by_role:
+            return "new_discussion_created_by_role_mismatch"
+    if not _frontmatter_list_has_value(metadata, "source_paths"):
+        return "new_discussion_empty_source_paths"
+    if not _frontmatter_list_has_value(metadata, "intended_targets"):
+        return "new_discussion_empty_intended_targets"
+    return None
+
+
+def _duplicate_discussion_frontmatter_provenance_key(metadata: str) -> str | None:
+    for key in REQUIRED_DISCUSSION_FRONTMATTER_FIELDS:
+        key_re = re.compile(rf"^\s*{re.escape(key)}\s*:")
+        if sum(1 for line in metadata.splitlines() if key_re.match(line)) > 1:
+            return key
+    return None
+
+
+def _frontmatter_list_has_value(metadata: str, key: str) -> bool:
+    lines = metadata.splitlines()
+    key_re = re.compile(rf"^\s*{re.escape(key)}\s*:\s*(.*)$")
+    for index, line in enumerate(lines):
+        match = key_re.match(line)
+        if match is None:
+            continue
+        inline = match.group(1).strip()
+        if inline:
+            return False
+        for child in lines[index + 1 :]:
+            if child and not child[0].isspace():
+                return False
+            if re.match(r"^\s*-\s+\S+", child):
+                return True
+        return False
+    return False
+
+
+def _frontmatter_scalar_value(metadata: str, key: str) -> str | None:
+    key_re = re.compile(rf"^\s*{re.escape(key)}\s*:\s*(.*?)\s*$")
+    for line in metadata.splitlines():
+        match = key_re.match(line)
+        if match is None:
+            continue
+        raw = match.group(1).strip()
+        if not raw:
+            return None
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+            value = raw[1:-1]
+            return value or None
+        return raw
     return None
 
 

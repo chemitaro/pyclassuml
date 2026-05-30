@@ -1,7 +1,7 @@
 # 文書入口（spec-dock docs）
 
 このディレクトリは `spec-dock init/update` により導入先リポジトリへ配置されます。  
-まず `guide.md` で全体像を掴み、仕様書作成は `workflow_spec_authoring.md`、scope 固有の lifecycle / governance は対象 scope の `workflow_*.md` を入口にしてください。
+まず `guide.md` で全体像を掴み、曖昧さの明確化は `workflow_clarification.md`、仕様書作成は `workflow_spec_authoring.md`、scope 固有の lifecycle / governance は対象 scope の `workflow_*.md` を入口にしてください。
 plan だけは `phase_plan.md` の shared axiom と `phase_plan_<scope>.md` の scope-specific playbook を合わせて参照します。
 runtime command の現行 contract は `./spec-dock/scripts/spec-dock ...` です。
 
@@ -10,9 +10,11 @@ runtime command の現行 contract は `./spec-dock/scripts/spec-dock ...` で�
 `spec-dock init/update` は次の skill を導入します。
 
 - Hub: `.agents/skills/spec-driven-tdd-workflow/SKILL.md`
+- Clarification: `.agents/skills/spec-dock-clarification/SKILL.md`
 - Initiative: `.agents/skills/spec-dock-initiative-planning/SKILL.md`
 - Epic: `.agents/skills/spec-dock-epic-planning/SKILL.md`
-- Issue: `.agents/skills/spec-dock-issue-execution/SKILL.md`
+- Issue planning: `.agents/skills/spec-dock-issue-planning/SKILL.md`
+- Issue execution: `.agents/skills/spec-dock-issue-execution/SKILL.md`
 - ADR: `.agents/skills/spec-dock-adr-facilitation/SKILL.md`
 
 ## 読み順
@@ -20,6 +22,7 @@ runtime command の現行 contract は `./spec-dock/scripts/spec-dock ...` で�
 1. [guide.md](guide.md)
 2. 対象 scope の workflow
    - [workflow_spec_authoring.md](workflow_spec_authoring.md)
+   - [workflow_clarification.md](workflow_clarification.md)
    - [workflow_initiative.md](workflow_initiative.md)
    - [workflow_epic.md](workflow_epic.md)
    - [workflow_issue.md](workflow_issue.md)
@@ -74,6 +77,7 @@ runtime command の現行 contract は `./spec-dock/scripts/spec-dock ...` で�
 
 - Initiative / Epic は `new` / `import` の前に既存ノード再利用を確認する
 - Requirement / design / plan 作成は `workflow_spec_authoring.md` の phase promotion gate を正本にし、fresh `spec-reviewer` の `review_status: pass` まで次 phase へ進めない
+- 仕様書作成前後の曖昧さ、用語衝突、責務境界、正式質問は `workflow_clarification.md` を正本にし、`spec-dock-clarification` skill を入口にして一問ずつ扱う
 - plan は shared `phase_plan.md` の後に対象 scope の `phase_plan_<scope>.md` を読む
 - `new initiative` / `new epic` / `new issue` はデフォルトで GitHub Issue を作る。node create/import で local-only create へ自動フォールバックしない
 - `new issue --create-github-issue` は default create の explicit alias

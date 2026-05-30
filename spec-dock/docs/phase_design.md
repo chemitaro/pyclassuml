@@ -6,6 +6,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 関連:
 - 全体像: [guide.md](guide.md)
 - Spec authoring workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
+- Clarification workflow: [workflow_clarification.md](workflow_clarification.md)
 - Scope workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
 - 議論資料の置き方と命名: 対象 scope 配下の `discussions/rules.md`, [reference_naming.md](reference_naming.md)
 
@@ -45,7 +46,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 1. requirement と対象 scope の workflow を確認する
 2. 既存実装 / 既存 docs / 既存 ADR を調べる
 3. 比較や下調べは `research` / `disc` に分離する
-4. 必要ならヒアリングし、反映前に docs に整理する
+4. 必要なら [workflow_clarification.md](workflow_clarification.md) に従って一問ずつヒアリングし、反映前に docs に整理する
 5. `design.md` を固めて fresh `spec-reviewer` loop を `review_status: pass` まで回す
 6. 関連 docs を束ねて plan へ handoff する
 
@@ -53,7 +54,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 
 - `requirement.md` が reviewer 承認レベルにある
 - `requirement.md` が `workflow_spec_authoring.md` の requirement gate を pass している
-- design で閉じる論点と、先にヒアリング / 追加調査が要る論点を分けた
+- design で閉じる論点と、先に source-grounding / domain language sharpening / concrete scenario 確認 / ヒアリングが要る論点を分けた
 - 既存実装、既存 docs、既存 ADR を見て、採用候補の既存パターンを把握した
 - ヒアリング前に docs へ残す前提を整理した
   - 決めたい設計論点
@@ -80,12 +81,12 @@ Delegated design draft を使う場合、orchestrator は draft 生成前に次�
 - active node、scope、parent boundary、non-scope が確認済み
 - invocation contract が scope、source artifacts、allowed actions、forbidden actions、boundary、invalidation conditions を含む
 - read-only specialist consent と scope-local discussion direct-write consent は分離されている
-- allowed actions は、対象 scope の `discussions/` direct child にある naming-rule compliant Markdown の新規作成、または orchestrator が明示指定した既存 proposed discussion draft の更新に限定される
+- allowed actions は、対象 scope の `discussions/` direct child にある naming-rule compliant Markdown 1 ファイルの新規作成に限定される。既存 proposed discussion draft の更新は static adapter contract の対象外であり、将来必要な場合は別 workflow / follow-up で narrower allowlist と追加 gate を定義する
 - filename は既存 discussion rules に従い、標準は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md` とする
 - forbidden actions は canonical `requirement.md` / `design.md` / `plan.md` / `report.md`、implementation、tests、package/config、`.agents`、`.codex`、`.github`、`.env*`、GitHub mutation、phase promotion、reviewer-pass claim、user への直接質問を含む
 - forbidden locations は per-agent directory、run/task directory、global draft store、`discussions/delegated-authoring/` を含む
 - required design draft output contract が、requirement coverage、existing context findings、design decisions、alternatives、boundary / contract model、dependency analysis、SoR、file/module plan、migration/compatibility/rollback、observability、test strategy、ADR candidates、risks、Requirement Clarification Requests、Integration Notes を含む
-- static adapter は scope-local `discussions/` Markdown draft だけに write-capable とし、broad write や canonical target write を許可しない。run ごとの permission context 生成に依存せず、run は post-run diff guard pass と `report.md` ledger 記録まで adoption-ineligible とする
+- static adapter は guarded workspace-write で scope-local `discussions/` Markdown draft を作成する。workspace-write は hard path allow-list ではなく canonical target write の許可でもない。run ごとの permission context 生成に依存せず、run は post-run diff guard pass と `report.md` ledger 記録まで adoption-ineligible とする
 
 Sub-agent-created draft は lightweight provenance として `created_by_role`、`scope_id`、`source_paths`、`intended_targets`、`adoption_status: unreviewed`、`reflected_to: []`、`diff_guard_result`、adoption ledger note を持ちます。標準 delegated draft evidence として task manifest hash、Permission Profile hash、session invocation hash、probe run id を要求しません。これらは historical evidence または明示された例外証跡としてだけ扱います。
 
@@ -105,6 +106,7 @@ Reviewer は delegated draft を含む design を review するとき、次を f
 ## 設計 checklist（design checklist）
 
 - 既存パターンに乗れるかを最初に確認し、新しい概念は「既存で足りない理由」を残す
+- 用語、責務境界、domain relationship が曖昧な場合は、既存 docs / code と照合し、必要なら concrete scenario / edge case で境界を確認してから design 本文へ反映する
 - 先に押さえる:
   - 既存の責務分割
   - 現在の入出力契約
@@ -328,7 +330,7 @@ agent はこの一覧から、設計上の誤読を減らすものだけを選�
 ## 論点の逃がし先
 
 - `scratch`: 図の叩き台、軽量メモ、生ログ。raw capture であり非 authoritative
-- `interview`: code だけでは決められない UX / 運用 / policy / 優先順位の質問票
+- `interview`: code だけでは決められない UX / 運用 / policy / 優先順位の一問一答質問票
 - `research`: 既存実装調査、類似機能比較、外部仕様調査。事実、推測、未検証事項、判断への含意を分ける
 - `disc`: 設計案比較、トレードオフ整理、採否判断の前段。回答収集や生ログを抱え込みすぎない
 - `adr`: 境界 / 契約 / 移行などの長期判断
@@ -340,7 +342,7 @@ agent はこの一覧から、設計上の誤読を減らすものだけを選�
   - UX / 運用フロー / 監査要件など、code だけでは決められない前提がある
   - ロールアウト条件や業務手順が境界に影響する
   - requirement で残した TBD が利用者都合でしか閉じられない
-  - trivial な yes/no でも、重要な判断、後続反映、回答証跡が必要なら `interview` を使う
+  - trivial な yes/no でも、重要な判断、後続反映、回答証跡が必要なら unanswered `interview` を先に作る
 - 次なら ADR を検討する:
   - 境界、契約、整合性、移行戦略の採択が後続へ長く効く
   - 代替案を比較したうえで 1 案を明示的に選ぶ

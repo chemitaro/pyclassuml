@@ -20,7 +20,12 @@ from ..application.contracts import (
     PostMutationSyncOutcome,
     SyncCommandResult,
     ValidationResult,
+    WorktreeCommandError,
     WorktreeCreateResult,
+    WorktreeListResult,
+    WorktreeRecordView,
+    WorktreeRemoveResult,
+    WorktreeShowResult,
 )
 from .contracts import CliText
 
@@ -367,6 +372,149 @@ def render_worktree_create_text(result: WorktreeCreateResult) -> CliText:
         ),
     ]
     return CliText(stdout_lines=stdout_lines, stderr_lines=[], warnings=list(result.warnings))
+
+
+def render_worktree_list_text(result: WorktreeListResult) -> CliText:
+    lines = ["spec-dock: worktrees"]
+    for item in result.worktrees:
+        blockers = ",".join(item.remove_blockers) if item.remove_blockers else "-"
+        lines.append(
+            "  "
+            f"id={item.id} path={item.path} branch={item.branch or '-'} "
+            f"managed={_bool_text(item.managed)} main={_bool_text(item.main)} "
+            f"current={_bool_text(item.current)} removable={_bool_text(item.removable)} "
+            f"remove_blockers={blockers}"
+        )
+    return CliText(stdout_lines=lines, stderr_lines=[], warnings=list(result.warnings))
+
+
+def render_worktree_show_text(result: WorktreeShowResult) -> CliText:
+    item = result.worktree
+    blockers = ",".join(item.remove_blockers) if item.remove_blockers else "-"
+    return CliText(
+        stdout_lines=[
+            (
+                "spec-dock: worktree "
+                f"id={item.id} path={item.path} branch={item.branch or '-'} "
+                f"managed={_bool_text(item.managed)} main={_bool_text(item.main)} "
+                f"current={_bool_text(item.current)} removable={_bool_text(item.removable)} "
+                f"remove_blockers={blockers}"
+            )
+        ],
+        stderr_lines=[],
+        warnings=list(result.warnings),
+    )
+
+
+def render_worktree_remove_text(result: WorktreeRemoveResult) -> CliText:
+    return CliText(
+        stdout_lines=[
+            (
+                "spec-dock: ok (worktree remove) "
+                f"id={result.resolved_target.id} path={result.resolved_target.path} "
+                f"branch={result.resolved_target.branch or '-'} "
+                f"removed_record={_bool_text(result.removed_record)} "
+                f"removed_directory={_bool_text(result.removed_directory)} "
+                f"branch_deleted={_bool_text(result.branch_deleted)}"
+            )
+        ],
+        stderr_lines=[],
+        warnings=list(result.warnings),
+    )
+
+
+def render_worktree_list_json(result: WorktreeListResult) -> CliText:
+    payload = {
+        "status": "ok",
+        "command": "list",
+        "warnings": list(result.warnings),
+        "worktrees": [_worktree_payload(item) for item in result.worktrees],
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
+
+
+def render_worktree_show_json(result: WorktreeShowResult) -> CliText:
+    payload = {
+        "status": "ok",
+        "command": "show",
+        "target": result.target,
+        "warnings": list(result.warnings),
+        "worktree": _worktree_payload(result.worktree),
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
+
+
+def render_worktree_remove_json(result: WorktreeRemoveResult) -> CliText:
+    payload = {
+        "status": "ok",
+        "command": "remove",
+        "target": result.target,
+        "warnings": list(result.warnings),
+        "resolved_target": _worktree_payload(result.resolved_target),
+        "removed_record": result.removed_record,
+        "removed_directory": result.removed_directory,
+        "branch_deleted": result.branch_deleted,
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
+
+
+def render_worktree_error_json(error: WorktreeCommandError) -> CliText:
+    payload: dict[str, object] = {
+        "status": "error",
+        "command": error.command,
+        "warnings": list(error.warnings),
+        "error": {
+            "code": error.code,
+            "message": error.message,
+        },
+    }
+    if error.target is not None:
+        payload["target"] = error.target
+    if error.candidates:
+        payload["candidates"] = [_worktree_payload(item) for item in error.candidates]
+    if error.worktree is not None:
+        payload["worktree"] = _worktree_payload(error.worktree)
+    if error.remove_blockers:
+        payload["remove_blockers"] = list(error.remove_blockers)
+    if error.git_error is not None:
+        payload["git_error"] = error.git_error
+    if error.removed_record is not None:
+        payload["removed_record"] = error.removed_record
+    if error.removed_directory is not None:
+        payload["removed_directory"] = error.removed_directory
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
+
+
+def render_worktree_error_text(error: WorktreeCommandError) -> CliText:
+    details: list[str] = [f"error: {error.message}"]
+    if error.remove_blockers:
+        details.append(f"remove_blockers={','.join(error.remove_blockers)}")
+    if error.candidates:
+        details.append("candidates=" + ",".join(f"{item.id}:{item.path}" for item in error.candidates))
+    if error.git_error:
+        details.append(error.git_error)
+    return CliText(stdout_lines=[], stderr_lines=details, warnings=list(error.warnings))
+
+
+def _worktree_payload(item: WorktreeRecordView) -> dict[str, object]:
+    return {
+        "id": item.id,
+        "path": str(item.path),
+        "basename": item.basename,
+        "branch": item.branch,
+        "head": item.head,
+        "managed": item.managed,
+        "main": item.main,
+        "current": item.current,
+        "path_exists": item.path_exists,
+        "record_exists": item.record_exists,
+        "removable": item.removable,
+        "remove_blockers": list(item.remove_blockers),
+    }
+
+
+def _bool_text(value: bool) -> str:
+    return "true" if value else "false"
 
 
 def _delete_remote_close_payload(result: DeleteNodeResult) -> dict[str, list[str]]:

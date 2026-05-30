@@ -70,6 +70,7 @@ class GitWorktreeRecord:
     branch: str | None
     detached: bool = False
     bare: bool = False
+    locked: bool = False
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,91 @@ class WorktreeCreateResult:
     bootstrap_command: str | None
     bootstrap_exit_code: int | None
     warnings: list[str]
+
+
+@dataclass(frozen=True)
+class WorktreeListRequest:
+    pass
+
+
+@dataclass(frozen=True)
+class WorktreeShowRequest:
+    target: str
+
+
+@dataclass(frozen=True)
+class WorktreeRemoveRequest:
+    target: str
+    force: bool = False
+
+
+@dataclass(frozen=True)
+class WorktreeRecordView:
+    id: str
+    path: Path
+    basename: str
+    branch: str | None
+    head: str | None
+    managed: bool
+    main: bool
+    current: bool
+    path_exists: bool
+    record_exists: bool
+    removable: bool
+    remove_blockers: list[str]
+
+
+@dataclass(frozen=True)
+class WorktreeListResult:
+    worktrees: list[WorktreeRecordView]
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class WorktreeShowResult:
+    target: str
+    worktree: WorktreeRecordView
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class WorktreeRemoveResult:
+    target: str
+    resolved_target: WorktreeRecordView
+    removed_record: bool
+    removed_directory: bool
+    branch_deleted: bool
+    warnings: list[str]
+
+
+class WorktreeCommandError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        command: str,
+        target: str | None = None,
+        candidates: list[WorktreeRecordView] | None = None,
+        worktree: WorktreeRecordView | None = None,
+        remove_blockers: list[str] | None = None,
+        git_error: str | None = None,
+        removed_record: bool | None = None,
+        removed_directory: bool | None = None,
+        warnings: list[str] | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.command = command
+        self.target = target
+        self.candidates = list(candidates or [])
+        self.worktree = worktree
+        self.remove_blockers = list(remove_blockers or [])
+        self.git_error = git_error
+        self.removed_record = removed_record
+        self.removed_directory = removed_directory
+        self.warnings = list(warnings or [])
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
@@ -561,6 +647,15 @@ class UseCases:
     )
     worktree_create: Callable[[WorktreeCreateRequest], WorktreeCreateResult] = lambda _req: (_ for _ in ()).throw(
         RuntimeError("worktree_create is not configured")
+    )
+    worktree_list: Callable[[WorktreeListRequest], WorktreeListResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("worktree_list is not configured")
+    )
+    worktree_show: Callable[[WorktreeShowRequest], WorktreeShowResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("worktree_show is not configured")
+    )
+    worktree_remove: Callable[[WorktreeRemoveRequest], WorktreeRemoveResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("worktree_remove is not configured")
     )
     repo_root: Path | None = None
     specdock_dir: Path | None = None

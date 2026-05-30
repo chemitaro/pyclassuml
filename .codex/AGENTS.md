@@ -58,7 +58,7 @@ For SpecDock usage and workflow details, start here:
 
 Canonical `requirement.md` / `design.md` / `plan.md` / `report.md` are main orchestrator single-writer authority. System-architect and implementation-planner style sub-agents must not directly edit those canonical docs.
 
-Sub-agent authoring outputs are not proposal-only. When the active issue contract permits delegated authoring, sub-agents may directly create or edit a scope-local flat Markdown draft, analysis, or discussion-local report under the target `discussions/` direct child.
+Sub-agent authoring outputs are not proposal-only. When the active issue contract permits delegated authoring, sub-agents may directly create exactly one new scope-local flat Markdown draft, analysis, or discussion-local report under the target `discussions/` direct child.
 
 Filenames follow the existing discussion rules:
 
@@ -69,7 +69,7 @@ Do not create per-agent directories, run/task directories, global draft stores, 
 
 Sub-agent-created drafts use lightweight provenance: `created_by_role`, `scope_id`, `source_paths`, `intended_targets`, `adoption_status: unreviewed`, `reflected_to: []`, `diff_guard_result`, and an adoption ledger note. Do not require task manifest hash, Permission Profile hash, session invocation hash, or probe run id as standard delegated draft evidence.
 
-Static adapters for `system-architect` and `implementation-planner` are write-capable only for scope-local `discussions/` Markdown drafts. They must not grant broad workspace write access or canonical target write. Delegated authoring may create or update flat Markdown draft/analysis/report files directly under initiative, epic, or issue `discussions/`; the target `discussions/` directories should be clean at baseline time. Dirty or untracked target discussion entries make delegated output adoption-ineligible until post-run diff guard passes and `report.md` records the ledger entry.
+Static adapters for `system-architect` and `implementation-planner` use guarded workspace-write for scope-local `discussions/` authoring. Workspace-write is not a hard path allow-list and is not permission to perform canonical target write. Delegated authoring may create exactly one new flat Markdown draft/analysis/report file directly under initiative, epic, or issue `discussions/`; existing discussion draft updates are out of scope for the static adapter contract unless a later workflow explicitly defines a narrower allowlist. The target `discussions/` directory should be clean at baseline time. Dirty or untracked target discussion entries make delegated output adoption-ineligible until post-run diff guard passes and `report.md` records the ledger entry.
 
 Historical `iss-00126` delegated-authoring manifest/Profile/probe/session artifacts are grandfathered evidence. Do not delete, rename, or treat them as validation failures solely because the current contract has changed.
 

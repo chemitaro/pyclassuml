@@ -18,6 +18,19 @@ reflected_to: []
 - authority default: `accepted`。通常は doc type から推定し、例外時だけ front matter の `authority` で override する。
 - `disc` / `research` / `interview` / `scratch` の文脈をもとに作成してよいが、元文書を昇格させず、この ADR と必要な `requirement.md` / `design.md` / `plan.md` へ反映する。
 - 汎用議事録、質問票、調査ログ、raw capture の代替にしない。
+- ADR は sparingly に作る。後から戻しにくい、文脈なしでは意外性がある、実質的な tradeoff がある、の三条件を満たさない判断は `interview`、`disc`、または canonical docs への通常反映に留める。
+
+## ADR 化基準 (必須)
+- hard to reverse:
+  - yes | no
+- surprising without context:
+  - yes | no
+- real tradeoff:
+  - yes | no
+- ADR 化しない場合の反映先:
+  - `interview` | `disc` | `requirement.md` | `design.md` | `plan.md` | other
+- ADR として残す理由:
+  - ...
 
 ## 結論（Decision） (必須)
 - **未決（TBD）**: この ADR は「議題が上がった時点」で作成し、結論はユーザー/レビュアーが最終決定した後に更新する。

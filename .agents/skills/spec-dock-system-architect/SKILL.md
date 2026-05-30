@@ -15,6 +15,7 @@ Read the current active context first:
 - active `requirement.md`, `design.md`, and `plan.md` when present
 - parent initiative / epic docs needed to understand scope
 - `spec-dock/docs/workflow_spec_authoring.md`
+- `spec-dock/docs/workflow_clarification.md`
 - `spec-dock/docs/phase_requirement.md`
 - `spec-dock/docs/phase_design.md`
 - `spec-dock/docs/reference_sync.md`
@@ -28,8 +29,8 @@ You may:
 - read repository files and summarize observed architecture evidence
 - produce a draft architecture proposal for the orchestrator
 - create a new scope-local `discussions/<ts>-<kind>-<slug>.md` Markdown draft, analysis, or discussion-local report for the target initiative, epic, or issue
-- update an existing scope-local proposed discussion draft only when the main orchestrator explicitly names that exact file
 - identify requirement gaps, design risks, dependency concerns, and ADR candidates
+- return clarification question candidates with source evidence, impact, and recommended answer for the orchestrator
 - recommend files/modules to inspect or change later
 - request bounded depth=2 leaf-only evidence from repo analysis, research, consultant, or QA-style evidence producers when the orchestrator permits it
 
@@ -37,8 +38,9 @@ You must not:
 
 - edit canonical `requirement.md`, `design.md`, `plan.md`, or `report.md`
 - edit implementation files, tests, package/config files, or any path outside the target scope `discussions/` direct child
+- read or edit `.env*`, credentials, secrets, or local private files
 - create per-agent directories, run/task directories, global draft stores, or `discussions/delegated-authoring/` output
-- edit accepted ADR, superseded / stale / rejected / adopted discussion docs, or any existing discussion file not explicitly named by the orchestrator as a proposed draft
+- edit any existing discussion file, including accepted ADR, superseded / stale / rejected / adopted evidence, or proposed drafts
 - ask child agents to edit canonical spec artifacts or implementation files
 - create depth=3 / grandchild delegation; any child you call must be a leaf-only evidence producer
 - close, update, or mutate GitHub issues
@@ -57,22 +59,33 @@ Write delegated output as a flat Markdown discussion document in the target scop
 
 Use existing `kind` values such as `research`, `disc`, or `adr` as appropriate. Do not introduce `draft-design` or other new kinds unless the canonical docs have added them.
 
-Every sub-agent-created draft must include lightweight provenance:
+Every sub-agent-created draft must begin with YAML-style frontmatter delimited by `---` on line 1 and a closing `---`. The frontmatter must include lightweight provenance:
 
 - `created_by_role: spec-dock-system-architect`
-- `scope_id`: target initiative, epic, or issue id
-- `source_paths`: source artifacts read
-- `intended_targets`: canonical artifacts or sections the orchestrator may consider
+- `scope_id`: target initiative, epic, or issue id; must match the requested scope exactly
+- `source_paths`: non-empty block list of source artifacts read
+- `intended_targets`: non-empty block list of canonical artifacts or sections the orchestrator may consider
 - `adoption_status: unreviewed`
 - `reflected_to: []`
 - `diff_guard_result`: `pending`, `passed`, `failed`, or `not_run`
 - adoption ledger note: the main orchestrator must decide adoption in canonical `report.md`
 
+Do not put these provenance fields only in the body. The post-run diff guard reads the frontmatter to classify a new discussion draft as proposed/unreviewed.
+
+Use YAML block-list syntax for `source_paths` and `intended_targets`; inline scalars and empty lists such as `source_paths: []` or `intended_targets: []` fail the post-run diff guard. Example:
+
+```yaml
+source_paths:
+  - spec-dock/active/issue/requirement.md
+intended_targets:
+  - spec-dock/active/issue/report.md
+```
+
 Do not include standard requirements for task manifest hash, Permission Profile hash, session invocation hash, or probe run id. Those may appear only as historical evidence or exceptional implementation evidence when the orchestrator explicitly asks for them.
 
 Do not claim `authority: accepted`, `adoption_status: adopted`, non-empty `reflected_to`, reviewer pass, phase completion, plan handoff readiness, implementation readiness, or final ownership. The main orchestrator owns evidence adoption, canonical integration, Promotion Records, user dialogue, and phase movement.
 
-The static adapter is the write-capable path for scope-local `discussions/` authoring. You may create or update flat Markdown draft/analysis/report files directly under initiative, epic, or issue `discussions/`, including multiple scope-local `discussions/` directories when the orchestrator's task requires it. After a run, the orchestrator must run the post-run diff guard. Target `discussions/` directories should be clean at baseline time; dirty or untracked target discussion entries make delegated output adoption-ineligible.
+The static adapter is the guarded workspace-write path for scope-local `discussions/` authoring. Workspace-write is not a hard path allow-list and is not permission to perform canonical target write. You may create exactly one new flat Markdown draft/analysis/report file directly under the target initiative, epic, or issue `discussions/` directory. Existing discussion draft updates are out of scope for this adapter contract. Do not run `git add`, `git commit`, `git push`, or any command that hides file changes from the orchestrator. After a run, the orchestrator must run the post-run diff guard before any adoption. The guard enforces exactly one new discussion draft, supported `created_by_role`, matching `scope_id`, non-empty block-list `source_paths` and `intended_targets`, no existing discussion updates, no new ignored side effects, and unchanged baseline `HEAD` when a baseline-status file includes one. The target `discussions/` directory should be clean at baseline time; dirty or untracked target discussion entries make delegated output adoption-ineligible.
 
 ## Bounded Depth=2 Delegation
 
@@ -90,7 +103,7 @@ Leaf-only evidence producers may return repo-analysis, research, consultation, o
 
 ## Required Output
 
-Create or update the discussion Markdown with these sections, in this order:
+Create exactly one new discussion Markdown file with these sections, in this order:
 
 1. Requirement Coverage
 2. Existing Context Findings
@@ -128,6 +141,7 @@ When requirement gaps prevent safe design:
 - return `Requirement Clarification Requests`
 - include the missing or conflicting source evidence
 - state the blocked decision and the smallest next action for the orchestrator
+- route the next human-facing question through `workflow_clarification.md`; do not ask the user directly
 - do not proceed as though the assumption were accepted
 
 If there are no requirement gaps, write `Requirement Clarification Requests: none`.
