@@ -1,33 +1,42 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
-from ..application.contracts import (
-    ActiveClearResult,
-    ActiveSetResult,
-    ActiveViewResult,
-    CloseNodeResult,
-    DeleteNodeResult,
-    CreateDiscussionDocResult,
-    CreateNodeResult,
-    DepsCheckResult,
-    DoctorResult,
-    ImportNodeResult,
-    IssueFinishResult,
-    IssueStartResult,
-    MutateDepsError,
-    MutateDepsResult,
-    PostMutationSyncOutcome,
-    SyncCommandResult,
-    ValidationResult,
-    WorktreeCommandError,
-    WorktreeCreateResult,
-    WorktreeListResult,
-    WorktreeRecordView,
-    WorktreeRemoveResult,
-    WorktreeShowResult,
-)
-from .contracts import CliText
+from spec_dock_runtime.presentation.contracts import CliText
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.contracts import (
+        ActiveClearResult,
+        ActiveSetResult,
+        ActiveViewResult,
+        ArtifactImportError,
+        ArtifactImportResult,
+        CloseNodeResult,
+        CreateArtifactDocResult,
+        CreateNodeResult,
+        DeleteNodeResult,
+        DepsCheckResult,
+        DoctorResult,
+        FileArtifactImportError,
+        FileArtifactImportResult,
+        ImportNodeResult,
+        IssueFinishResult,
+        IssueStartResult,
+        MutateDepsError,
+        MutateDepsResult,
+        PostMutationSyncOutcome,
+        SyncCommandResult,
+        ValidationResult,
+        WorkbenchCopyError,
+        WorkbenchCopyResult,
+        WorktreeCommandError,
+        WorktreeCreateResult,
+        WorktreeListResult,
+        WorktreeRecordView,
+        WorktreeRemoveResult,
+        WorktreeShowResult,
+    )
 
 
 def _doctor_warning_message(code: str) -> str:
@@ -55,9 +64,13 @@ def render_validate_text(result: ValidationResult) -> CliText:
 
 def render_doctor_text(result: DoctorResult) -> CliText:
     warnings = [_doctor_warning_message(warning) for warning in result.warnings]
+    capability_lines = _render_github_capability_diagnostics(result)
     if result.ok:
         return CliText(
-            stdout_lines=["spec-dock: ok (doctor) findings=0"],
+            stdout_lines=[
+                "spec-dock: ok (doctor) findings=0",
+                *capability_lines,
+            ],
             stderr_lines=[],
             warnings=warnings,
         )
@@ -67,12 +80,35 @@ def render_doctor_text(result: DoctorResult) -> CliText:
         stderr_lines.append(f"- [{finding.code}] {finding.message}")
         for guidance in finding.guidance:
             stderr_lines.append(f"  -> {guidance}")
+    stderr_lines.extend(capability_lines)
 
     return CliText(
         stdout_lines=[],
         stderr_lines=stderr_lines,
         warnings=warnings,
     )
+
+
+def _render_github_capability_diagnostics(result: DoctorResult) -> list[str]:
+    diagnostics = list(result.github_capability_diagnostics)
+    if not diagnostics:
+        return []
+    lines = [f"spec-dock: github capability diagnostics={len(diagnostics)}"]
+    for diagnostic in diagnostics:
+        stderr_hash = f" stderr_sha256={diagnostic.stderr_sha256}" if diagnostic.stderr_sha256 else ""
+        lines.append(
+            f"- [github:{diagnostic.group}] "
+            f"code={diagnostic.code} "
+            f"capability={diagnostic.capability} "
+            f"status={diagnostic.status} "
+            f"api={diagnostic.api} "
+            f"token_source={diagnostic.token_source} "
+            f"severity={diagnostic.severity} "
+            f"recommended_next_action={diagnostic.recommended_next_action} "
+            f"secret_redacted={str(diagnostic.secret_redacted).lower()}"
+            f"{stderr_hash}"
+        )
+    return lines
 
 
 def _rel_path_for_output(path_text: str) -> str:
@@ -119,14 +155,10 @@ def render_new_node_text(result: CreateNodeResult) -> CliText:
     if node.kind == "initiative":
         line = f"spec-dock: ok (new initiative) id={node.id} path={rel}{gh}"
     elif node.kind == "epic":
-        line = (
-            "spec-dock: ok (new epic) "
-            f"id={node.id} initiative={node.initiative_id} path={rel}{gh}"
-        )
+        line = f"spec-dock: ok (new epic) id={node.id} initiative={node.initiative_id} path={rel}{gh}"
     else:
         line = (
-            "spec-dock: ok (new issue) "
-            f"id={node.id} epic={node.epic_id} initiative={node.initiative_id} path={rel}{gh}"
+            f"spec-dock: ok (new issue) id={node.id} epic={node.epic_id} initiative={node.initiative_id} path={rel}{gh}"
         )
     stdout_lines = [line]
     post_sync_line = _post_sync_stdout_line(result.post_sync, label=f"new {node.kind}")
@@ -143,13 +175,140 @@ def render_new_node_text(result: CreateNodeResult) -> CliText:
     )
 
 
-def render_new_doc_text(result: CreateDiscussionDocResult) -> CliText:
+def render_new_artifact_text(result: CreateArtifactDocResult) -> CliText:
     rel = _rel_path_for_output(result.path.as_posix())
     line = (
-        "spec-dock: ok (new doc) "
-        f"type={result.doc_type} id={result.doc_id} scope={result.scope_node_id} path={rel}"
+        "spec-dock: ok (new artifact) "
+        f"type={result.artifact_type} id={result.artifact_id} scope={result.scope_node_id} path={rel}"
     )
     return CliText(stdout_lines=[line], stderr_lines=[], warnings=list(result.warnings))
+
+
+def render_artifact_import_text(result: ArtifactImportResult) -> CliText:
+    warning_codes = ",".join(result.warning_codes) if result.warning_codes else "-"
+    line = (
+        "spec-dock: ok (artifact import chatgpt-output) "
+        f"import_kind={result.import_kind} storage_identity={result.storage_identity} "
+        f"artifact_id={result.artifact_id} scope_id={result.scope_id} "
+        f"source={result.source_path.as_posix()} destination={result.destination_path.as_posix()} "
+        f"sha256={result.sha256} byte_count={result.byte_count} "
+        f"committed={_bool_text(result.committed)} cleanup_state={result.cleanup_state} "
+        f"warning_codes={warning_codes}"
+    )
+    return CliText(stdout_lines=[line], stderr_lines=[], warnings=list(result.warning_codes))
+
+
+def render_artifact_import_json(result: ArtifactImportResult) -> CliText:
+    payload = {
+        "status": "ok",
+        "import_kind": result.import_kind,
+        "storage_identity": result.storage_identity,
+        "artifact_id": result.artifact_id,
+        "scope_id": result.scope_id,
+        "source": result.source_path.as_posix(),
+        "destination": result.destination_path.as_posix(),
+        "sha256": result.sha256,
+        "byte_count": result.byte_count,
+        "committed": result.committed,
+        "cleanup_state": result.cleanup_state,
+        "warning_codes": list(result.warning_codes),
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
+
+
+def render_artifact_import_error_text(error: ArtifactImportError) -> CliText:
+    return CliText(
+        stdout_lines=[],
+        stderr_lines=[
+            "spec-dock: error (artifact import chatgpt-output) "
+            f"import_kind=chatgpt-output storage_identity=blank code={error.code} "
+            f"committed=false cleanup_state={error.cleanup_state}"
+        ],
+        warnings=[],
+    )
+
+
+def render_artifact_import_error_json(error: ArtifactImportError) -> CliText:
+    payload = {
+        "status": "error",
+        "import_kind": "chatgpt-output",
+        "storage_identity": "blank",
+        "code": error.code,
+        "committed": False,
+        "cleanup_state": error.cleanup_state,
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
+
+
+def render_file_artifact_import_text(result: FileArtifactImportResult) -> CliText:
+    warning_codes = ",".join(result.warning_codes) if result.warning_codes else "-"
+    dynamic = {
+        "target_id": result.target_id,
+        "artifact_id": result.artifact_id,
+        "source": result.source,
+        "destination": result.destination.as_posix(),
+    }
+    quoted = {key: json.dumps(value, ensure_ascii=True) for key, value in dynamic.items()}
+    line = (
+        "spec-dock: ok (artifact import file) "
+        f"import_kind={result.import_kind} storage_identity={result.storage_identity} "
+        f"target_kind={result.target_kind} target_id={quoted['target_id']} "
+        f"artifact_id={quoted['artifact_id']} source_visibility={result.source_visibility} "
+        f"source={quoted['source']} destination={quoted['destination']} "
+        f"committed={_bool_text(result.committed)} publication_state={result.publication_state} "
+        f"cleanup_state={result.cleanup_state} retry_disposition={result.retry_disposition} "
+        f"canonical={_bool_text(result.canonical)} warning_codes={warning_codes}"
+    )
+    return CliText(stdout_lines=[line], stderr_lines=[], warnings=list(result.warning_codes))
+
+
+def render_file_artifact_import_json(result: FileArtifactImportResult) -> CliText:
+    payload = {
+        "status": "ok",
+        "import_kind": result.import_kind,
+        "storage_identity": result.storage_identity,
+        "target_kind": result.target_kind,
+        "target_id": result.target_id,
+        "artifact_id": result.artifact_id,
+        "source_visibility": result.source_visibility,
+        "source": result.source,
+        "destination": result.destination.as_posix(),
+        "committed": result.committed,
+        "publication_state": result.publication_state,
+        "cleanup_state": result.cleanup_state,
+        "warning_codes": list(result.warning_codes),
+        "retry_disposition": result.retry_disposition,
+        "canonical": result.canonical,
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
+
+
+def render_file_artifact_import_error_text(error: FileArtifactImportError) -> CliText:
+    return CliText(
+        stdout_lines=[],
+        stderr_lines=[
+            "spec-dock: error (artifact import file) "
+            f"import_kind=file storage_identity=generic code={error.code} "
+            "committed=false publication_state=not_committed "
+            f"cleanup_state={error.cleanup_state} retry_disposition=safe_after_remediation canonical=false"
+        ],
+        warnings=[],
+    )
+
+
+def render_file_artifact_import_error_json(error: FileArtifactImportError) -> CliText:
+    payload = {
+        "status": "error",
+        "import_kind": "file",
+        "storage_identity": "generic",
+        "code": error.code,
+        "committed": False,
+        "publication_state": error.publication_state,
+        "cleanup_state": error.cleanup_state,
+        "retry_disposition": error.retry_disposition,
+        "canonical": error.canonical,
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
 
 
 def render_import_text(result: ImportNodeResult) -> CliText:
@@ -221,10 +380,7 @@ def render_deps_check_text(result: DepsCheckResult) -> CliText:
 
 def render_deps_mutation_text(result: MutateDepsResult) -> CliText:
     stdout_lines = [
-        (
-            f"spec-dock: ok (deps {result.action}) "
-            f"from={result.from_id} to={result.to_id} result={result.result}"
-        )
+        (f"spec-dock: ok (deps {result.action}) from={result.from_id} to={result.to_id} result={result.result}")
     ]
     post_sync_line = _post_sync_stdout_line(result.post_sync, label=f"deps {result.action}")
     if post_sync_line is not None:
@@ -241,12 +397,7 @@ def render_deps_mutation_text(result: MutateDepsResult) -> CliText:
 
 
 def render_deps_mutation_error_text(error: MutateDepsError) -> CliText:
-    stderr_lines = [
-        (
-            f"spec-dock: error (deps {error.action}) "
-            f"from={error.from_id} to={error.to_id} code={error.code}"
-        )
-    ]
+    stderr_lines = [(f"spec-dock: error (deps {error.action}) from={error.from_id} to={error.to_id} code={error.code}")]
     if error.detail:
         stderr_lines.append(f"- {error.detail}")
     return CliText(
@@ -264,11 +415,7 @@ def render_active_show_text(result: ActiveViewResult) -> CliText:
             return entry_id
         return "(none)"
 
-    all_none = (
-        result.initiative.id is None
-        and result.epic.id is None
-        and result.issue.id is None
-    )
+    all_none = result.initiative.id is None and result.epic.id is None and result.issue.id is None
     if all_none:
         stdout_lines = [
             "spec-dock: active: (not set)",
@@ -327,10 +474,7 @@ def render_issue_start_text(result: IssueStartResult) -> CliText:
     epic = selection.epic_id or "(none)"
     issue = selection.issue_id or "(none)"
     stdout_lines = [
-        (
-            "spec-dock: ok (issue start) "
-            f"target={result.target_display} initiative={ini} epic={epic} issue={issue}"
-        )
+        (f"spec-dock: ok (issue start) target={result.target_display} initiative={ini} epic={epic} issue={issue}")
     ]
     if result.active_set.branch is not None:
         stdout_lines.append(f"spec-dock: ok (issue checkout) branch={result.active_set.branch.desired}")
@@ -362,16 +506,70 @@ def render_issue_finish_text(result: IssueFinishResult) -> CliText:
 
 def render_worktree_create_text(result: WorktreeCreateResult) -> CliText:
     stdout_lines = [
-        (
-            "spec-dock: ok (worktree create) "
-            f"id={result.id} branch={result.branch_name} path={result.worktree_path}"
-        ),
-        (
-            "spec-dock: worktree bootstrap "
-            f"status={result.bootstrap_status} command={result.bootstrap_command or '-'}"
-        ),
+        (f"spec-dock: ok (worktree create) id={result.id} branch={result.branch_name} path={result.worktree_path}"),
+        (f"spec-dock: worktree bootstrap status={result.bootstrap_status} command={result.bootstrap_command or '-'}"),
     ]
     return CliText(stdout_lines=stdout_lines, stderr_lines=[], warnings=list(result.warnings))
+
+
+def render_workbench_copy_text(result: WorkbenchCopyResult) -> CliText:
+    return CliText(
+        stdout_lines=[
+            (
+                "spec-dock: ok (workbench copy) "
+                f"scope={result.scope_id} source={result.source_worktree.id} target={result.target_worktree.id} "
+                "experimental=true canonical=false disposable=true one_shot=true sync=false"
+            )
+        ],
+        stderr_lines=[],
+        warnings=[],
+    )
+
+
+def render_workbench_copy_json(result: WorkbenchCopyResult) -> CliText:
+    payload = {
+        "status": "ok",
+        "command": "copy",
+        "scope": result.scope_id,
+        "source_worktree": result.source_worktree.id,
+        "target_worktree": result.target_worktree.id,
+        "target_workbench_path": str(result.target_workbench_path),
+        "experimental": result.experimental,
+        "canonical": result.canonical,
+        "disposable": result.disposable,
+        "one_shot": result.one_shot,
+        "sync": result.sync,
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
+
+
+def render_workbench_copy_error_text(error: WorkbenchCopyError) -> CliText:
+    side = f" side={error.side}" if error.side is not None else ""
+    return CliText(
+        stdout_lines=[],
+        stderr_lines=[
+            "spec-dock: error (workbench copy) "
+            f"code={error.code}{side} mutation_started={_bool_text(error.mutation_started)} "
+            "experimental=true canonical=false disposable=true one_shot=true sync=false"
+        ],
+        warnings=[],
+    )
+
+
+def render_workbench_copy_error_json(error: WorkbenchCopyError) -> CliText:
+    payload = {
+        "status": "error",
+        "command": "copy",
+        "code": error.code,
+        "side": error.side,
+        "mutation_started": error.mutation_started,
+        "experimental": True,
+        "canonical": False,
+        "disposable": True,
+        "one_shot": True,
+        "sync": False,
+    }
+    return CliText(stdout_lines=[json.dumps(payload, ensure_ascii=False, indent=2)], stderr_lines=[], warnings=[])
 
 
 def render_worktree_list_text(result: WorktreeListResult) -> CliText:
@@ -383,6 +581,7 @@ def render_worktree_list_text(result: WorktreeListResult) -> CliText:
             f"id={item.id} path={item.path} branch={item.branch or '-'} "
             f"managed={_bool_text(item.managed)} main={_bool_text(item.main)} "
             f"current={_bool_text(item.current)} removable={_bool_text(item.removable)} "
+            f"origin={item.origin} classification_reason={item.classification_reason} "
             f"remove_blockers={blockers}"
         )
     return CliText(stdout_lines=lines, stderr_lines=[], warnings=list(result.warnings))
@@ -398,6 +597,7 @@ def render_worktree_show_text(result: WorktreeShowResult) -> CliText:
                 f"id={item.id} path={item.path} branch={item.branch or '-'} "
                 f"managed={_bool_text(item.managed)} main={_bool_text(item.main)} "
                 f"current={_bool_text(item.current)} removable={_bool_text(item.removable)} "
+                f"origin={item.origin} classification_reason={item.classification_reason} "
                 f"remove_blockers={blockers}"
             )
         ],
@@ -407,12 +607,17 @@ def render_worktree_show_text(result: WorktreeShowResult) -> CliText:
 
 
 def render_worktree_remove_text(result: WorktreeRemoveResult) -> CliText:
+    blockers = ",".join(result.resolved_target.remove_blockers) if result.resolved_target.remove_blockers else "-"
     return CliText(
         stdout_lines=[
             (
                 "spec-dock: ok (worktree remove) "
                 f"id={result.resolved_target.id} path={result.resolved_target.path} "
                 f"branch={result.resolved_target.branch or '-'} "
+                f"managed={_bool_text(result.resolved_target.managed)} "
+                f"origin={result.resolved_target.origin} "
+                f"classification_reason={result.resolved_target.classification_reason} "
+                f"remove_blockers={blockers} "
                 f"removed_record={_bool_text(result.removed_record)} "
                 f"removed_directory={_bool_text(result.removed_directory)} "
                 f"branch_deleted={_bool_text(result.branch_deleted)}"
@@ -504,6 +709,9 @@ def _worktree_payload(item: WorktreeRecordView) -> dict[str, object]:
         "branch": item.branch,
         "head": item.head,
         "managed": item.managed,
+        "managed_classification_available": item.managed_classification_available,
+        "classification_reason": item.classification_reason,
+        "origin": item.origin,
         "main": item.main,
         "current": item.current,
         "path_exists": item.path_exists,
@@ -662,9 +870,7 @@ def render_delete_text(result: DeleteNodeResult, *, json_output: bool) -> CliTex
         )
     return CliText(
         stdout_lines=[],
-        stderr_lines=[
-            f"spec-dock: blocked (delete) status={result.status} target={result.target_id or '(none)'}"
-        ],
+        stderr_lines=[f"spec-dock: blocked (delete) status={result.status} target={result.target_id or '(none)'}"],
         warnings=list(result.warnings),
     )
 
@@ -696,16 +902,19 @@ def render_sync_text(result: SyncCommandResult) -> CliText:
         f"{result.write_result.tree_todo_puml_path},"
         f"{result.write_result.deps_issues_json_path},"
         f"{result.write_result.deps_issues_puml_path},"
+        f"{result.write_result.deps_raw_puml_path},"
         f"{result.write_result.dashboard_md_path}"
         if result.write_result is not None
         else "spec-dock: ok (sync)"
     )
-    stderr_lines: list[str] = []
+    sync_stderr_lines: list[str] = []
     if result.state.deps_preflight_error:
-        stderr_lines.append(result.state.deps_preflight_error)
+        sync_stderr_lines.append(result.state.deps_preflight_error)
     if result.active_update is not None:
         if result.active_update.applied:
-            stderr_lines.append(f"spec-dock: sync: active updated ({result.active_update.reason or 'updated'})")
+            sync_stderr_lines.append(f"spec-dock: sync: active updated ({result.active_update.reason or 'updated'})")
         else:
-            stderr_lines.append(f"spec-dock: sync: active unchanged ({result.active_update.reason or 'unchanged'})")
-    return CliText(stdout_lines=[line], stderr_lines=stderr_lines, warnings=list(result.state.warnings))
+            sync_stderr_lines.append(
+                f"spec-dock: sync: active unchanged ({result.active_update.reason or 'unchanged'})"
+            )
+    return CliText(stdout_lines=[line], stderr_lines=sync_stderr_lines, warnings=list(result.state.warnings))

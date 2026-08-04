@@ -24,7 +24,7 @@ For mixed tasks, keep docs/context ownership in the main orchestrator and delega
 ## What SpecDock Can Do
 
 SpecDock provides a CLI workflow for spec-driven execution. It can:
-- create and import spec nodes such as initiatives, epics, issues, and discussion docs
+- create and import initiatives, epics, and issues; create scope-local working artifacts under `artifacts/` via `new artifact`
 - maintain the active working context for the current task
 - validate the tree and diagnose broken or incomplete state
 - regenerate CLI-managed derived state
@@ -54,22 +54,22 @@ For SpecDock usage and workflow details, start here:
 - Run `./spec-dock/scripts/spec-dock validate` after structural changes and before handoff.
 - Use `./spec-dock/scripts/spec-dock sync` only to regenerate CLI-managed views, pointers, or exported state. Do not use it as a general repair step.
 
-## Scoped Discussion Draft Authoring
+## Scoped Artifact Draft Authoring
 
 Canonical `requirement.md` / `design.md` / `plan.md` / `report.md` are main orchestrator single-writer authority. System-architect and implementation-planner style sub-agents must not directly edit those canonical docs.
 
-Sub-agent authoring outputs are not proposal-only. When the active issue contract permits delegated authoring, sub-agents may directly create exactly one new scope-local flat Markdown draft, analysis, or discussion-local report under the target `discussions/` direct child.
+Sub-agent authoring outputs are not proposal-only. When the active issue contract permits delegated authoring, sub-agents may directly create exactly one new scope-local flat Markdown draft, analysis, or artifact-local report through `./spec-dock/scripts/spec-dock new artifact ...` and then edit the returned `path`.
 
-Filenames follow the existing discussion rules:
+Generated filenames follow the artifact grammar:
 
 - `<ts>-<kind>-<slug>.md`
 - `<ts>-<nn>-<kind>-<slug>.md` for same-second collisions
 
-Do not create per-agent directories, run/task directories, global draft stores, or `discussions/delegated-authoring/` output for new delegated authoring runs.
+Legacy `discussions/delegated-authoring/` output is preservation-only. Do not use it for new delegated authoring runs, and do not create per-agent directories, run/task directories, or global draft stores.
 
 Sub-agent-created drafts use lightweight provenance: `created_by_role`, `scope_id`, `source_paths`, `intended_targets`, `adoption_status: unreviewed`, `reflected_to: []`, `diff_guard_result`, and an adoption ledger note. Do not require task manifest hash, Permission Profile hash, session invocation hash, or probe run id as standard delegated draft evidence.
 
-Static adapters for `system-architect` and `implementation-planner` use guarded workspace-write for scope-local `discussions/` authoring. Workspace-write is not a hard path allow-list and is not permission to perform canonical target write. Delegated authoring may create exactly one new flat Markdown draft/analysis/report file directly under initiative, epic, or issue `discussions/`; existing discussion draft updates are out of scope for the static adapter contract unless a later workflow explicitly defines a narrower allowlist. The target `discussions/` directory should be clean at baseline time. Dirty or untracked target discussion entries make delegated output adoption-ineligible until post-run diff guard passes and `report.md` records the ledger entry.
+Static adapters for `system-architect` and `implementation-planner` use guarded workspace-write for scope-local `artifacts/` authoring. Workspace-write is not a hard path allow-list and is not permission to perform canonical target write. Delegated authoring may create exactly one new flat Markdown draft/analysis/report file through `./spec-dock/scripts/spec-dock new artifact ...` under initiative, epic, or issue `artifacts/`, then edit only the returned path; existing artifact draft updates are out of scope for the static adapter contract unless a later workflow explicitly defines a narrower allowlist. The target `artifacts/` directory should be clean at baseline time. Dirty or untracked target artifact entries make delegated output adoption-ineligible until post-run diff guard passes and `report.md` records the ledger entry.
 
 Historical `iss-00126` delegated-authoring manifest/Profile/probe/session artifacts are grandfathered evidence. Do not delete, rename, or treat them as validation failures solely because the current contract has changed.
 

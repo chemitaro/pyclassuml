@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .infra import github_cli as _infra_github_cli
+from spec_dock_runtime.infra import github_cli as _infra_github_cli
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _ensure_gh_available() -> None:

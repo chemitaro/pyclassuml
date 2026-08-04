@@ -21,10 +21,11 @@ reflected_to: []
 # <INTERVIEW_ID> <INTERVIEW_TITLE>
 
 ## 位置づけ
-- 用途: 重要判断に関わる一つの質問を、回答前の正式質問シートとして作成し、回答後に同じ artifact を完成 record にする。
+- 用途: 重要判断に関わる一つの質問を、回答前の source-grounded 正式質問シートとして作成し、回答後に同じ artifact を完成 record にする。
 - authority default: `proposed`。ユーザー回答と採用判断を反映した後は、必要に応じて `user-approved` または `synthesized` に更新する。
+- この artifact は answer capture / adoption target / reflection の evidence surface であり、main orchestrator が canonical docs / accepted ADR / `report.md` Evidence Adoption Ledger へ採用するまでは canonical authority ではない。
 - 技術的に調べられることは先に docs / code / tests / ADR / discussions / primary source を確認する。
-- 一つの `interview` artifact には一つの本質的な質問だけを書く。回答によって新しい高影響な曖昧さが見つかった場合は、追加質問をこの file に増やさず、次の unanswered `interview` を作成する。
+- 一つの `interview` artifact には one essential question / 一つの本質的な質問だけを書く。回答によって新しい高影響な曖昧さが見つかった場合は、追加質問をこの file に増やさず、次の unanswered `interview` を作成する。
 - trivial な yes/no は、重要な判断、後続反映、回答証跡が必要なら `interview` を使い、そうでなければ issue comment や `scratch` で足りる。
 - 回答から複数質問の synthesis が必要になったら `disc`、追加調査が必要になったら `research`、長期判断が固まったら `adr` を新規作成する。
 
@@ -50,6 +51,8 @@ reflected_to: []
   - ...
 
 ## 質問 (必須)
+- pressure-test question:
+  - ...
 - 質問:
   - ...
 - 回答してほしいこと:
@@ -90,6 +93,8 @@ reflected_to: []
   - ...
 
 ## ユーザー回答 (回答後に必須)
+- answer capture:
+  - ...
 - 回答:
   - ...
 - 回答日時:
@@ -104,8 +109,12 @@ reflected_to: []
 ## 採用判断 (回答後に必須)
 - adoption_status:
   - unreviewed | adopted | partially_adopted | rejected | deferred | stale | blocked
+- adoption target:
+  - `requirement.md` | `design.md` | `plan.md` | `ADR` | `report.md` Evidence Adoption Ledger | none
 - 採用 / 棄却 / deferred の理由:
   - ...
+- `report.md` Evidence Adoption Ledger への反映要否:
+  - yes | no
 
 ## requirement / design / plan / ADR への含意 (回答後に必須)
 - `requirement.md`:
@@ -117,6 +126,8 @@ reflected_to: []
 - `ADR`:
   - ...
 - reflected_to 更新方針:
+  - ...
+- adoption reflection:
   - ...
 
 ## 条件付き補足 (必要な場合だけ)

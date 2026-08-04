@@ -116,6 +116,36 @@ def test_depth_one_includes_direct_import_only(tmp_path: Path) -> None:
     assert result.observations.reachable_file_count == 2
 
 
+def test_multiple_import_candidates_share_same_hop(tmp_path: Path) -> None:
+    seed = module("pkg/a.py", imports=("pkg.models",))
+    module_file = module("pkg/models.py")
+    package_init = module("pkg/models/__init__.py")
+
+    result = traverse_dependencies(
+        (package_init, seed, module_file),
+        module_index(
+            (package_init, seed, module_file),
+            seeds=("pkg/a.py",),
+            candidates={
+                "pkg.models": ("pkg/models.py", "pkg/models/__init__.py"),
+            },
+        ),
+        context(tmp_path, package_root=tmp_path / "pkg", scope_root=tmp_path / "pkg"),
+        AnalysisConfig(depth=1),
+    )
+
+    assert result.graph.reachable_files == (
+        Path("pkg/a.py"),
+        Path("pkg/models/__init__.py"),
+        Path("pkg/models.py"),
+    )
+    assert result.graph.edges == (
+        (Path("pkg/a.py"), Path("pkg/models/__init__.py")),
+        (Path("pkg/a.py"), Path("pkg/models.py")),
+    )
+    assert result.observations.depth_stop_count == 0
+
+
 def test_depth_none_traverses_transitively(tmp_path: Path) -> None:
     seed = module("pkg/a.py", imports=("pkg.b",))
     direct = module("pkg/b.py", imports=("pkg.c",))

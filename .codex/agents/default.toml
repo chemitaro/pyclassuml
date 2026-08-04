@@ -1,9 +1,11 @@
 name = "default"
-description = "Default fallback sub-agent role with minimal behavior."
+description = "Fail-closed read-only fallback sub-agent role with minimal behavior."
 
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
 # model_context_window = 400000
 # model_auto_compact_token_limit = 340000
-sandbox_mode = "workspace-write"
+sandbox_mode = "read-only"
 approval_policy = "never"
 
 # サブエージェントでは外部 notify フックを起動しない
@@ -12,5 +14,6 @@ notify = ["uvx", "--from", "git+https://github.com/chemitaro/codex-agent-logger"
 developer_instructions = """
 Use this as a minimal fallback role.
 Follow higher-priority instructions from the invoking context.
+Remain read-only and fail closed when the requested role or authority is unclear.
 Keep behavior neutral and concise.
 """

@@ -160,6 +160,30 @@ def test_happy_path_writes_artifact_summary_and_does_not_emit_streams(
     assert captured.err == ""
 
 
+def test_generate_default_depth_remains_unlimited(tmp_path: Path) -> None:
+    write_file(
+        tmp_path / "pkg" / "source.py",
+        "from pkg.helper import Helper\n\nclass Source:\n    helper: Helper\n",
+    )
+    write_file(
+        tmp_path / "pkg" / "helper.py",
+        "from pkg.transitive import Transitive\n\nclass Helper:\n    transitive: Transitive\n",
+    )
+    write_file(tmp_path / "pkg" / "transitive.py", "class Transitive:\n    value = 1\n")
+
+    result = run_generate(
+        generate_request(tmp_path, ("pkg/source.py",), output=Path("unlimited.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (tmp_path / "unlimited.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    class_alias(output, "Source")
+    class_alias(output, "Helper")
+    class_alias(output, "Transitive")
+
+
 def test_generate_renders_typed_relation_arrows_without_duplicate_pydantic_fallback(
     tmp_path: Path,
 ) -> None:

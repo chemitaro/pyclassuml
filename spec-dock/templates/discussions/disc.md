@@ -17,6 +17,7 @@ reflected_to: []
 ## 位置づけ
 - 用途: 集まった質問回答や調査をもとに、意思決定前の synthesis、選択肢、tradeoff、reflection proposal、ADR candidate triage、推奨反映先を整理する。
 - authority default: `proposed`。通常は doc type から推定し、例外時だけ front matter の `authority` で override する。
+- この artifact は synthesis / reflection proposal / adoption target / ADR triage の evidence surface であり、main orchestrator が canonical docs / accepted ADR / `report.md` Evidence Adoption Ledger へ採用するまでは canonical authority ではない。
 - 人間から回答を引き出し、回答欄や未回答事項を管理する場合は `interview` を使う。
 - 生ログや未整理の思考は `scratch`、事実確認や外部根拠は `research`、長期判断の固定は `adr` に分ける。
 - この doc は proposal / synthesis であり、issue `report.md` の observed evidence ledger ではない。採否の最終証跡は canonical docs / ADR / `report.md` Evidence Adoption Ledger に昇格する。
@@ -62,7 +63,19 @@ reflected_to: []
 - まだ proposal に留める理由:
   - ...
 
-## ADR candidate triage (必須)
+## adoption target / 採用先候補 (必須)
+- `requirement.md`:
+  - ...
+- `design.md`:
+  - ...
+- `plan.md`:
+  - ...
+- `ADR`:
+  - ...
+- `report.md` Evidence Adoption Ledger:
+  - ...
+
+## ADR triage / ADR candidate triage (必須)
 - ADR candidate か:
   - yes | no
 - hard to reverse:

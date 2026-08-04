@@ -31,6 +31,11 @@ class DepsIssuesArtifact:
 
 
 @dataclass(frozen=True)
+class DepsRawArtifact:
+    puml_text: str
+
+
+@dataclass(frozen=True)
 class DashboardArtifact:
     markdown_text: str
 
@@ -41,3 +46,4 @@ class ArtifactBundle:
     tree: TreeArtifact
     deps_issues: DepsIssuesArtifact
     dashboard: DashboardArtifact
+    deps_raw: DepsRawArtifact

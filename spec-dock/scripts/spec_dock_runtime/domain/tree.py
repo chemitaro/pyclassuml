@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import ActiveSelection, NodeId, SpecGraph, SpecNode, SpecNodeSeed
+from spec_dock_runtime.domain.models import ActiveSelection, NodeId, SpecGraph, SpecNode, SpecNodeSeed
 
 
 def build_graph(seeds: list[SpecNodeSeed]) -> SpecGraph:

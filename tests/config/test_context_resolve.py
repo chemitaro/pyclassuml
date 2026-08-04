@@ -88,6 +88,18 @@ def test_default_no_config_resolves_context_and_default_analysis_config(tmp_path
     assert config == AnalysisConfig()
 
 
+def test_diff_default_depth_is_one_without_cli_or_config(tmp_path: Path) -> None:
+    _, config = assert_success(resolve_context(diff_request(tmp_path)))
+
+    assert config.depth == 1
+
+
+def test_generate_default_depth_is_none_without_cli_or_config(tmp_path: Path) -> None:
+    _, config = assert_success(resolve_context(generate_request(tmp_path)))
+
+    assert config.depth is None
+
+
 def test_cwd_is_resolved_relative_to_process_cwd(tmp_path: Path) -> None:
     work = tmp_path / "work"
     work.mkdir()
@@ -290,6 +302,22 @@ include_untracked = false
     assert config.target_python == "3.12"
     assert config.diff_current_state is DiffCurrentState.WORKING_TREE
     assert config.diff_include_untracked is True
+
+
+def test_cli_and_config_depth_precedence_preserves_zero(tmp_path: Path) -> None:
+    write_config(tmp_path / ".pyclassuml.toml", "depth = 3\n")
+
+    _, config_from_config = assert_success(resolve_context(diff_request(tmp_path)))
+    _, config_from_zero = assert_success(
+        resolve_context(diff_request(tmp_path, depth=0))
+    )
+    _, config_from_two = assert_success(
+        resolve_context(diff_request(tmp_path, depth=2))
+    )
+
+    assert config_from_config.depth == 3
+    assert config_from_zero.depth == 0
+    assert config_from_two.depth == 2
 
 
 def test_package_root_is_preferred_import_root_for_monorepo_context(tmp_path: Path) -> None:

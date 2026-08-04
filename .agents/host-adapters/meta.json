@@ -32,6 +32,8 @@
     "obsolete_exact_file_paths": [
       ".codex/agents/spec-dock.toml",
       ".github/agents/spec-dock.agent.md",
+      ".agents/skills/spec-dock-system-architect/SKILL.md",
+      ".agents/skills/spec-dock-implementation-planner/SKILL.md",
       ".codex/agents/spec-dock-codex-adapter.toml",
       ".github/agents/spec-dock-copilot-adapter.agent.md",
       ".codex/agents/code_reviewer.toml",
@@ -44,15 +46,21 @@
       ".codex/agents/spec_reviewer.toml",
       ".codex/agents/utility_worker.toml",
       ".github/agents/code_reviewer.agent.md",
-      ".github/agents/dev_coder.agent.md",
-      ".github/agents/doc_writer.agent.md",
-      ".github/agents/pr_monitor.agent.md",
-      ".github/agents/qa_reviewer.agent.md",
-      ".github/agents/repo_analyst.agent.md",
-      ".github/agents/spec_reviewer.agent.md",
-      ".github/agents/utility_worker.agent.md"
-    ]
-  },
+            ".github/agents/dev_coder.agent.md",
+            ".github/agents/doc_writer.agent.md",
+            ".github/agents/pr_monitor.agent.md",
+            ".github/agents/qa_reviewer.agent.md",
+            ".github/agents/repo_analyst.agent.md",
+            ".github/agents/spec_reviewer.agent.md",
+            ".github/agents/utility_worker.agent.md",
+            ".agents/skills/spec-driven-tdd-workflow/SKILL.md",
+            ".agents/skills/github-codex-pr-review-comments/SKILL.md",
+            ".agents/skills/github-codex-pr-review-comments/agents/openai.yaml",
+            ".agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh",
+            ".codex/agents/pr-monitor.toml",
+            ".github/agents/pr-monitor.agent.md"
+        ]
+    },
   "generated_by": "spec-dock update",
   "updated_at": "2026-04-06T00:00:00Z"
 }

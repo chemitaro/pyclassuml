@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..application.contracts import UseCases
-from ..application.delegated_authoring import (
+from spec_dock_runtime.application.delegated_authoring import (
     DelegatedAuthoringBaselineStatusRequest,
     DelegatedAuthoringDiffGuardRequest,
     DelegatedAuthoringManifestRequest,
@@ -13,8 +12,13 @@ from ..application.delegated_authoring import (
     run_delegated_authoring_diff_guard,
     write_delegated_authoring_baseline_status,
 )
-from ..presentation.contracts import CliText
-from .contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.commands.contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.presentation.contracts import CliText
+
+if TYPE_CHECKING:
+    import argparse
+
+    from spec_dock_runtime.application.contracts import UseCases
 
 
 @dataclass(frozen=True)

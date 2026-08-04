@@ -1,27 +1,64 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Callable, Literal
+import os
+from typing import TYPE_CHECKING, Literal
 
-from ..domain.models import (
-    ActiveSelection,
-    BranchDecision,
-    DepsEvaluation,
-    DepsState,
-    IssueSnapshot,
-    IssueStatusSnapshot,
-    ProgressMap,
-    SpecNode,
-    SpecGraph,
-    TargetDepsInspection,
-    ValidationReport,
-)
-from ..infra.contracts import StoredMetaRecord
+from spec_dock_runtime.domain.models import SpecNode  # noqa: TC001 - runtime re-export used by CLI/runtime callers.
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+    from spec_dock_runtime.application.issue_planning import (
+        PlanningApplyRequest,
+        PlanningCreateRequest,
+        PlanningReviewRequest,
+        PlanningReviseRequest,
+    )
+    from spec_dock_runtime.domain.assurance import AssuranceContract
+    from spec_dock_runtime.domain.issue_planning_contracts import PlanningCommandResult
+    from spec_dock_runtime.domain.models import (
+        ActiveSelection,
+        BranchDecision,
+        DepsDependencyContext,
+        DepsEvaluation,
+        DepsHighLevelStatus,
+        DepsState,
+        IssueSnapshot,
+        IssueStatusSnapshot,
+        ProgressMap,
+        SpecGraph,
+        TargetDepsInspection,
+        ValidationReport,
+    )
+    from spec_dock_runtime.domain.runbook import Runbook, WorkflowTarget
+    from spec_dock_runtime.domain.workflow_state import WorkflowState
+    from spec_dock_runtime.infra.contracts import StoredMetaRecord
 
 POST_MUTATION_FATAL_WARNING_CODES: tuple[str, ...] = ("gh_fetch_failed",)
 BootstrapStatus = Literal["skipped", "succeeded", "failed", "detection_failed"]
+WorktreeClassificationReason = Literal[
+    "root_valid",
+    "root_missing",
+    "root_blank",
+    "root_invalid",
+    "namespace_symlink",
+]
+WorktreeOrigin = Literal["spec_dock_managed", "external", "classification_unavailable"]
+WORKTREE_CLASSIFICATION_REASONS: tuple[WorktreeClassificationReason, ...] = (
+    "root_valid",
+    "root_missing",
+    "root_blank",
+    "root_invalid",
+    "namespace_symlink",
+)
+WORKTREE_ORIGINS: tuple[WorktreeOrigin, ...] = (
+    "spec_dock_managed",
+    "external",
+    "classification_unavailable",
+)
 
 
 @dataclass(frozen=True)
@@ -35,9 +72,168 @@ class ValidationResult:
     checked_node_count: int
 
 
+AssuranceOperation = Literal["show", "classify", "verify", "compose"]
+AssuranceResultStatus = Literal["valid", "missing", "invalid", "applied", "unchanged", "dry-run"]
+ComposeArtifactSelection = Literal["design", "plan", "report", "all"]
+
+
+@dataclass(frozen=True)
+class ShowAssuranceRequest:
+    issue: str | Path | None = None
+
+
+@dataclass(frozen=True)
+class ClassifyAssuranceRequest:
+    stage: Literal["requirement"]
+    issue: str | Path | None = None
+    dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class VerifyAssuranceRequest:
+    issue: str | Path | None = None
+
+
+@dataclass(frozen=True)
+class ComposeAssuranceRequest:
+    artifact: ComposeArtifactSelection
+    issue: str | Path | None = None
+    dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class AssuranceTargetView:
+    issue_id: str
+    repo_relative_path: str
+
+
+@dataclass(frozen=True)
+class ComposeArtifactView:
+    artifact: str
+    path: str
+    changed: bool
+    added_section_ids: tuple[str, ...] = ()
+    preserved_section_ids: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AssuranceResult:
+    operation: AssuranceOperation
+    ok: bool
+    status: AssuranceResultStatus
+    target: AssuranceTargetView
+    mode: str
+    reason: str
+    details: tuple[str, ...]
+    contract: AssuranceContract | None
+    dry_run: bool = False
+    written_path: Path | None = None
+    authorized_profile: str | None = None
+    lite_candidate: bool | None = None
+    changed_paths: tuple[str, ...] = ()
+    artifacts: tuple[ComposeArtifactView, ...] = ()
+    warnings: tuple[str, ...] = ()
+    errors: tuple[str, ...] = ()
+
+    @property
+    def has_contract(self) -> bool:
+        return self.contract is not None
+
+
+@dataclass(frozen=True)
+class WorkflowStatusRequest:
+    pass
+
+
+@dataclass(frozen=True)
+class WorkflowNextRequest:
+    workflow_target: WorkflowTarget
+
+
+@dataclass(frozen=True)
+class RunbookProjectionResult:
+    written: bool
+    paths: tuple[str, ...]
+    errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class WorkflowResult:
+    operation: Literal["status", "next"]
+    state: WorkflowState
+    runbook: Runbook | None = None
+    projection: RunbookProjectionResult | None = None
+
+
 @dataclass(frozen=True)
 class DoctorRequest:
-    pass
+    github_repo: str | None = None
+    github_pr: int | None = None
+    github_head_sha: str | None = None
+    github_extended: bool = False
+
+
+GitHubCapability = Literal[
+    "repo_metadata_read",
+    "pull_request_read",
+    "check_runs_read",
+    "commit_statuses_read",
+    "status_check_rollup_read",
+    "actions_read",
+    "issue_comments_read",
+    "pull_reviews_read",
+    "pull_review_comments_read",
+    "pull_review_threads_read",
+    "trigger_comment_write",
+]
+GitHubCapabilityStatus = Literal[
+    "ok",
+    "permission_denied",
+    "auth_missing",
+    "rate_limited",
+    "target_unavailable",
+    "transient_unknown",
+    "schema_unavailable",
+    "skipped",
+]
+GitHubCapabilityTokenSource = Literal["GH_TOKEN", "GITHUB_TOKEN", "gh_saved_auth", "unknown"]
+GitHubCapabilitySeverity = Literal["info", "warning", "blocking"]
+GitHubCapabilityGroup = Literal["core", "extended"]
+GitHubCapabilityDiagnosticCode = Literal[
+    "github_capability_ok",
+    "github_token_permission_denied",
+    "github_auth_missing",
+    "github_rate_limited",
+    "github_target_unavailable",
+    "github_transient_unknown",
+    "github_schema_unavailable",
+    "github_capability_skipped",
+]
+
+
+@dataclass(frozen=True)
+class GitHubCapabilityProbeRequest:
+    github_repo: str
+    github_pr: int
+    github_head_sha: str
+    include_extended: bool = False
+
+
+@dataclass(frozen=True)
+class GitHubCapabilityDiagnostic:
+    code: GitHubCapabilityDiagnosticCode
+    capability: GitHubCapability
+    status: GitHubCapabilityStatus
+    token_source: GitHubCapabilityTokenSource
+    api: str
+    severity: GitHubCapabilitySeverity
+    message: str
+    recommended_next_action: str
+    secret_redacted: bool
+    stderr_sha256: str | None
+    group: GitHubCapabilityGroup
 
 
 @dataclass(frozen=True)
@@ -61,6 +257,7 @@ class DoctorResult:
     ok: bool
     findings: list[DoctorFinding]
     warnings: list[str]
+    github_capability_diagnostics: list[GitHubCapabilityDiagnostic] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -129,6 +326,22 @@ class WorktreeRecordView:
     record_exists: bool
     removable: bool
     remove_blockers: list[str]
+    managed_classification_available: bool = True
+    classification_reason: WorktreeClassificationReason = "root_valid"
+    origin: WorktreeOrigin | str = ""
+
+    def __post_init__(self) -> None:
+        if self.classification_reason not in WORKTREE_CLASSIFICATION_REASONS:
+            raise ValueError(f"unsupported worktree classification reason: {self.classification_reason}")
+        origin = self.origin
+        if not origin:
+            if not self.managed_classification_available:
+                origin = "classification_unavailable"
+            else:
+                origin = "spec_dock_managed" if self.managed else "external"
+            object.__setattr__(self, "origin", origin)
+        if origin not in WORKTREE_ORIGINS:
+            raise ValueError(f"unsupported worktree origin: {origin}")
 
 
 @dataclass(frozen=True)
@@ -185,6 +398,257 @@ class WorktreeCommandError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class WorkbenchCopyRequest:
+    scope_id: str
+    target: str
+
+
+class WorkbenchCopyError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        side: str | None = None,
+        mutation_started: bool = False,
+    ) -> None:
+        self.code = code
+        self.side = side
+        self.mutation_started = mutation_started
+        super().__init__(message)
+
+
+class WorkbenchFilesystemError(RuntimeError):
+    """Content-free filesystem failure with honest mutation-boundary state."""
+
+    def __init__(self, *, mutation_started: bool) -> None:
+        self.mutation_started = mutation_started
+        super().__init__("workbench filesystem operation failed")
+
+
+BinaryArtifactCleanupState = Literal["not_created", "removed", "retained"]
+BinaryArtifactPublishWarning = Literal[
+    "create_lock_release_failed",
+    "directory_fsync_failed",
+    "destination_mismatch",
+    "destination_read_failed",
+    "temp_cleanup_retained",
+]
+
+
+@dataclass(frozen=True)
+class WorkbenchSourceGuardRequest:
+    repo_root: Path
+    specdock_dir: Path
+    scope_directories: tuple[Path, ...]
+    source_path: Path
+
+
+@dataclass(frozen=True)
+class GuardedWorkbenchSource:
+    source_path: Path
+    workbench_root: Path
+    device: int
+    inode: int
+    mode: int
+
+
+@dataclass(frozen=True)
+class BinaryArtifactPublishRequest:
+    source: WorkbenchSourceGuardRequest
+    destination_path: Path
+
+
+@dataclass(frozen=True)
+class BinaryArtifactPublishResult:
+    source_path: Path
+    destination_path: Path
+    source_sha256: str
+    stream_sha256: str
+    staged_sha256: str
+    destination_sha256: str
+    source_byte_count: int
+    stream_byte_count: int
+    staged_byte_count: int
+    destination_byte_count: int
+    source_inode: int
+    staged_inode: int
+    cleanup_state: BinaryArtifactCleanupState
+    warning_codes: tuple[BinaryArtifactPublishWarning, ...] = ()
+    committed: bool = True
+
+
+class BinaryArtifactPublishError(RuntimeError):
+    """Stable content-free failure raised before formal publication."""
+
+    def __init__(self, *, code: str, cleanup_state: BinaryArtifactCleanupState) -> None:
+        self.code = code
+        self.cleanup_state = cleanup_state
+        self.committed = False
+        super().__init__(f"binary artifact publication failed: {code}")
+
+
+ArtifactImportKind = Literal["chatgpt-output"]
+ArtifactStorageIdentity = Literal["blank"]
+
+
+@dataclass(frozen=True)
+class ArtifactImportRequest:
+    import_kind: ArtifactImportKind
+    scope_node_id: str
+    scope_kind: Literal["initiative", "epic", "issue"]
+    source_path: Path
+    title: str
+    slug: str | None
+
+
+@dataclass(frozen=True)
+class ArtifactImportResult:
+    import_kind: ArtifactImportKind
+    storage_identity: ArtifactStorageIdentity
+    artifact_id: str
+    scope_id: str
+    source_path: Path
+    destination_path: Path
+    sha256: str
+    byte_count: int
+    committed: bool
+    cleanup_state: BinaryArtifactCleanupState
+    warning_codes: tuple[BinaryArtifactPublishWarning, ...] = ()
+
+
+class ArtifactImportError(RuntimeError):
+    """Stable content-free failure for the public artifact import command."""
+
+    def __init__(self, *, code: str, cleanup_state: BinaryArtifactCleanupState) -> None:
+        self.code = code
+        self.cleanup_state = cleanup_state
+        self.committed = False
+        super().__init__(f"artifact import failed: {code}")
+
+
+FileArtifactTargetKind = Literal["root", "initiative", "epic", "issue"]
+FileArtifactSourceVisibility = Literal["repo_relative", "basename_only"]
+FileArtifactPublicationState = Literal["not_committed", "committed", "committed_with_warning"]
+FileArtifactRetryDisposition = Literal["safe_after_remediation", "not_needed"]
+FileArtifactStorageIdentity = Literal["generic"]
+FileArtifactImportWarning = Literal[
+    "create_lock_release_failed",
+    "directory_fsync_failed",
+    "temp_cleanup_retained",
+]
+
+
+@dataclass(frozen=True)
+class FileArtifactImportRequest:
+    target_kind: FileArtifactTargetKind
+    target_value: str | None
+    source_path: Path
+
+
+@dataclass(frozen=True)
+class FileArtifactImportResult:
+    import_kind: Literal["file"]
+    storage_identity: FileArtifactStorageIdentity
+    target_kind: FileArtifactTargetKind
+    target_id: str
+    artifact_id: str
+    source_visibility: FileArtifactSourceVisibility
+    source: str
+    destination: Path
+    committed: bool
+    publication_state: FileArtifactPublicationState
+    cleanup_state: BinaryArtifactCleanupState
+    warning_codes: tuple[FileArtifactImportWarning, ...]
+    retry_disposition: FileArtifactRetryDisposition
+    canonical: bool
+
+
+class FileArtifactImportError(RuntimeError):
+    """Stable content-free failure for generic explicit-file import."""
+
+    def __init__(self, *, code: str, cleanup_state: BinaryArtifactCleanupState) -> None:
+        self.code = code
+        self.publication_state: FileArtifactPublicationState = "not_committed"
+        self.committed = False
+        self.cleanup_state = cleanup_state
+        self.retry_disposition: FileArtifactRetryDisposition = "safe_after_remediation"
+        self.canonical = False
+        super().__init__(f"file artifact import failed: {code}")
+
+
+@dataclass(frozen=True)
+class ExplicitFileSourcePreflightRequest:
+    repo_root: Path
+    source_path: Path
+
+
+class GuardedExplicitFileSource:
+    """Opaque, application-owned source lease borrowed by the publisher."""
+
+    def __init__(
+        self,
+        *,
+        source_path: Path,
+        descriptor: int,
+        initial_status: object,
+        source_visibility: FileArtifactSourceVisibility,
+        source_display: str,
+    ) -> None:
+        self._source_path = source_path
+        self._descriptor = descriptor
+        self._initial_status = initial_status
+        self.source_visibility = source_visibility
+        self.source_display = source_display
+        self._closed = False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        with contextlib.suppress(OSError):
+            os.close(self._descriptor)
+        self._closed = True
+
+    def __enter__(self) -> GuardedExplicitFileSource:
+        if self._closed:
+            raise RuntimeError("explicit file source lease is closed")
+        return self
+
+    def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
+        self.close()
+
+
+@dataclass(frozen=True)
+class ExplicitFileArtifactPublishRequest:
+    repo_root: Path
+    guarded_source: GuardedExplicitFileSource
+    destination_path: Path
+
+
+@dataclass(frozen=True)
+class ExplicitFileArtifactPublishResult:
+    source_visibility: FileArtifactSourceVisibility
+    source_display: str
+    destination_path: Path
+    committed: bool
+    cleanup_state: BinaryArtifactCleanupState
+    warning_codes: tuple[FileArtifactImportWarning, ...] = ()
+
+
+@dataclass(frozen=True)
+class WorkbenchCopyResult:
+    scope_id: str
+    source_worktree: WorktreeRecordView
+    target_worktree: WorktreeRecordView
+    target_workbench_path: Path
+    experimental: bool = True
+    canonical: bool = False
+    disposable: bool = True
+    one_shot: bool = True
+    sync: bool = False
+
+
+@dataclass(frozen=True)
 class TargetRef:
     kind: str
     node_id: str | None
@@ -198,8 +662,7 @@ class CreateNodeRequest:
     title: str
     slug: str | None
     parent_id: str | None
-    requested_node_id: str | None
-    github_mode: Literal["create", "link_existing", "local_only"] | None
+    github_mode: Literal["create", "link_existing"] | None
     github_issue_number: int | None
     github_repo_owner: str | None = None
     github_repo_name: str | None = None
@@ -263,6 +726,37 @@ class CreateDiscussionDocRequest:
 class CreateDiscussionDocResult:
     doc_id: str
     doc_type: str
+    scope_node_id: str
+    path: Path
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class CreateArtifactDocRequest:
+    artifact_type: Literal[
+        "blank",
+        "research",
+        "interview",
+        "disc",
+        "decision-candidate",
+        "pr-repair-batch",
+        "adr",
+        "draft-requirement",
+        "draft-design",
+        "draft-plan",
+        "scratch",
+        "note",
+    ]
+    scope_node_id: str
+    title: str
+    slug: str | None
+    scope_kind: Literal["initiative", "epic", "issue"] | None = None
+
+
+@dataclass(frozen=True)
+class CreateArtifactDocResult:
+    artifact_id: str
+    artifact_type: str
     scope_node_id: str
     path: Path
     warnings: list[str]
@@ -504,11 +998,14 @@ class SyncStateResult:
     deps_preflight_error: str | None
     repo_root: Path | None = None
     issue_depends_on_map: dict[str, list[str]] = field(default_factory=dict)
+    raw_node_depends_on_map: dict[str, list[str]] = field(default_factory=dict)
     github_snapshot_by_repo_and_issue_number: dict[tuple[str, int], IssueSnapshot] = field(default_factory=dict)
     github_snapshot_by_repo_scope_and_issue_number: dict[tuple[str | None, int], IssueSnapshot] = field(
         default_factory=dict
     )
     github_snapshot_by_issue_id: dict[str, IssueSnapshot] = field(default_factory=dict)
+    dependency_contexts_by_issue_id: dict[str, list[DepsDependencyContext]] = field(default_factory=dict)
+    high_level_statuses_by_node_id: dict[str, DepsHighLevelStatus] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -527,6 +1024,7 @@ class ArtifactWriteResult:
     tree_todo_puml_path: str
     deps_issues_json_path: str
     deps_issues_puml_path: str
+    deps_raw_puml_path: str
     dashboard_md_path: str
 
 
@@ -617,7 +1115,7 @@ class UseCases:
     create_initiative: Callable[[CreateNodeRequest], CreateNodeResult]
     create_epic: Callable[[CreateNodeRequest], CreateNodeResult]
     create_issue: Callable[[CreateNodeRequest], CreateNodeResult]
-    create_discussion_doc: Callable[[CreateDiscussionDocRequest], CreateDiscussionDocResult]
+    create_artifact_doc: Callable[[CreateArtifactDocRequest], CreateArtifactDocResult]
     import_initiative: Callable[[ImportNodeRequest], ImportNodeResult]
     import_epic: Callable[[ImportNodeRequest], ImportNodeResult]
     import_issue: Callable[[ImportNodeRequest], ImportNodeResult]
@@ -627,6 +1125,30 @@ class UseCases:
     sync: Callable[[SyncRequest], SyncCommandResult]
     check_deps: Callable[[CheckDepsRequest], DepsCheckResult]
     validate_tree: Callable[[ValidateTreeRequest], ValidationResult]
+    import_artifact: Callable[[ArtifactImportRequest], ArtifactImportResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("import_artifact is not configured")
+    )
+    import_file_artifact: Callable[[FileArtifactImportRequest], FileArtifactImportResult] = lambda _req: (
+        _ for _ in ()
+    ).throw(RuntimeError("import_file_artifact is not configured"))
+    show_assurance: Callable[[ShowAssuranceRequest], AssuranceResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("show_assurance is not configured")
+    )
+    classify_assurance: Callable[[ClassifyAssuranceRequest], AssuranceResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("classify_assurance is not configured")
+    )
+    verify_assurance: Callable[[VerifyAssuranceRequest], AssuranceResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("verify_assurance is not configured")
+    )
+    compose_assurance: Callable[[ComposeAssuranceRequest], AssuranceResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("compose_assurance is not configured")
+    )
+    workflow_status: Callable[[WorkflowStatusRequest], WorkflowResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("workflow_status is not configured")
+    )
+    workflow_next: Callable[[WorkflowNextRequest], WorkflowResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("workflow_next is not configured")
+    )
     mutate_deps: Callable[[MutateDepsRequest], MutateDepsResult] = lambda _req: (_ for _ in ()).throw(
         RuntimeError("mutate_deps is not configured")
     )
@@ -642,8 +1164,8 @@ class UseCases:
     issue_finish: Callable[[IssueFinishRequest], IssueFinishResult] = lambda _req: (_ for _ in ()).throw(
         RuntimeError("issue_finish is not configured")
     )
-    doctor: Callable[[DoctorRequest], DoctorResult] = (
-        lambda _req: DoctorResult(ok=True, findings=[], warnings=[])
+    doctor: Callable[[DoctorRequest], DoctorResult] = lambda _req: DoctorResult(
+        ok=True, findings=[], warnings=[], github_capability_diagnostics=[]
     )
     worktree_create: Callable[[WorktreeCreateRequest], WorktreeCreateResult] = lambda _req: (_ for _ in ()).throw(
         RuntimeError("worktree_create is not configured")
@@ -656,6 +1178,21 @@ class UseCases:
     )
     worktree_remove: Callable[[WorktreeRemoveRequest], WorktreeRemoveResult] = lambda _req: (_ for _ in ()).throw(
         RuntimeError("worktree_remove is not configured")
+    )
+    workbench_copy: Callable[[WorkbenchCopyRequest], WorkbenchCopyResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("workbench_copy is not configured")
+    )
+    planning_create: Callable[[PlanningCreateRequest], PlanningCommandResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("planning_create is not configured")
+    )
+    planning_revise: Callable[[PlanningReviseRequest], PlanningCommandResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("planning_revise is not configured")
+    )
+    planning_review: Callable[[PlanningReviewRequest], PlanningCommandResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("planning_review is not configured")
+    )
+    planning_apply: Callable[[PlanningApplyRequest], PlanningCommandResult] = lambda _req: (_ for _ in ()).throw(
+        RuntimeError("planning_apply is not configured")
     )
     repo_root: Path | None = None
     specdock_dir: Path | None = None

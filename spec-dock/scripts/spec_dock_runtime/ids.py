@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .domain import ids as _domain_ids
+from spec_dock_runtime.domain import ids as _domain_ids
 
 _DEFAULT_ID_WIDTH = _domain_ids.DEFAULT_ID_WIDTH
 _ID_RE = _domain_ids.ID_RE
@@ -37,10 +37,6 @@ def _resolve_input_title_and_slug(title: str, slug: str | None) -> tuple[str, st
 
 def _normalize_id_input(value: str, *, prefix: str, field: str) -> str:
     return _domain_ids.normalize_id_input(value, prefix=prefix, field=field)
-
-
-def _normalize_local_id_input(value: str, *, prefix: str, field: str) -> str:
-    return _domain_ids.normalize_local_id_input(value, prefix=prefix, field=field)
 
 
 def _find_existing_id_by_num(nodes: dict[str, Any], *, prefix: str, num: int, local: bool) -> str | None:

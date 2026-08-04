@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from ..domain.deps import ensure_issue_dependency_add_would_not_create_cycle, issue_dependency_exists
-from ..domain.models import SpecNodeSeed, SpecNodeKind
-from ..domain.tree import build_graph
-from ..domain.validation import ensure_current_graph_and_deps_valid
-from ..infra.contracts import DirectDependencyResolution
-from ..infra.contracts import StoredMetaRecord
-from .contracts import MutateDepsError, MutateDepsRequest, MutateDepsResult
-from .ports import Ports
-from .repo_context import resolve_current_repo_slug
-from .sync_state import post_mutation_sync, skipped_post_mutation_sync
+from spec_dock_runtime.application.contracts import MutateDepsError, MutateDepsRequest, MutateDepsResult
+from spec_dock_runtime.application.repo_context import resolve_current_repo_slug
+from spec_dock_runtime.application.sync_state import post_mutation_sync, skipped_post_mutation_sync
+from spec_dock_runtime.domain.deps import ensure_node_dependency_add_would_be_valid, validate_raw_node_dependency_graph
+from spec_dock_runtime.domain.models import SpecNodeKind, SpecNodeSeed
+from spec_dock_runtime.domain.tree import build_graph
+from spec_dock_runtime.domain.validation import ensure_current_graph_and_deps_valid
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
+    from spec_dock_runtime.infra.contracts import DirectDependencyResolution, StoredMetaRecord
 
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
     return SpecNodeSeed(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -55,13 +56,20 @@ def _raise_mutation_error(
     )
 
 
+def _preflight_detail(error: RuntimeError) -> str:
+    detail = str(error)
+    if detail.startswith("preflight validate failed:"):
+        return detail
+    return f"preflight validate failed: {detail}"
+
+
 def _load_direct_matching_refs(
     req: MutateDepsRequest,
     *,
     ports: Ports,
     graph,
-    from_issue_id: str,
-    to_issue_id: str,
+    from_node_id: str,
+    to_node_id: str,
 ) -> list[object]:
     load_direct_resolutions = getattr(ports.deps_topology_reader, "load_direct_dependency_resolutions", None)
     if not callable(load_direct_resolutions):
@@ -69,17 +77,88 @@ def _load_direct_matching_refs(
 
     try:
         resolutions = cast(
-            list[DirectDependencyResolution],
-            load_direct_resolutions(_resolve_specdock_dir(ports), graph, from_issue_id),
+            "list[DirectDependencyResolution]",
+            load_direct_resolutions(_resolve_specdock_dir(ports), graph, from_node_id),
         )
     except RuntimeError as error:
-        _raise_mutation_error(req, code="preflight_validate_failed", detail=str(error))
+        _raise_mutation_error(req, code="preflight_validate_failed", detail=_preflight_detail(error))
 
-    return [
-        item.raw_ref
-        for item in resolutions
-        if item.resolved_node_id == to_issue_id
-    ]
+    return [item.raw_ref for item in resolutions if item.resolved_node_id == to_node_id]
+
+
+def _load_raw_node_depends_on_map(
+    req: MutateDepsRequest,
+    *,
+    ports: Ports,
+    graph,
+) -> dict[str, list[str]]:
+    load_node_resolutions = getattr(ports.deps_topology_reader, "load_node_dependency_resolutions", None)
+    if callable(load_node_resolutions):
+        try:
+            resolutions_by_source = cast(
+                "dict[str, list[DirectDependencyResolution]]",
+                load_node_resolutions(_resolve_specdock_dir(ports), graph),
+            )
+        except RuntimeError as error:
+            _raise_mutation_error(req, code="preflight_validate_failed", detail=_preflight_detail(error))
+        return {
+            source_id: [resolution.resolved_node_id for resolution in resolutions]
+            for source_id, resolutions in resolutions_by_source.items()
+        }
+
+    load_direct_resolutions = getattr(ports.deps_topology_reader, "load_direct_dependency_resolutions", None)
+    if not callable(load_direct_resolutions):
+        return {}
+
+    raw_map: dict[str, list[str]] = {}
+    for source_id, node in graph.nodes_by_id.items():
+        if node.kind not in ("initiative", "epic", "issue"):
+            continue
+        try:
+            resolutions = cast(
+                "list[DirectDependencyResolution]",
+                load_direct_resolutions(_resolve_specdock_dir(ports), graph, source_id),
+            )
+        except RuntimeError as error:
+            _raise_mutation_error(req, code="preflight_validate_failed", detail=_preflight_detail(error))
+        raw_map[source_id] = [resolution.resolved_node_id for resolution in resolutions]
+    return raw_map
+
+
+def _build_candidate_issue_depends_on_map(
+    req: MutateDepsRequest,
+    *,
+    ports: Ports,
+    graph,
+    issue_depends_on_map: dict[str, list[str]],
+    from_node_id: str,
+    to_node_id: str,
+) -> dict[str, list[str]]:
+    build_candidate = getattr(ports.deps_topology_reader, "build_candidate_issue_depends_on_map", None)
+    if not callable(build_candidate):
+        if graph.nodes_by_id[from_node_id].kind == "issue" and graph.nodes_by_id[to_node_id].kind == "issue":
+            candidate_map: dict[str, list[str]] = {
+                issue_id: list(depends_on) for issue_id, depends_on in issue_depends_on_map.items()
+            }
+            candidate_map.setdefault(from_node_id, [])
+            candidate_map.setdefault(to_node_id, [])
+            candidate_map[from_node_id].append(to_node_id)
+            return candidate_map
+        return dict(issue_depends_on_map)
+
+    try:
+        return cast(
+            "dict[str, list[str]]",
+            build_candidate(
+                graph,
+                issue_depends_on_map,
+                from_node_id=from_node_id,
+                to_node_id=to_node_id,
+            ),
+        )
+    except RuntimeError as error:
+        _raise_mutation_error(req, code="invalid_add_cycle", detail=str(error))
+        raise
 
 
 def mutate_deps(req: MutateDepsRequest, ports: Ports) -> MutateDepsResult:
@@ -95,6 +174,8 @@ def mutate_deps(req: MutateDepsRequest, ports: Ports) -> MutateDepsResult:
         graph = build_graph([_to_spec_node_seed(record) for record in records])
         topology = ports.deps_topology_reader.load_issue_depends_on_map(_resolve_specdock_dir(ports), graph)
         issue_depends_on_map = dict(topology.issue_depends_on_map)
+        raw_node_depends_on_map = _load_raw_node_depends_on_map(req, ports=ports, graph=graph)
+        validate_raw_node_dependency_graph(graph, raw_node_depends_on_map)
         ensure_current_graph_and_deps_valid(
             graph,
             issue_depends_on_map,
@@ -103,7 +184,7 @@ def mutate_deps(req: MutateDepsRequest, ports: Ports) -> MutateDepsResult:
             enforce_github_mandatory_linkage=False,
         )
     except RuntimeError as error:
-        _raise_mutation_error(req, code="preflight_validate_failed", detail=str(error))
+        _raise_mutation_error(req, code="preflight_validate_failed", detail=_preflight_detail(error))
 
     from_node = graph.nodes_by_id.get(req.from_id)
     to_node = graph.nodes_by_id.get(req.to_id)
@@ -114,39 +195,20 @@ def mutate_deps(req: MutateDepsRequest, ports: Ports) -> MutateDepsResult:
             _raise_mutation_error(req, code="invalid_add_unresolved", detail=f"Node not found: {req.to_id}")
     else:
         if from_node is None or to_node is None:
-            _raise_mutation_error(req, code="edge_not_found", detail=f"Dependency edge not found: {req.from_id} -> {req.to_id}")
+            _raise_mutation_error(
+                req, code="edge_not_found", detail=f"Dependency edge not found: {req.from_id} -> {req.to_id}"
+            )
 
     assert from_node is not None
     assert to_node is not None
-    if from_node.kind != "issue":
-        _raise_mutation_error(
-            req,
-            code="unsupported_node_kind",
-            detail=f"from node is not issue: {from_node.id} ({from_node.kind})",
-        )
-    if to_node.kind != "issue":
-        _raise_mutation_error(
-            req,
-            code="unsupported_node_kind",
-            detail=f"to node is not issue: {to_node.id} ({to_node.kind})",
-        )
-
-    direct_edge_exists = issue_dependency_exists(
-        issue_depends_on_map,
-        from_issue_id=from_node.id,
-        to_issue_id=to_node.id,
+    direct_matching_refs = _load_direct_matching_refs(
+        req,
+        ports=ports,
+        graph=graph,
+        from_node_id=from_node.id,
+        to_node_id=to_node.id,
     )
-    direct_matching_refs: list[object] = []
-    load_direct_resolutions = getattr(ports.deps_topology_reader, "load_direct_dependency_resolutions", None)
-    if callable(load_direct_resolutions):
-        direct_matching_refs = _load_direct_matching_refs(
-            req,
-            ports=ports,
-            graph=graph,
-            from_issue_id=from_node.id,
-            to_issue_id=to_node.id,
-        )
-        direct_edge_exists = bool(direct_matching_refs)
+    direct_edge_exists = bool(direct_matching_refs)
 
     if req.action == "add":
         add_issue_dependency = getattr(ports.node_repo, "add_issue_dependency", None)
@@ -171,10 +233,19 @@ def mutate_deps(req: MutateDepsRequest, ports: Ports) -> MutateDepsResult:
             )
 
         try:
-            ensure_issue_dependency_add_would_not_create_cycle(
-                issue_depends_on_map,
-                from_issue_id=from_node.id,
-                to_issue_id=to_node.id,
+            ensure_node_dependency_add_would_be_valid(
+                graph,
+                raw_node_depends_on_map,
+                from_node_id=from_node.id,
+                to_node_id=to_node.id,
+                candidate_issue_depends_on_map=_build_candidate_issue_depends_on_map(
+                    req,
+                    ports=ports,
+                    graph=graph,
+                    issue_depends_on_map=issue_depends_on_map,
+                    from_node_id=from_node.id,
+                    to_node_id=to_node.id,
+                ),
             )
         except RuntimeError as error:
             _raise_mutation_error(req, code="invalid_add_cycle", detail=str(error))

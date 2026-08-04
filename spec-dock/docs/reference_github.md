@@ -18,6 +18,8 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 - `./spec-dock/scripts/spec-dock update [path]` は GitHub を更新しない repo-local self-update path です。target 省略時は current directory を更新し、明示 path を渡すとその managed repo を更新します
 - runtime update は installer update の wrapper で、固定 upstream `git+https://github.com/chemitaro/spec-dock` を `uvx --no-cache --from git+https://github.com/chemitaro/spec-dock spec-dock update <target>` として実行します。arbitrary package source / cache option / `--force` は公開しません
 - update は managed files/docs/templates/scripts/skills を refresh しますが、`init --force` ではなく、old workspace の in-place migration も保証しません
+- `spec-dock uninstall [path]` / `./spec-dock/scripts/spec-dock uninstall [path]` は repo-local managed artifacts の removal です。GitHub Issue / remote state は変更せず、Python package / global CLI / environment / `uvx` cache の uninstall も行いません
+- runtime uninstall は installer uninstall の wrapper で、固定 upstream `git+https://github.com/chemitaro/spec-dock` を `uvx --no-cache --from git+https://github.com/chemitaro/spec-dock spec-dock uninstall <target>` として実行します。repo-local runtime が削除済みの場合の retry / reinstall / refresh は installer CLI の `spec-dock uninstall <target>` / `spec-dock init <target>` / `spec-dock update <target>` を使います
 - dependency metadata の canonical storage は `.meta.json` top-level `depends_on` であり、追加/削除/確認は `./spec-dock/scripts/spec-dock deps add/remove/check` の command-first mutation を使います（詳細: `reference_deps.md`）
 - legacy `meta.json`（旧名）、partial linkage、current-repo mismatch などの old contract 不整合は、`update` で吸収されず current create / import / validate / sync が reject / fail-fast しうる
 - その場合は auto-migrate を期待せず、手動で normalize するか workspace を rebuild してください
@@ -35,7 +37,7 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 - `new initiative` / `new epic` / `new issue`（デフォルト）は GitHub Issue を作ります（`gh issue create`）
   - `--create-github-issue` は同じ意味の explicit alias です
   - `initiative / epic / issue` では GitHub linkage が mandatory です
-  - `--no-github` は compatibility option として残っていますが、contract error で reject されます
+  - `--no-github` は node creation option ではありません。既存 Issue に紐づける場合は `--github-issue <n>` を使います
 - `close` は linked GitHub Issue をクローズします（`gh issue close`）
   - top-level command として `./spec-dock/scripts/spec-dock close <target>` / `--id <node-id>` / `--github-issue <n>` を受け付けます
   - close 対象は target node 自身の linked GitHub issue のみです
@@ -71,7 +73,8 @@ spec-dock は `gh` の全コマンドで一律に `--repo owner/repo` を省略�
 
 - `new {initiative,epic,issue} --github-issue <n>` は「既存番号へリンク」するだけで、GitHub Issue は作りません（`gh` を呼びません）
 - `./spec-dock/scripts/spec-dock update [path]` は `gh` を呼びません。固定 upstream の installer update を `uvx --no-cache` で呼び出し、managed files/docs/templates/scripts/skills を更新します
-- 生成される `epics/rules.md` / `issues/rules.md` / `discussions/rules.md` は `spec-dock/docs/rules/**` への symlink です。`rules.md` は入口/ナビゲーション用で、ルールの正本は `spec-dock/docs/rules/**` にあります。runtime command はサポートされた実行経路です
+- `spec-dock uninstall [path]` / `./spec-dock/scripts/spec-dock uninstall [path]` は `gh` を呼びません。target repo 内の SpecDock-managed artifacts を dry-run / explicit apply で取り外すだけで、GitHub Issue close/delete、package/environment uninstall、`uvx` cache cleanup は行いません
+- 生成される `epics/rules.md` / `issues/rules.md` / `artifacts/rules.md` は `spec-dock/docs/rules/**` への symlink です。`rules.md` は入口/ナビゲーション用で、ルールの正本は `spec-dock/docs/rules/**` にあります。runtime command はサポートされた実行経路です。既存 `discussions/rules.md` は legacy / preservation surface として残り得ますが、新規 working artifact の default destination ではありません
 
 ## 3. `import` の URL 入力に関する注意（事故防止）
 

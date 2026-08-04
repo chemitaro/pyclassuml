@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
+import re
 
-from ..application.contracts import TargetRef
+from spec_dock_runtime.application.contracts import TargetRef
 
 _num_re = re.compile(r"^[0-9]+$")
 _gh_issue_url_full_re = re.compile(
@@ -77,9 +77,7 @@ def parse_github_issue_target_ref(target: str) -> GitHubIssueTarget:
         )
 
     if raw.startswith("http://") or raw.startswith("https://"):
-        raise RuntimeError(
-            "Invalid target. Use a GitHub issue URL like https://github.com/<owner>/<repo>/issues/123."
-        )
+        raise RuntimeError("Invalid target. Use a GitHub issue URL like https://github.com/<owner>/<repo>/issues/123.")
 
     # For import targets, accept either canonical GitHub issue URLs or pure issue numbers.
     # Reject URL-like strings to avoid bypassing repo-identity validation.
@@ -95,9 +93,7 @@ def parse_github_issue_target_ref(target: str) -> GitHubIssueTarget:
     if _num_re.fullmatch(raw):
         return GitHubIssueTarget(issue_number=int(raw), repo_owner=None, repo_name=None)
 
-    raise RuntimeError(
-        "Invalid target. Use a GitHub issue number (e.g. 123 / #123 / URL like .../issues/123)."
-    )
+    raise RuntimeError("Invalid target. Use a GitHub issue number (e.g. 123 / #123 / URL like .../issues/123).")
 
 
 def parse_active_like_target(target: str) -> tuple[TargetRef, str]:
@@ -120,9 +116,7 @@ def parse_active_like_target(target: str) -> tuple[TargetRef, str]:
         )
 
     if raw.startswith("http://") or raw.startswith("https://"):
-        raise RuntimeError(
-            "Invalid target. Use a GitHub issue URL like https://github.com/<owner>/<repo>/issues/123."
-        )
+        raise RuntimeError("Invalid target. Use a GitHub issue URL like https://github.com/<owner>/<repo>/issues/123.")
 
     if _looks_like_non_canonical_github_issue_target(raw):
         raise RuntimeError(
@@ -185,13 +179,9 @@ def parse_explicit_target_flags(
     if github_issue is not None:
         provided += 1
     if provided == 0:
-        raise RuntimeError(
-            f"{command_label}: target is required. Use <target> or '--id' / '--github-issue'."
-        )
+        raise RuntimeError(f"{command_label}: target is required. Use <target> or '--id' / '--github-issue'.")
     if provided > 1:
-        raise RuntimeError(
-            f"{command_label}: choose exactly one of <target>, '--id', '--github-issue'."
-        )
+        raise RuntimeError(f"{command_label}: choose exactly one of <target>, '--id', '--github-issue'.")
     if raw_node_id:
         lowered = raw_node_id.lower()
         _assert_valid_node_id(lowered)

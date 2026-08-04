@@ -1,21 +1,22 @@
 from __future__ import annotations
 
+import contextlib
 import os
+from pathlib import Path
 import re
 import shutil
 import stat
 import sys
 import tempfile
 import time
-from pathlib import Path
-from typing import Any
-from typing import Literal
+from typing import Any, Literal
 
-from .clock import now_iso
-from .contracts import StoredMetaRecord
-from .json_store import load_json, write_json
+from spec_dock_runtime.infra.clock import now_iso
+from spec_dock_runtime.infra.contracts import StoredMetaRecord
+from spec_dock_runtime.infra.json_store import load_json, write_json
 
 _INITIATIVES_DIRNAME = "initiatives"
+_WORKBENCH_DIRNAME = ".workbench"
 _META_FILENAME = ".meta.json"
 _LEGACY_META_FILENAME = "meta.json"
 _NODE_DIRNAME_PATTERNS: dict[str, re.Pattern[str]] = {
@@ -102,15 +103,13 @@ def _atomic_write_json(path: Path, payload: dict[str, Any], *, readonly_mode: in
             lock_mode = _readonly_mode_preserving_read_bits(tmp_path.stat().st_mode)
         tmp_path.chmod(lock_mode)
         stage = "replace"
-        os.replace(tmp_path, path)
+        Path(tmp_path).replace(path)
     except Exception as exc:
         raise RuntimeError(f"write_failed[{stage}]: {path}: {exc}") from exc
     finally:
         if tmp_path is not None and tmp_path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 tmp_path.unlink()
-            except OSError:
-                pass
 
 
 def _write_meta_json_atomic_with_permission_contract(meta_path: Path, payload: dict[str, Any]) -> None:
@@ -153,11 +152,20 @@ def _initiatives_root(specdock_dir: Path) -> Path:
 
 
 def _iter_node_meta_paths(initiatives_root: Path) -> list[Path]:
-    return sorted(initiatives_root.rglob(_META_FILENAME), key=lambda p: p.as_posix())
+    return _find_metadata_paths(initiatives_root, filename=_META_FILENAME)
 
 
 def _find_legacy_meta_paths(initiatives_root: Path) -> list[Path]:
-    return sorted(initiatives_root.rglob(_LEGACY_META_FILENAME), key=lambda p: p.as_posix())
+    return _find_metadata_paths(initiatives_root, filename=_LEGACY_META_FILENAME)
+
+
+def _find_metadata_paths(root: Path, *, filename: str) -> list[Path]:
+    matches: list[Path] = []
+    for current_root, child_dirnames, filenames in os.walk(root, topdown=True):
+        child_dirnames[:] = sorted(name for name in child_dirnames if name != _WORKBENCH_DIRNAME)
+        if filename in filenames:
+            matches.append(Path(current_root) / filename)
+    return sorted(matches, key=lambda path: path.as_posix())
 
 
 def _sorted_child_dirs(path: Path) -> list[Path]:
@@ -261,7 +269,9 @@ def _parse_created_unix(meta: dict[str, str]) -> float | None:
         return None
 
 
-def _classify_create_lock_state(specdock_dir: Path) -> tuple[Literal["absent", "in_progress", "stale_create_lock"], str]:
+def _classify_create_lock_state(
+    specdock_dir: Path,
+) -> tuple[Literal["absent", "in_progress", "stale_create_lock"], str]:
     lock_path = specdock_dir / _CREATE_LOCK_RELATIVE_PATH
     if not lock_path.exists():
         return ("absent", f"path={lock_path} present=false")
@@ -333,22 +343,17 @@ def ensure_no_legacy_meta_json(specdock_dir: Path) -> None:
         return
     listed = "\n".join(f"- {p}" for p in legacy_paths)
     raise RuntimeError(
-        "Unsupported legacy meta.json detected. Rename legacy files to '.meta.json' and retry:\n"
-        f"{listed}"
+        f"Unsupported legacy meta.json detected. Rename legacy files to '.meta.json' and retry:\n{listed}"
     )
 
 
 def _require_non_empty_meta_string(meta: dict[str, Any], *, field: str, meta_path: Path) -> str:
     raw_value = meta.get(field)
     if not isinstance(raw_value, str):
-        raise RuntimeError(
-            f"Invalid .meta.json (required non-empty string field={field}): {meta_path}"
-        )
+        raise RuntimeError(f"Invalid .meta.json (required non-empty string field={field}): {meta_path}")
     value = raw_value.strip()
     if not value:
-        raise RuntimeError(
-            f"Invalid .meta.json (required non-empty string field={field}): {meta_path}"
-        )
+        raise RuntimeError(f"Invalid .meta.json (required non-empty string field={field}): {meta_path}")
     return value
 
 
@@ -379,21 +384,18 @@ def load_node_records(specdock_dir: Path) -> list[StoredMetaRecord]:
         github_repo_name: str | None = None
         github = meta.get("github")
         if isinstance(github, dict):
-            if github.get("issue_number") is not None:
+            raw_issue_number = github.get("issue_number")
+            if raw_issue_number is not None:
                 try:
-                    github_issue_number = int(github.get("issue_number"))
+                    github_issue_number = int(raw_issue_number)
                 except (TypeError, ValueError) as exc:
-                    raise RuntimeError(
-                        f"Invalid github.issue_number in {meta_path}: {github.get('issue_number')}"
-                    ) from exc
+                    raise RuntimeError(f"Invalid github.issue_number in {meta_path}: {raw_issue_number}") from exc
 
             owner_raw = github.get("repo_owner")
             name_raw = github.get("repo_name")
             if owner_raw is not None or name_raw is not None:
                 if owner_raw is None or name_raw is None:
-                    raise RuntimeError(
-                        f"Invalid github.repo_owner/repo_name in {meta_path}: both fields are required"
-                    )
+                    raise RuntimeError(f"Invalid github.repo_owner/repo_name in {meta_path}: both fields are required")
                 if not isinstance(owner_raw, str) or not isinstance(name_raw, str):
                     raise RuntimeError(
                         f"Invalid github.repo_owner/repo_name in {meta_path}: both fields must be strings"
@@ -502,9 +504,7 @@ def remove_issue_dependency(meta_path: Path, to_id: str, *, matching_refs: list[
     to_id_text = str(to_id)
     matching_ref_values = list(matching_refs or [])
     meta["depends_on"] = [
-        dep
-        for dep in depends_on
-        if str(dep) != to_id_text and not any(dep == ref for ref in matching_ref_values)
+        dep for dep in depends_on if str(dep) != to_id_text and not any(dep == ref for ref in matching_ref_values)
     ]
     if "updated_at" in meta:
         meta["updated_at"] = now_iso()
@@ -525,27 +525,19 @@ def backfill_github_repo_scope(meta_path: Path, *, repo_owner: str, repo_name: s
     if not isinstance(github, dict):
         raise RuntimeError(f"Invalid github payload in {meta_path}: expected object")
     if github.get("issue_number") is None:
-        raise RuntimeError(
-            f"Invalid github payload in {meta_path}: github.issue_number is required for scope backfill"
-        )
+        raise RuntimeError(f"Invalid github payload in {meta_path}: github.issue_number is required for scope backfill")
 
     existing_owner_raw = github.get("repo_owner")
     existing_repo_raw = github.get("repo_name")
     if existing_owner_raw is not None or existing_repo_raw is not None:
         if existing_owner_raw is None or existing_repo_raw is None:
-            raise RuntimeError(
-                f"Invalid github.repo_owner/repo_name in {meta_path}: both fields are required"
-            )
+            raise RuntimeError(f"Invalid github.repo_owner/repo_name in {meta_path}: both fields are required")
         if not isinstance(existing_owner_raw, str) or not isinstance(existing_repo_raw, str):
-            raise RuntimeError(
-                f"Invalid github.repo_owner/repo_name in {meta_path}: both fields must be strings"
-            )
+            raise RuntimeError(f"Invalid github.repo_owner/repo_name in {meta_path}: both fields must be strings")
         existing_owner = existing_owner_raw.strip().lower()
         existing_repo = existing_repo_raw.strip().lower()
         if not existing_owner or not existing_repo:
-            raise RuntimeError(
-                f"Invalid github.repo_owner/repo_name in {meta_path}: empty value is not allowed"
-            )
+            raise RuntimeError(f"Invalid github.repo_owner/repo_name in {meta_path}: empty value is not allowed")
         if existing_owner == normalized_owner and existing_repo == normalized_repo:
             return False
         raise RuntimeError(
@@ -569,11 +561,11 @@ def _handle_rmtree_permission_error(func, path, exc_info) -> None:
     if not isinstance(exc, PermissionError):
         raise exc
     try:
-        current_mode = os.stat(path).st_mode
-        os.chmod(path, current_mode | stat.S_IWRITE)
+        current_mode = Path(path).stat().st_mode
+        Path(path).chmod(current_mode | stat.S_IWRITE)
         func(path)
     except OSError:
-        raise exc
+        raise exc from None
 
 
 def delete_tree(node_path: Path) -> None:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from .ports import Ports
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
 
 
 def normalize_repo_slug_value(slug: str | None) -> str | None:

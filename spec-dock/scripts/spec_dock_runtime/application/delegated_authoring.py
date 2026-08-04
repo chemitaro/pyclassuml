@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import json
 import os
-import subprocess
-from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 
-from ..domain import delegated_authoring as domain
+from spec_dock_runtime.domain import delegated_authoring as domain
 
 
 @dataclass(frozen=True)
@@ -131,7 +131,7 @@ def run_delegated_authoring_diff_guard(
                 details=("baseline_head=unborn", f"current_head={current_head}"),
             )
         baseline_path = _repo_path(baseline_status_path, req.repo_root)
-        baseline_errors = _dirty_discussion_baseline_errors(
+        baseline_errors = _dirty_artifact_baseline_errors(
             baseline.entries,
             repo_root=req.repo_root,
             scope_dir=scope_dir,
@@ -141,7 +141,7 @@ def run_delegated_authoring_diff_guard(
             return domain.DiffGuardResult(
                 ok=False,
                 status="blocked",
-                reason="dirty_baseline_discussion",
+                reason="dirty_baseline_artifact",
                 scope_id=req.scope_id,
                 details=tuple(baseline_errors),
             )
@@ -158,14 +158,18 @@ def run_delegated_authoring_diff_guard(
         baseline_only_entries = tuple(
             entry
             for entry in baseline.entries
-            if _entry_key(entry) not in current_keys and _repo_path(entry.path, req.repo_root) != baseline_path
+            if _entry_key(entry) not in current_keys
+            and _repo_path(entry.path, req.repo_root) != baseline_path
             and _entry_key(entry) not in existing_create_keys
         )
-        entries = tuple(
-            entry
-            for entry in entries
-            if _entry_key(entry) not in baseline_keys and _repo_path(entry.path, req.repo_root) != baseline_path
-        ) + baseline_only_entries
+        entries = (
+            tuple(
+                entry
+                for entry in entries
+                if _entry_key(entry) not in baseline_keys and _repo_path(entry.path, req.repo_root) != baseline_path
+            )
+            + baseline_only_entries
+        )
     entries = _attach_pre_change_text(req.repo_root, entries)
     return domain.evaluate_diff_guard(
         authorized_role=req.role,
@@ -223,7 +227,7 @@ class _StatusParseResult:
     ok: bool
     entries: tuple[domain.DiffGuardEntry, ...] = ()
     errors: tuple[str, ...] = ()
-    file_states: tuple["_BaselineFileState", ...] = ()
+    file_states: tuple[_BaselineFileState, ...] = ()
     head: str | None = None
 
 
@@ -373,9 +377,7 @@ def _create_entries_existing_at_baseline_keys(
     baseline_entries: tuple[domain.DiffGuardEntry, ...],
     baseline_file_states: dict[Path, tuple[str, str]],
 ) -> set[tuple[str, str, str | None]]:
-    baseline_create_keys = {
-        _entry_key(entry) for entry in baseline_entries if entry.status in ("!!", "??")
-    }
+    baseline_create_keys = {_entry_key(entry) for entry in baseline_entries if entry.status in ("!!", "??")}
     keys: set[tuple[str, str, str | None]] = set()
     for entry in entries:
         if not (entry.status == "!!" or entry.status == "??"):
@@ -529,7 +531,7 @@ def _file_sha256(path: Path) -> str | None:
 def _file_state(path: Path) -> tuple[str, str] | None:
     try:
         if path.is_symlink():
-            target = os.readlink(path)
+            target = os.readlink(path)  # noqa: PTH115 - diff guard hashes raw symlink payload bytes.
             return "symlink", hashlib.sha256(os.fsencode(target)).hexdigest()
         if path.is_dir():
             return _directory_state(path)
@@ -554,7 +556,7 @@ def _directory_state(path: Path) -> tuple[str, str] | None:
             digest.update(b"\0")
             if child.is_symlink():
                 digest.update(b"symlink\0")
-                digest.update(os.fsencode(os.readlink(child)))
+                digest.update(os.fsencode(os.readlink(child)))  # noqa: PTH115 - preserve raw symlink payload.
                 digest.update(b"\0")
                 continue
             if child.is_dir():
@@ -743,32 +745,32 @@ def _git_head_text(repo_root: Path, rel_path: Path) -> _GitHeadTextResult:
     try:
         return _GitHeadTextResult(text=result.stdout.decode("utf-8"))
     except UnicodeDecodeError:
-        return _GitHeadTextResult(error="existing_discussion_head_non_utf8")
+        return _GitHeadTextResult(error="existing_artifact_head_non_utf8")
 
 
 def _is_update_status(status: str) -> bool:
     return len(status) == 2 and (status[0] in ("M", "T") or status[1] in ("M", "T"))
 
 
-def _dirty_discussion_baseline_errors(
+def _dirty_artifact_baseline_errors(
     entries: tuple[domain.DiffGuardEntry, ...],
     *,
     repo_root: Path,
     scope_dir: Path,
     baseline_path: Path,
 ) -> list[str]:
-    discussions_dir = scope_dir / "discussions"
+    artifacts_dir = scope_dir / "artifacts"
     errors: list[str] = []
     for entry in entries:
         rel_path = _repo_path(entry.path, repo_root)
         if rel_path == baseline_path:
             continue
         try:
-            (repo_root / rel_path).relative_to(discussions_dir)
+            (repo_root / rel_path).relative_to(artifacts_dir)
         except ValueError:
             continue
         else:
-            errors.append(f"blocked path={rel_path.as_posix()} reason=dirty_baseline_discussion")
+            errors.append(f"blocked path={rel_path.as_posix()} reason=dirty_baseline_artifact")
     return errors
 
 
@@ -839,7 +841,9 @@ def _file_state_map(file_states: tuple[_BaselineFileState, ...]) -> dict[Path, t
     return {file_state.path: (file_state.mode, file_state.sha256) for file_state in file_states}
 
 
-def _file_states_for_entries(repo_root: Path, entries: tuple[domain.DiffGuardEntry, ...]) -> tuple[_BaselineFileState, ...]:
+def _file_states_for_entries(
+    repo_root: Path, entries: tuple[domain.DiffGuardEntry, ...]
+) -> tuple[_BaselineFileState, ...]:
     file_states: list[_BaselineFileState] = []
     for entry in entries:
         rel_path = _repo_path(entry.path, repo_root)
@@ -852,19 +856,48 @@ def _file_states_for_entries(repo_root: Path, entries: tuple[domain.DiffGuardEnt
 
 
 def _resolve_scope_dir(specdock_dir: Path, scope_id: str) -> Path | None:
-    meta_paths = sorted(specdock_dir.glob(f"initiatives/**/{scope_id}*/.meta.json"))
+    meta_paths = _iter_scope_meta_paths(specdock_dir / "initiatives")
     for meta_path in meta_paths:
         if _scope_meta_matches(meta_path, scope_id):
             return meta_path.parent
     active_issue = specdock_dir / "active" / "issue"
     if active_issue.exists():
         try:
-            resolved = active_issue.resolve()
+            target = active_issue.readlink() if active_issue.is_symlink() else active_issue
+            candidate = target if target.is_absolute() else active_issue.parent / target
         except OSError:
-            resolved = active_issue
+            candidate = active_issue
+        if _is_workbench_descendant(candidate, specdock_dir):
+            return None
+        resolved = candidate.resolve()
         if _scope_meta_matches(resolved / ".meta.json", scope_id):
             return resolved
     return None
+
+
+def _iter_scope_meta_paths(initiatives_root: Path) -> list[Path]:
+    matches: list[Path] = []
+    for current_root, child_dirnames, filenames in os.walk(initiatives_root, topdown=True):
+        child_dirnames[:] = sorted(name for name in child_dirnames if name != ".workbench")
+        if ".meta.json" in filenames:
+            matches.append(Path(current_root) / ".meta.json")
+    return sorted(matches, key=lambda path: path.as_posix())
+
+
+def _is_workbench_descendant(path: Path, specdock_dir: Path) -> bool:
+    lexical_path = path.absolute()
+    for root in (specdock_dir.absolute(), specdock_dir.resolve()):
+        try:
+            lexical_relative = lexical_path.relative_to(root)
+        except ValueError:
+            continue
+        if ".workbench" in lexical_relative.parts:
+            return True
+    try:
+        relative = path.resolve().relative_to(specdock_dir.resolve())
+    except (OSError, ValueError):
+        return False
+    return ".workbench" in relative.parts
 
 
 def _scope_meta_matches(meta_path: Path, scope_id: str) -> bool:

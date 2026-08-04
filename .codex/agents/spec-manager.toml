@@ -1,8 +1,8 @@
 name = "spec-manager"
 description = "SpecDock command operator for bounded `spec-dock` and related `gh` execution. Delegate workflow execution to `.agents/skills/spec-dock-codex-adapter/SKILL.md`."
 
-model = "gpt-5.4-mini"
-model_reasoning_effort = "high"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
 personality = "pragmatic"
 
 sandbox_mode = "workspace-write"

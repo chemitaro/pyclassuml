@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ..application.contracts import UseCases, ValidateTreeRequest
-from ..presentation.cli_text import render_validate_text
-from ..presentation.contracts import CliText
-from .contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.application.contracts import UseCases, ValidateTreeRequest
+from spec_dock_runtime.commands.contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.presentation.cli_text import render_validate_text
+from spec_dock_runtime.presentation.contracts import CliText
+
+if TYPE_CHECKING:
+    import argparse
 
 
 @dataclass(frozen=True)
@@ -59,4 +62,3 @@ def _expect_validate_args(args: CommandArgs) -> ValidateArgs:
     if not isinstance(args, ValidateArgs):
         raise RuntimeError("Invalid command args for validate")
     return args
-

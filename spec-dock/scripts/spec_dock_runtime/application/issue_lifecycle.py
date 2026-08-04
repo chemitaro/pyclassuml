@@ -1,22 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from ..domain.active import infer_active_node_from_branch
-from ..domain.authority import (
-    GRANT_ISSUE_FINISH,
-    evaluate_authority_gate,
-    evaluate_evidence_adoption_ledger_gate,
-    load_evidence_adoption_ledger_entries,
-    validate_delegated_authority_artifact,
-)
-from ..domain.ids import format_id, parse_id
-from ..domain.models import SpecGraph, SpecNode, SpecNodeKind, SpecNodeSeed
-from ..domain.tree import build_graph
-from ..infra.contracts import ActiveManifest, StoredMetaRecord
-from .close_node import close_node
-from .contracts import (
+from spec_dock_runtime.application.close_node import close_node
+from spec_dock_runtime.application.contracts import (
     ClearActiveRequest,
     CloseNodeRequest,
     IssueFinishRequest,
@@ -26,16 +15,39 @@ from .contracts import (
     SetActiveRequest,
     TargetRef,
 )
-from .github_issue_targets import normalize_repo_slug
-from .ports import Ports
-from .repo_context import resolve_current_repo_slug
-from .set_active import clear_active, set_active
-from .sync_state import post_mutation_sync
+from spec_dock_runtime.application.github_issue_targets import normalize_repo_slug
+from spec_dock_runtime.application.repo_context import resolve_current_repo_slug
+from spec_dock_runtime.application.set_active import (
+    build_context_pack_text,
+    clear_active,
+    commit_active_state,
+    set_active,
+)
+from spec_dock_runtime.application.sync_state import post_mutation_sync
+from spec_dock_runtime.domain.active import infer_active_node_from_branch
+from spec_dock_runtime.domain.authority import (
+    GRANT_ISSUE_FINISH,
+    GRANT_REVIEW_INPUT,
+    PROMOTION_DECISION_RUNTIME_ACTIVE_SELECTION,
+    approved_issue_finish_transition_grants,
+    approved_issue_finish_transition_promotion_record,
+    evaluate_authority_gate,
+    evaluate_evidence_adoption_ledger_gate,
+    load_evidence_adoption_ledger_entries,
+    validate_delegated_authority_artifact,
+)
+from spec_dock_runtime.domain.ids import format_id, parse_id
+from spec_dock_runtime.domain.models import SpecGraph, SpecNode, SpecNodeKind, SpecNodeSeed
+from spec_dock_runtime.domain.tree import build_graph
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
+    from spec_dock_runtime.infra.contracts import ActiveManifest, StoredMetaRecord
 
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
     return SpecNodeSeed(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -72,7 +84,7 @@ def _build_graph(ports: Ports) -> SpecGraph:
 
 
 def _find_existing_id_by_num(graph: SpecGraph, *, prefix: str, num: int, local: bool) -> str | None:
-    for node_id in graph.nodes_by_id.keys():
+    for node_id in graph.nodes_by_id:
         try:
             parsed_prefix, is_local, parsed_num = parse_id(str(node_id))
         except RuntimeError:
@@ -89,7 +101,8 @@ def _resolve_target_node(graph: SpecGraph, target: TargetRef, *, current_repo_sl
         matches = [
             node
             for node in graph.nodes_by_id.values()
-            if node.github_issue_number == int(target.github_issue_number) and node.kind in ("initiative", "epic", "issue")
+            if node.github_issue_number == int(target.github_issue_number)
+            and node.kind in ("initiative", "epic", "issue")
         ]
         target_repo_slug = normalize_repo_slug(target.github_repo_owner, target.github_repo_name)
         if target_repo_slug is not None:
@@ -164,17 +177,15 @@ def _format_issue_target(node: SpecNode) -> str:
 
 
 def _finish_failure_guidance(*, active_issue_id: str, error: RuntimeError) -> str:
-    return "\n".join(
-        [
-            f"issue finish failed while closing GitHub issue for active issue {active_issue_id}.",
-            "Active selection was not cleared.",
-            "Recovery:",
-            "  spec-dock/scripts/spec-dock active show",
-            "  spec-dock/scripts/spec-dock issue finish",
-            "  gh issue view <github-issue-number>",
-            str(error),
-        ]
-    )
+    return "\n".join([
+        f"issue finish failed while closing GitHub issue for active issue {active_issue_id}.",
+        "Active selection was not cleared.",
+        "Recovery:",
+        "  spec-dock/scripts/spec-dock active show",
+        "  spec-dock/scripts/spec-dock issue finish",
+        "  gh issue view <github-issue-number>",
+        str(error),
+    ])
 
 
 def _finish_active_clear_failure_guidance(
@@ -183,20 +194,18 @@ def _finish_active_clear_failure_guidance(
     github_issue_number: int,
     error: RuntimeError,
 ) -> str:
-    return "\n".join(
-        [
-            f"issue finish failed after GitHub close/already-closed step for active issue {active_issue_id}.",
-            f"GitHub issue #{github_issue_number} may have been closed successfully or may already have been closed.",
-            "Active selection was not cleared.",
-            "Recovery:",
-            "  spec-dock/scripts/spec-dock active show",
-            "  spec-dock/scripts/spec-dock issue finish",
-            "  spec-dock/scripts/spec-dock active set <issue-id> --checkout",
-            "Use manual active recovery if active metadata is stale or points at the wrong issue.",
-            "Derived artifacts may remain stale because lifecycle auto-sync was skipped.",
-            str(error),
-        ]
-    )
+    return "\n".join([
+        f"issue finish failed after GitHub close/already-closed step for active issue {active_issue_id}.",
+        f"GitHub issue #{github_issue_number} may have been closed successfully or may already have been closed.",
+        "Active selection was not cleared.",
+        "Recovery:",
+        "  spec-dock/scripts/spec-dock active show",
+        "  spec-dock/scripts/spec-dock issue finish",
+        "  spec-dock/scripts/spec-dock active set <issue-id> --checkout",
+        "Use manual active recovery if active metadata is stale or points at the wrong issue.",
+        "Derived artifacts may remain stale because lifecycle auto-sync was skipped.",
+        str(error),
+    ])
 
 
 def require_lifecycle_authority(
@@ -221,19 +230,21 @@ def require_lifecycle_authority(
     )
     if result.ok:
         return
-    details = " ".join(result.details)
-    raise RuntimeError(
-        "\n".join(
-            [
-                f"{command_label} blocked: authority gate failed",
-                f"- reason: {result.reason}",
-                f"- required_grant: {required_grant}",
-                f"- details: {details}" if details else "- details: none",
-                "Recovery: obtain a fresh approved promotion record for the active selection.",
-                "Active selection from `active set` / `issue start` is synthetic approval and cannot satisfy lifecycle grants.",
-            ]
-        )
-    )
+    raise RuntimeError(_format_lifecycle_authority_error(command_label, result, required_grant=required_grant))
+
+
+def _format_lifecycle_authority_error(command_label: str, result: object, *, required_grant: str) -> str:
+    details_raw = getattr(result, "details", ())
+    details = " ".join(str(detail) for detail in details_raw)
+    reason = getattr(result, "reason", "unknown")
+    return "\n".join([
+        f"{command_label} blocked: authority gate failed",
+        f"- reason: {reason}",
+        f"- required_grant: {required_grant}",
+        f"- details: {details}" if details else "- details: none",
+        "Recovery: obtain a fresh approved promotion record for the active selection.",
+        "Active selection from `active set` / `issue start` is synthetic approval and cannot satisfy lifecycle grants.",
+    ])
 
 
 def require_evidence_adoption_ledger_clear(
@@ -247,16 +258,14 @@ def require_evidence_adoption_ledger_clear(
     if result.ok:
         return
     raise RuntimeError(
-        "\n".join(
-            [
-                f"{command_label} blocked: Evidence Adoption Ledger has unresolved blocking entry",
-                f"- reason: {result.reason}",
-                f"- blocking_entry_id: {result.blocking_entry_id}",
-                f"- target_artifact: {result.target_artifact or '*'}",
-                f"- required_next_action: {result.required_next_action}",
-                f"- report_path: {report_path}",
-            ]
-        )
+        "\n".join([
+            f"{command_label} blocked: Evidence Adoption Ledger has unresolved blocking entry",
+            f"- reason: {result.reason}",
+            f"- blocking_entry_id: {result.blocking_entry_id}",
+            f"- target_artifact: {result.target_artifact or '*'}",
+            f"- required_next_action: {result.required_next_action}",
+            f"- report_path: {report_path}",
+        ])
     )
 
 
@@ -273,15 +282,13 @@ def require_delegated_artifacts_authorized(
             continue
         details = " ".join(result.details)
         raise RuntimeError(
-            "\n".join(
-                [
-                    f"{command_label} blocked: delegated artifact authority gate failed",
-                    f"- reason: {result.reason}",
-                    f"- artifact: {artifact_path}",
-                    f"- details: {details}" if details else "- details: none",
-                    "Recovery: promote the delegated draft with fresh reviewer evidence or remove incomplete delegated metadata.",
-                ]
-            )
+            "\n".join([
+                f"{command_label} blocked: delegated artifact authority gate failed",
+                f"- reason: {result.reason}",
+                f"- artifact: {artifact_path}",
+                f"- details: {details}" if details else "- details: none",
+                "Recovery: promote the delegated draft with fresh reviewer evidence or remove incomplete delegated metadata.",
+            ])
         )
 
 
@@ -329,6 +336,80 @@ def _require_issue_finish_authority(entry: object) -> None:
     )
 
 
+def _evaluate_issue_finish_authority(entry: object):
+    entry_id = getattr(entry, "id", None)
+    expected_revision = f"active:{entry_id}" if isinstance(entry_id, str) and entry_id.strip() else None
+    return evaluate_authority_gate(
+        authority=getattr(entry, "authority", None),
+        grants=getattr(entry, "grants", None),
+        promotion_record=getattr(entry, "promotion_record", None),
+        required_grant=GRANT_ISSUE_FINISH,
+        purpose="issue_finish",
+        expected_revision=expected_revision,
+    )
+
+
+def _require_bound_synthetic_active_issue(entry: object) -> None:
+    entry_id = getattr(entry, "id", None)
+    expected_revision = f"active:{entry_id}" if isinstance(entry_id, str) and entry_id.strip() else None
+    promotion_record = getattr(entry, "promotion_record", None)
+    if not isinstance(promotion_record, dict):
+        _require_issue_finish_authority(entry)
+        return
+    if promotion_record.get("promotion_decision") != PROMOTION_DECISION_RUNTIME_ACTIVE_SELECTION:
+        _require_issue_finish_authority(entry)
+        return
+    result = evaluate_authority_gate(
+        authority=getattr(entry, "authority", None),
+        grants=getattr(entry, "grants", None),
+        promotion_record=promotion_record,
+        required_grant=GRANT_REVIEW_INPUT,
+        purpose="issue_finish_transition_binding",
+        expected_revision=expected_revision,
+    )
+    if not result.ok:
+        raise RuntimeError(_format_lifecycle_authority_error("issue finish", result, required_grant=GRANT_ISSUE_FINISH))
+
+
+def _manifest_with_issue_finish_transition(manifest: ActiveManifest, issue_id: str) -> ActiveManifest:
+    if manifest.issue is None:
+        raise RuntimeError("issue finish requires an active issue manifest entry.")
+    transitioned_issue = replace(
+        manifest.issue,
+        grants=approved_issue_finish_transition_grants(),
+        promotion_record=approved_issue_finish_transition_promotion_record(node_id=issue_id),
+    )
+    return replace(manifest, issue=transitioned_issue)
+
+
+def _persist_issue_finish_transition(
+    *,
+    manifest: ActiveManifest,
+    active_issue_id: str,
+    ports: Ports,
+) -> ActiveManifest:
+    transitioned_manifest = _manifest_with_issue_finish_transition(manifest, active_issue_id)
+    context_pack_text = build_context_pack_text(transitioned_manifest, repo_root=_resolve_repo_root(ports))
+    try:
+        return commit_active_state(
+            persisted_manifest=transitioned_manifest,
+            patch_manifest=transitioned_manifest,
+            ports=ports,
+            context_pack_text=context_pack_text,
+        )
+    except Exception as error:
+        raise RuntimeError(
+            "\n".join([
+                "issue finish failed while persisting finish transition.",
+                "Active selection was restored; GitHub issue close was not attempted.",
+                "Recovery:",
+                "  spec-dock/scripts/spec-dock active show",
+                "  spec-dock/scripts/spec-dock issue finish",
+                str(error),
+            ])
+        ) from error
+
+
 def issue_start(req: IssueStartRequest, ports: Ports) -> IssueStartResult:
     if ports.active_state_store is None:
         raise RuntimeError("active_state_store is required")
@@ -358,19 +439,17 @@ def issue_start(req: IssueStartRequest, ports: Ports) -> IssueStartResult:
             if github_state != "CLOSED":
                 requested_target = _format_issue_target(requested)
                 raise RuntimeError(
-                    "\n".join(
-                        [
-                            "issue start blocked: unfinished active issue branch",
-                            f"- current active issue: {active_issue_id}",
-                            f"- current branch: {current_branch}",
-                            f"- requested issue: {requested.id}",
-                            f"- github state: {github_state}",
-                            "Next commands:",
-                            "  spec-dock/scripts/spec-dock issue finish",
-                            f"  spec-dock/scripts/spec-dock issue start {requested_target} -f",
-                            f"  spec-dock/scripts/spec-dock active set {requested_target} --checkout",
-                        ]
-                    )
+                    "\n".join([
+                        "issue start blocked: unfinished active issue branch",
+                        f"- current active issue: {active_issue_id}",
+                        f"- current branch: {current_branch}",
+                        f"- requested issue: {requested.id}",
+                        f"- github state: {github_state}",
+                        "Next commands:",
+                        "  spec-dock/scripts/spec-dock issue finish",
+                        f"  spec-dock/scripts/spec-dock issue start {requested_target} -f",
+                        f"  spec-dock/scripts/spec-dock active set {requested_target} --checkout",
+                    ])
                 )
 
     checkout = active_issue_id != requested.id
@@ -410,8 +489,17 @@ def issue_finish(req: IssueFinishRequest, ports: Ports) -> IssueFinishResult:
         )
     if active_load.manifest is None or active_load.manifest.issue is None:
         raise RuntimeError("issue finish requires an active issue manifest entry.")
-    _require_issue_finish_authority(active_load.manifest.issue)
-    issue_path = getattr(active_load.manifest.issue, "path", None)
+    active_manifest = active_load.manifest
+    active_issue_entry = active_manifest.issue
+    authority_result = _evaluate_issue_finish_authority(active_issue_entry)
+    needs_transition = authority_result.reason == "active_synthetic_approval_not_lifecycle_approval"
+    if not authority_result.ok and not needs_transition:
+        raise RuntimeError(
+            _format_lifecycle_authority_error("issue finish", authority_result, required_grant=GRANT_ISSUE_FINISH)
+        )
+    if needs_transition:
+        _require_bound_synthetic_active_issue(active_issue_entry)
+    issue_path = getattr(active_issue_entry, "path", None)
     if isinstance(issue_path, str) and issue_path.strip():
         issue_dir = _resolve_repo_root(ports) / issue_path
         require_delegated_artifacts_authorized(
@@ -425,6 +513,17 @@ def issue_finish(req: IssueFinishRequest, ports: Ports) -> IssueFinishResult:
             purpose="issue_finish",
             command_label="issue finish",
         )
+    if needs_transition:
+        active_manifest = _persist_issue_finish_transition(
+            manifest=active_manifest,
+            active_issue_id=active_issue_id,
+            ports=ports,
+        )
+        if active_manifest.issue is None:
+            raise RuntimeError("issue finish requires an active issue manifest entry.")
+        _require_issue_finish_authority(active_manifest.issue)
+    else:
+        _require_issue_finish_authority(active_issue_entry)
 
     try:
         close_result = close_node(

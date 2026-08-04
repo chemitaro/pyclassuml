@@ -684,6 +684,120 @@ def test_diff_e2e_marks_changed_class_and_dependency_only_class(tmp_path: Path) 
     assert_relation(output, "Order", "*--", "Customer")
 
 
+def test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "first.py",
+        "from pkg.helper import Helper\n\nclass First:\n    helper: Helper\n    value = 0\n",
+    )
+    write_file(repo / "pkg" / "second.py", "class Second:\n    value = 0\n")
+    write_file(
+        repo / "pkg" / "helper.py",
+        "from pkg.transitive import Transitive\n\nclass Helper:\n    transitive: Transitive\n",
+    )
+    write_file(repo / "pkg" / "transitive.py", "class Transitive:\n    value = 0\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "first.py",
+        "from pkg.helper import Helper\n\nclass First:\n    helper: Helper\n    value = 1\n",
+    )
+    write_file(repo / "pkg" / "second.py", "class Second:\n    value = 1\n")
+
+    result = run_diff(diff_request(repo, output=Path("changed-seeds.puml")), timestamp=TIMESTAMP)
+
+    output = (repo / "changed-seeds.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["seed_file_count"] == 2
+    assert result.command_result.summary.counters["reachable_file_count"] == 3
+    assert result.command_result.summary.counters["changed_class_count"] == 2
+    assert "<<DiffChanged>>" in class_declaration(output, "First")
+    assert "<<DiffChanged>>" in class_declaration(output, "Second")
+    class_declaration(output, "Helper")
+    assert 'class "Transitive" as ' not in output
+    assert "seed_file_count: 2" in result.stdout_text
+    assert "reachable_file_count: 3" in result.stdout_text
+    assert "changed_class_count: 2" in result.stdout_text
+
+
+def test_diff_explicit_depth_two_reaches_transitive_dependency(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "source.py",
+        "from pkg.helper import Helper\n\nclass Source:\n    helper: Helper\n    value = 0\n",
+    )
+    write_file(
+        repo / "pkg" / "helper.py",
+        "from pkg.transitive import Transitive\n\nclass Helper:\n    transitive: Transitive\n",
+    )
+    write_file(repo / "pkg" / "transitive.py", "class Transitive:\n    value = 0\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "source.py",
+        "from pkg.helper import Helper\n\nclass Source:\n    helper: Helper\n    value = 1\n",
+    )
+
+    depth_one_result = run_diff(
+        diff_request(repo, depth=1, output=Path("depth-one.puml")),
+        timestamp=TIMESTAMP,
+    )
+    depth_two_result = run_diff(
+        diff_request(repo, depth=2, output=Path("depth-two.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    depth_one_output = (repo / "depth-one.puml").read_text(encoding="utf-8")
+    depth_two_output = (repo / "depth-two.puml").read_text(encoding="utf-8")
+    assert depth_one_result.command_result.exit_code == 0
+    assert depth_one_result.command_result.summary.counters["reachable_file_count"] == 2
+    class_declaration(depth_one_output, "Source")
+    class_declaration(depth_one_output, "Helper")
+    assert 'class "Transitive" as ' not in depth_one_output
+    assert depth_two_result.command_result.exit_code == 0
+    assert depth_two_result.command_result.summary.counters["reachable_file_count"] == 3
+    class_declaration(depth_two_output, "Source")
+    class_declaration(depth_two_output, "Helper")
+    class_declaration(depth_two_output, "Transitive")
+
+
+def test_diff_config_depth_two_reaches_transitive_dependency(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / ".pyclassuml.toml", "depth = 2\n")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "source.py",
+        "from pkg.helper import Helper\n\nclass Source:\n    helper: Helper\n    value = 0\n",
+    )
+    write_file(
+        repo / "pkg" / "helper.py",
+        "from pkg.transitive import Transitive\n\nclass Helper:\n    transitive: Transitive\n",
+    )
+    write_file(repo / "pkg" / "transitive.py", "class Transitive:\n    value = 0\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "source.py",
+        "from pkg.helper import Helper\n\nclass Source:\n    helper: Helper\n    value = 1\n",
+    )
+
+    result = run_diff(
+        diff_request(repo, output=Path("config-depth-two.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (repo / "config-depth-two.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["reachable_file_count"] == 3
+    class_declaration(output, "Source")
+    class_declaration(output, "Helper")
+    class_declaration(output, "Transitive")
+
+
 def test_diff_colorization_coexists_with_relation_notation_regression_fixture(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(

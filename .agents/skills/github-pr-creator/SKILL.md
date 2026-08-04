@@ -7,14 +7,14 @@ description: Delegate GitHub pull request work to an appropriate sub-agent and c
 
 ## Overview
 
-Use this skill to prefer delegation to an appropriate sub-agent, then push the current branch and create a GitHub pull request with a Japanese title and body grounded in the actual diff. After PR creation, the main orchestrator should hand off PR monitoring to `pr-monitor` so checks/statuses and Codex review results can be collected before the workflow is considered complete.
+Use this skill to prefer delegation to an appropriate sub-agent, then push the current branch and create a GitHub pull request with a Japanese title and body grounded in the actual diff. PR creation is not necessarily the terminal workflow step: when post-create checks/statuses or Codex review observation is required, continue through the `github-pr-observation` skill scripts or `github-pr-merge-preparer`.
 
 ## Delegation Guidance
 
 - Prefer handing PR creation work to an appropriate sub-agent instead of spending main-session context on branch push and `gh` execution details.
 - `spark-worker` or `utility-worker` are usually good fits for this kind of bounded GitHub task. Choose whichever best matches the scope and complexity.
 - When delegating, include the current branch, any explicit base branch, issue-link expectations, draft or ready intent if relevant, and the required return values: PR URL, selected base branch, issue-link outcome, or a clear blocker.
-- After the PR is created or found, the main orchestrator should spawn `pr-monitor` with at least `repo`, `pr`, and, when available, `head_sha` so post-create monitoring continues without ending the main workflow prematurely.
+- After the PR is created or found, return the PR URL, PR number, selected base, head branch, and latest head SHA so the caller can invoke `./.agents/skills/github-pr-observation/scripts/fetch_pr_observation_snapshot.sh` or `./.agents/skills/github-pr-observation/scripts/wait_pr_observation.sh` directly when post-create observation is in scope.
 
 ## Workflow
 
@@ -27,7 +27,7 @@ Use this skill to prefer delegation to an appropriate sub-agent, then push the c
 7. Push the current branch before PR creation if needed. Prefer setting upstream explicitly so the branch is available to GitHub.
 8. Create the PR with `gh pr create --base <base> --head <head> --title <title> --body-file <file>` or equivalent. For same-repo branches, use the branch name itself for `--head` first. Use `<owner>:<branch>` only when creating from a fork or when the owner must be specified to disambiguate the head repository.
 9. Return the PR URL after creation. If a PR already exists, return that URL instead of opening a duplicate PR.
-10. Hand off the created or existing PR to `pr-monitor` so it can watch all PR-linked checks/statuses and Codex review results until they are ready to summarize back to the main session.
+10. Return the created or existing PR details. When lightweight post-create observation is needed, call `./.agents/skills/github-pr-observation/scripts/fetch_pr_observation_snapshot.sh`; when the workflow must continue until a stable PR observation is available, proceed through `github-pr-merge-preparer` or invoke `./.agents/skills/github-pr-observation/scripts/wait_pr_observation.sh` directly.
 
 ## Safety Rules
 
@@ -61,4 +61,4 @@ gh pr create --base <base> --head <owner>:<current-branch> --title "<japanese-ti
 - State how the issue number was inferred or that it could not be inferred automatically.
 - Include `Closes #...` or `Refs #...` in the PR body when an issue is identified.
 - Return the PR URL explicitly in the final response.
-- If monitoring is part of the requested workflow, pass the PR to `pr-monitor` instead of treating PR creation alone as the terminal step.
+- If observation is part of the requested workflow, continue with `github-pr-observation` direct invocation or `github-pr-merge-preparer` instead of treating PR creation alone as the terminal step.

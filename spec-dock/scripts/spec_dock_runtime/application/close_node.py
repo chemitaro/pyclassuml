@@ -1,22 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from ..domain.ids import format_id, parse_id
-from ..domain.models import SpecGraph, SpecNodeSeed, SpecNodeKind
-from ..domain.tree import build_graph
-from ..infra.contracts import StoredMetaRecord
-from .contracts import CloseNodeRequest, CloseNodeResult, TargetRef
-from .github_issue_targets import normalize_repo_slug
-from .ports import Ports
-from .repo_context import resolve_current_repo_slug
-from .sync_state import post_mutation_sync
+from spec_dock_runtime.application.contracts import CloseNodeRequest, CloseNodeResult, TargetRef
+from spec_dock_runtime.application.github_issue_targets import normalize_repo_slug
+from spec_dock_runtime.application.repo_context import resolve_current_repo_slug
+from spec_dock_runtime.application.sync_state import post_mutation_sync
+from spec_dock_runtime.domain.ids import format_id, parse_id
+from spec_dock_runtime.domain.models import SpecGraph, SpecNodeKind, SpecNodeSeed
+from spec_dock_runtime.domain.tree import build_graph
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
+    from spec_dock_runtime.infra.contracts import StoredMetaRecord
 
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
     return SpecNodeSeed(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -52,7 +54,7 @@ def _resolve_specdock_dir(ports: Ports) -> Path:
 
 
 def _find_existing_id_by_num(graph: SpecGraph, *, prefix: str, num: int, local: bool) -> str | None:
-    for node_id in graph.nodes_by_id.keys():
+    for node_id in graph.nodes_by_id:
         try:
             parsed_prefix, is_local, parsed_num = parse_id(str(node_id))
         except RuntimeError:
@@ -69,7 +71,8 @@ def _resolve_target_node_id(graph: SpecGraph, target: TargetRef, *, current_repo
         matches = [
             node
             for node in graph.nodes_by_id.values()
-            if node.github_issue_number == int(target.github_issue_number) and node.kind in ("initiative", "epic", "issue")
+            if node.github_issue_number == int(target.github_issue_number)
+            and node.kind in ("initiative", "epic", "issue")
         ]
         target_repo_slug = normalize_repo_slug(target.github_repo_owner, target.github_repo_name)
         if target_repo_slug is not None:
@@ -163,7 +166,7 @@ def close_node(req: CloseNodeRequest, ports: Ports) -> CloseNodeResult:
         try:
             post_failure_snapshot = issue_gateway.issue_view_snapshot(repo_root, issue_number, repo_slug=repo_slug)
         except RuntimeError:
-            raise error
+            raise error from None
         if str(post_failure_snapshot.state).strip().upper() == "CLOSED":
             return _result(snapshot=post_failure_snapshot, already_closed=True)
         raise error

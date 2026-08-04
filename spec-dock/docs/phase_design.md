@@ -1,14 +1,15 @@
 # 設計フェーズ playbook（phase playbook: design）
 
 Initiative / Epic / Issue に共通する design の shared playbook です。
-scope 固有の entry / quality gate は `workflow_*.md` が additive に定義します。議論資料の置き方は対象 scope 配下の `discussions/rules.md`、命名は [reference_naming.md](reference_naming.md) を参照してください。
+scope 固有の entry / quality gate は `workflow_*.md` が additive に定義します。作業成果物の置き方は対象 scope 配下の `artifacts/rules.md`、legacy discussion preservation は `discussions/rules.md`、命名は [reference_naming.md](reference_naming.md) を参照してください。
 
 関連:
 - 全体像: [guide.md](guide.md)
 - Spec authoring workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Clarification workflow: [workflow_clarification.md](workflow_clarification.md)
 - Scope workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
-- 議論資料の置き方と命名: 対象 scope 配下の `discussions/rules.md`, [reference_naming.md](reference_naming.md)
+- Scope layering: [authoring/scope-layering.md](authoring/scope-layering.md)
+- 作業成果物の置き方と命名: 対象 scope 配下の `artifacts/rules.md`, legacy `discussions/rules.md`, [reference_naming.md](reference_naming.md)
 
 ## フェーズ契約（phase contract）
 
@@ -40,6 +41,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 - ADR rule:
   - 長寿命・横断的・不可逆寄りの判断は ADR / decision log に分離する
   - 局所的で可逆な判断は対象 scope の design に置く
+  - 判断半径や親 scope との所有境界に迷う場合は [authoring/scope-layering.md](authoring/scope-layering.md) と対象 `workflow_*.md` に戻して routing する
 
 ## 標準順
 
@@ -65,32 +67,43 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 - template:
   - Initiative: `spec-dock/templates/initiative/design.md`
   - Epic: `spec-dock/templates/epic/design.md`
-  - Issue: `spec-dock/templates/issue/design.md`
+  - Issue: `spec-dock/templates/issue/design.md` は compose 前 placeholder。実体の設計本文は `assurance compose` が `.assurance.json` の `authorized_profile` に従い、`spec-dock/templates/issue-profiles/<profile>/design.md` から合成する
 - template flexibility:
   - templates は完成形や準拠規格ではなく、書き始めるための最小 scaffold として扱う
+  - Issue design の placeholder は手動 authoring の開始点にしない。先に `requirement.md` を具体化し、`assurance classify --stage requirement` と `assurance compose --artifact design|all` で profile 別 design template を materialize してから本文を編集する
+  - Issue templates（共通 `requirement.md` と profile 別 `design.md` / `plan.md`）の title 行、見出し、小見出しは日本語を優先する。日本語だけで正確性が落ちる場合だけ、日本語表現の後に括弧内英語名称を併記する
   - agent は、プロジェクトの目的、作業内容、人間の理解しやすさ、エージェントの実行可能性に合わせて、項目を追加・削除・統合・並べ替えてよい
   - 不要な placeholder や該当しない節は削ってよいが、要件、設計判断、検証可能性、人間の理解に必要な情報は削らない
 
+## グレード補足（issue grade guidance）
+
+Issue design は [workflow_spec_authoring.md](workflow_spec_authoring.md) の `グレード別authoring matrix（Issue grade authoring matrix）` と `authorized_profile` を入口にします。manual escalation は design obligation を強める補助判断であり、`authorized_profile` を置き換えません。
+
+- Standard では `system-architect` などの design specialist 使用を推奨する。使わない場合は、既存 pattern で十分な理由、確認した source、skip reason、残リスクを `report.md` に残す。
+- Strict / Critical では design specialist を原則必須にする。specialist が unavailable / denied / host conflict の場合は、manual fallback として利用不可理由、代替調査、採否判断、fresh `spec-reviewer` への提示 evidence を `report.md` に残す。
+- Critical で specialist fallback が必要な場合は、blocked を基本判定にし、明示承認、risk acceptance、追加 reviewer の要否を design に固定する。
+- Delegated design draft は `draft routing` の入力 evidence であり、canonical `design.md`、phase promotion、fresh `spec-reviewer` pass、G3 の `report evidence gate` の代替ではない。
+
 ## 委任 design authoring ゲート（delegated design authoring gate）
 
-Delegated design authoring は、対象 scope の `discussions/` 直下へ flat Markdown draft / analysis / discussion-local report を直接保存できる支援です。proposal-only ではありませんが、canonical `requirement.md` / `design.md` / `plan.md` / `report.md` は main orchestrator の single-writer authority であり、sub-agent は直接編集しません。Delegated draft は evidence であり、fresh `spec-reviewer` pass の代替ではありません。
+Delegated design authoring は、対象 scope の `artifacts/` 直下へ flat Markdown draft / analysis / artifact-local report を直接保存できる支援です。proposal-only ではありませんが、canonical `requirement.md` / `design.md` / `plan.md` / `report.md` は main orchestrator の single-writer authority であり、sub-agent は直接編集しません。Delegated draft は evidence であり、fresh `spec-reviewer` pass の代替ではありません。
 
 Delegated design draft を使う場合、orchestrator は draft 生成前に次を確認します。
 
 - fresh requirement reviewer pass があり、pass 対象の `requirement.md` revision を特定できる
 - active node、scope、parent boundary、non-scope が確認済み
 - invocation contract が scope、source artifacts、allowed actions、forbidden actions、boundary、invalidation conditions を含む
-- read-only specialist consent と scope-local discussion direct-write consent は分離されている
-- allowed actions は、対象 scope の `discussions/` direct child にある naming-rule compliant Markdown 1 ファイルの新規作成に限定される。既存 proposed discussion draft の更新は static adapter contract の対象外であり、将来必要な場合は別 workflow / follow-up で narrower allowlist と追加 gate を定義する
-- filename は既存 discussion rules に従い、標準は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md` とする
+- read-only specialist consent と scope-local artifact direct-write consent は分離されている
+- allowed actions は、対象 scope の `artifacts/` direct child にある naming-rule compliant Markdown 1 ファイルの新規作成に限定される。既存 proposed artifact draft の更新は static adapter contract の対象外であり、将来必要な場合は別 workflow / follow-up で narrower allowlist と追加 gate を定義する
+- new artifact draft は runtime-owned `new artifact <type>` で作成し、返された `path=...` を正本として本文を更新する。post-run diff guard は generated filename が artifact rules（typed artifact 標準 `<ts>-<kind>-<slug>.md`、same-second collision fallback `<ts>-<nn>-<kind>-<slug>.md`、blank artifact `<ts>-<slug>.md` / `<ts>-<nn>-<slug>.md`）に一致することを確認する
 - forbidden actions は canonical `requirement.md` / `design.md` / `plan.md` / `report.md`、implementation、tests、package/config、`.agents`、`.codex`、`.github`、`.env*`、GitHub mutation、phase promotion、reviewer-pass claim、user への直接質問を含む
-- forbidden locations は per-agent directory、run/task directory、global draft store、`discussions/delegated-authoring/` を含む
+- forbidden locations は per-agent directory、run/task directory、global draft store、`discussions/delegated-authoring/`、`artifacts/delegated-authoring/` を含む
 - required design draft output contract が、requirement coverage、existing context findings、design decisions、alternatives、boundary / contract model、dependency analysis、SoR、file/module plan、migration/compatibility/rollback、observability、test strategy、ADR candidates、risks、Requirement Clarification Requests、Integration Notes を含む
-- static adapter は guarded workspace-write で scope-local `discussions/` Markdown draft を作成する。workspace-write は hard path allow-list ではなく canonical target write の許可でもない。run ごとの permission context 生成に依存せず、run は post-run diff guard pass と `report.md` ledger 記録まで adoption-ineligible とする
+- static adapter は guarded workspace-write で scope-local `artifacts/` Markdown draft を作成する。workspace-write は hard path allow-list ではなく canonical target write の許可でもない。run ごとの permission context 生成に依存せず、run は post-run diff guard pass と `report.md` ledger 記録まで adoption-ineligible とする
 
 Sub-agent-created draft は lightweight provenance として `created_by_role`、`scope_id`、`source_paths`、`intended_targets`、`adoption_status: unreviewed`、`reflected_to: []`、`diff_guard_result`、adoption ledger note を持ちます。標準 delegated draft evidence として task manifest hash、Permission Profile hash、session invocation hash、probe run id を要求しません。これらは historical evidence または明示された例外証跡としてだけ扱います。
 
-Delegated design draft を統合する場合、main orchestrator が canonical `report.md` の Evidence Adoption Ledger に採否を残し、採用部分だけ canonical `design.md` へ再記述します。Accepted ADR は architecture decision authority を持ち得ますが、discussion draft は evidence であり、implementation / phase authority は canonical docs への反映後に成立します。既存 `iss-00126` delegated-authoring manifest/Profile/probe/session artifacts は grandfathered historical evidence として残し、削除・rename・validation failure 化しません。
+Delegated design draft を統合する場合、main orchestrator が canonical `report.md` の Evidence Adoption Ledger に採否を残し、採用部分だけ canonical `design.md` へ再記述します。Accepted ADR は architecture decision authority を持ち得ますが、artifact draft は evidence であり、implementation / phase authority は canonical docs への反映後に成立します。既存 `discussions/` と `iss-00126` delegated-authoring manifest/Profile/probe/session artifacts は grandfathered historical evidence として残し、削除・rename・validation failure 化しません。
 
 Reviewer は delegated draft を含む design を review するとき、次を fail / incomplete 条件として扱います。
 
@@ -118,7 +131,7 @@ Reviewer は delegated draft を含む design を review するとき、次を f
   - 追加 / 変更 / 削除 / 移動する directory / file と目的
   - 既存テストの守備範囲
   - 移行 / 運用 / 監視で壊しうる点
-- 本文には採用結論と guardrails を残し、長い比較や生の調査ログは `discussions/` へ逃がす
+- 本文には採用結論と guardrails を残し、長い比較や生の調査ログは `artifacts/` へ分離する
 - UML / PlantUML は、人間が誤読しやすい構造・境界・責務・流れ・状態・依存を可視化する用途で使う
 - 図は本文の代替ではなく、本文で固定した設計判断を視覚的に検証する補助資料にする
 - 図を置かない場合も、期待される図が不要な理由を `N/A: reason` として残す
@@ -152,7 +165,7 @@ Reviewer は delegated draft を含む design を review するとき、次を f
 - Diagram budget:
   - Initiative / Epic は 1-3 図を目安にする
   - Issue は 0-2 図を目安にし、親 design の図を再掲しない
-  - 図が増えすぎる場合は、親 scope への昇格、`discussions/` への分離、または低価値図の削除を検討する
+  - 図が増えすぎる場合は、親 scope への昇格、`artifacts/` への分離、または低価値図の削除を検討する
 - Avoid:
   - exhaustive class / file / method diagram
   - 実装作業順序だけを表す plan 相当の図

@@ -1,7 +1,7 @@
 name = "repo-analyst"
 description = "Read-only repository analysis agent for architecture, flow, dependency, and impact mapping."
 
-model = "gpt-5.5"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "medium"
 web_search = "disabled"
 # model_context_window = 400000

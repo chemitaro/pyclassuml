@@ -9,6 +9,7 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - Scope workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
 - Spec authoring workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Scope plan playbook: [phase_plan_initiative.md](phase_plan_initiative.md), [phase_plan_epic.md](phase_plan_epic.md), [phase_plan_issue.md](phase_plan_issue.md)
+- Scope layering: [authoring/scope-layering.md](authoring/scope-layering.md)
 
 ## フェーズ契約（phase contract）
 
@@ -45,6 +46,7 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 - trace rule:
   - 各 plan item は requirement item または design decision に紐づける
   - trace できない step / issue / epic は scope creep として削るか、前 phase に戻す
+  - scope ownership や handoff authority が曖昧な場合は [authoring/scope-layering.md](authoring/scope-layering.md) と対象 `workflow_*.md` を authoritative routing として確認する
 
 ## 共有 terminology（shared terminology）
 
@@ -63,24 +65,24 @@ workflow は `workflow_initiative.md` / `workflow_epic.md` が lifecycle / gover
 
 ## 委任 plan authoring ゲート（delegated plan authoring gate）
 
-Delegated plan authoring は、対象 scope の `discussions/` 直下へ flat Markdown draft / analysis / discussion-local report を直接保存できる支援です。proposal-only ではありませんが、canonical `requirement.md` / `design.md` / `plan.md` / `report.md` は main orchestrator の single-writer authority であり、sub-agent は直接編集しません。Delegated draft は evidence であり、fresh `spec-reviewer` pass の代替ではありません。
+Delegated plan authoring は、対象 scope の `artifacts/` 直下へ flat Markdown draft / analysis / artifact-local report を直接保存できる支援です。proposal-only ではありませんが、canonical `requirement.md` / `design.md` / `plan.md` / `report.md` は main orchestrator の single-writer authority であり、sub-agent は直接編集しません。Delegated draft は evidence であり、fresh `spec-reviewer` pass の代替ではありません。
 
 Delegated plan draft を使う場合、orchestrator は draft 生成前に次を確認します。
 
 - fresh requirement reviewer pass と fresh design reviewer pass があり、pass 対象 revision を特定できる
 - design dependency analysis、file/module change plan、verification strategy、rollback / compatibility が plan 入力として確認できる
 - invocation contract が scope、source artifacts、allowed actions、forbidden actions、boundary、invalidation conditions を含む
-- read-only specialist consent と scope-local discussion direct-write consent は分離されている
-- allowed actions は、対象 scope の `discussions/` direct child にある naming-rule compliant Markdown 1 ファイルの新規作成に限定される。既存 proposed discussion draft の更新は static adapter contract の対象外であり、将来必要な場合は別 workflow / follow-up で narrower allowlist と追加 gate を定義する
-- filename は既存 discussion rules に従い、標準は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md` とする
+- read-only specialist consent と scope-local artifact direct-write consent は分離されている
+- allowed actions は、対象 scope の `artifacts/` direct child にある naming-rule compliant Markdown 1 ファイルの新規作成に限定される。既存 proposed artifact draft の更新は static adapter contract の対象外であり、将来必要な場合は別 workflow / follow-up で narrower allowlist と追加 gate を定義する
+- new artifact draft は runtime-owned `new artifact <type>` で作成し、返された `path=...` を正本として本文を更新する。post-run diff guard は generated filename が artifact rules（typed artifact 標準 `<ts>-<kind>-<slug>.md`、same-second collision fallback `<ts>-<nn>-<kind>-<slug>.md`、blank artifact `<ts>-<slug>.md` / `<ts>-<nn>-<slug>.md`）に一致することを確認する
 - forbidden actions は canonical `requirement.md` / `design.md` / `plan.md` / `report.md`、implementation、tests、package/config、`.agents`、`.codex`、`.github`、`.env*`、GitHub mutation、phase promotion、reviewer-pass claim、implementation-readiness claim、user への直接質問を含む
-- forbidden locations は per-agent directory、run/task directory、global draft store、`discussions/delegated-authoring/` を含む
+- forbidden locations は per-agent directory、run/task directory、global draft store、`discussions/delegated-authoring/`、`artifacts/delegated-authoring/` を含む
 - required plan draft output contract が、計画要約（Plan Summary）、要件 / 設計 traceability（Requirement / Design Traceability）、milestone（Milestones）、依存関係から導く実行順序（Dependency-Derived Execution Order）、Issue / step 分割（Issue / Step Slicing）、テスト戦略 mapping（Test Strategy Mapping）、review gate（Review Gates）、rollback / compatibility（Rollback / Compatibility）、docs impact（Docs Impact）、最終品質ゲート（Final Quality Gate）、plan blocker（Plan Blockers）、integration notes（Integration Notes）を含む
-- static adapter は guarded workspace-write で scope-local `discussions/` Markdown draft を作成する。workspace-write は hard path allow-list ではなく canonical target write の許可でもない。run ごとの permission context 生成に依存せず、run は post-run diff guard pass と `report.md` ledger 記録まで adoption-ineligible とする
+- static adapter は guarded workspace-write で scope-local `artifacts/` Markdown draft を作成する。workspace-write は hard path allow-list ではなく canonical target write の許可でもない。run ごとの permission context 生成に依存せず、run は post-run diff guard pass と `report.md` ledger 記録まで adoption-ineligible とする
 
 Sub-agent-created draft は lightweight provenance として `created_by_role`、`scope_id`、`source_paths`、`intended_targets`、`adoption_status: unreviewed`、`reflected_to: []`、`diff_guard_result`、adoption ledger note を持ちます。標準 delegated draft evidence として task manifest hash、Permission Profile hash、session invocation hash、probe run id を要求しません。これらは historical evidence または明示された例外証跡としてだけ扱います。
 
-Delegated plan draft を統合する場合、main orchestrator が canonical `report.md` の Evidence Adoption Ledger に採否を残し、採用部分だけ canonical `plan.md` へ再記述します。Accepted ADR は architecture decision authority を持ち得ますが、discussion draft は evidence であり、implementation / phase authority は canonical docs への反映後に成立します。既存 `iss-00126` delegated-authoring manifest/Profile/probe/session artifacts は grandfathered historical evidence として残し、削除・rename・validation failure 化しません。
+Delegated plan draft を統合する場合、main orchestrator が canonical `report.md` の Evidence Adoption Ledger に採否を残し、採用部分だけ canonical `plan.md` へ再記述します。Accepted ADR は architecture decision authority を持ち得ますが、artifact draft は evidence であり、implementation / phase authority は canonical docs への反映後に成立します。既存 `discussions/` と `iss-00126` delegated-authoring manifest/Profile/probe/session artifacts は grandfathered historical evidence として残し、削除・rename・validation failure 化しません。
 
 Reviewer は delegated draft を含む plan を review するとき、次を fail / incomplete 条件として扱います。
 

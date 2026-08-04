@@ -29,29 +29,29 @@ runtime command（scope を明示）:
 
 ```bash
 # 課題スコープ（issue scope）
-./spec-dock/scripts/spec-dock new doc adr --issue <issue-id> --title "..."
+./spec-dock/scripts/spec-dock new artifact adr --issue <issue-id> --title "..."
 
 # エピックスコープ（epic scope）
-./spec-dock/scripts/spec-dock new doc adr --epic <epic-id> --title "..."
+./spec-dock/scripts/spec-dock new artifact adr --epic <epic-id> --title "..."
 
 # イニシアチブスコープ（initiative scope）
-./spec-dock/scripts/spec-dock new doc adr --initiative <initiative-id> --title "..."
+./spec-dock/scripts/spec-dock new artifact adr --initiative <initiative-id> --title "..."
 ```
 
 生成先:
-- scope ノード配下の `discussions/`（例: `.../init-.../discussions/` / `.../epic-.../discussions/` / `.../iss-.../discussions/`）
-- ADR original は常にこの `discussions/` に残ります。mirror / sync があっても original location は変わりません。
+- scope ノード配下の `artifacts/`（例: `.../init-.../artifacts/` / `.../epic-.../artifacts/` / `.../iss-.../artifacts/`）
+- ADR original は future `artifacts/` または legacy `discussions/` 配下にありえます。mirror / sync があっても original location は変わりません。
 - ファイル名:
   - 標準: `<ts>-adr-<slug>.md`
   - same-second collision: `<ts>-<nn>-adr-<slug>.md`
 - `ts = yyyymmddthhmmssz`（UTC, lowercase `t` / `z`）
 - `nn = 01..99`
-- `doc_id` は slugless identity（`<ts>-adr` / `<ts>-<nn>-adr`）
+- `artifact_id` は slugless identity（`<ts>-adr` / `<ts>-<nn>-adr`）
 
 補足:
-- `new doc` の詳細な naming contract は [reference_naming.md](reference_naming.md) を参照してください。
+- `new artifact` の詳細な naming contract は [reference_naming.md](reference_naming.md) を参照してください。
 - legacy sequential ADR / discussion docs は grandfathered で、自動 rename しません。
-- `rules.md` のような unrelated files は無視されますが、malformed discussion filename candidate は explicit validation error です。
+- `rules.md` のような unrelated files は無視されますが、malformed artifact filename candidate は explicit validation error です。
 
 方針:
 - Decision は最初は **TBD** で良い（議論の叩き台として先に置く）

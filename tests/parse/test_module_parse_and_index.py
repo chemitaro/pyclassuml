@@ -1633,6 +1633,33 @@ def test_syntax_error_dependency_is_excluded_from_parsed_modules_and_indexes(tmp
     assert "pkg/broken.py" in diagnostic.message
 
 
+def test_parse_target_set_keeps_deeper_syntax_diagnostic_with_depth_one(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    package = project / "pkg"
+    seed = write_file(package / "a.py", "from . import direct\nclass A: pass\n")
+    write_file(package / "direct.py", "from . import deeper\nclass Direct: pass\n")
+    write_file(package / "deeper.py", "class Broken(:\n")
+
+    result = parse_target_set(
+        target_set(seed),
+        context(project, package_root=package),
+        AnalysisConfig(depth=1),
+    )
+
+    assert [module.module_path for module in result.parsed_modules] == [
+        Path("pkg/a.py"),
+        Path("pkg/direct.py"),
+    ]
+    assert len(result.diagnostics) == 1
+    diagnostic = result.diagnostics[0]
+    assert diagnostic.code == "bad_syntax"
+    assert diagnostic.origin_seam is OriginSeam.PARSE
+    assert diagnostic.failure_reason is FailureReason.STRICT_SYNTAX_ERROR
+    assert "pkg/deeper.py" in diagnostic.message
+
+
 def test_ignored_dependency_candidate_is_not_parsed_and_is_counted(tmp_path: Path) -> None:
     project = tmp_path / "project"
     package = project / "pkg"

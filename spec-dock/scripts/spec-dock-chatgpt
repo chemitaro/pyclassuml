@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Thin runtime entrypoint for spec-dock ChatGPT planning."""
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_RUNTIME_DIR = _SCRIPT_DIR / "spec_dock_runtime"
+_APP_PATH = _RUNTIME_DIR / "chatgpt_app.py"
+if not _APP_PATH.is_file():
+    raise SystemExit("error: spec-dock ChatGPT runtime module missing; run 'spec-dock update'")
+
+sys.path.insert(0, str(_SCRIPT_DIR))
+
+from spec_dock_runtime.chatgpt_app import main  # noqa: E402, I001
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

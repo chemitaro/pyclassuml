@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-import argparse
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+import subprocess
+from typing import TYPE_CHECKING
 
-from ..application.contracts import UseCases
-from ..presentation.contracts import CliText
-from .contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.commands.contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.presentation.contracts import CliText
 
+if TYPE_CHECKING:
+    import argparse
+
+    from spec_dock_runtime.application.contracts import UseCases
 
 UPSTREAM_SOURCE = "git+https://github.com/chemitaro/spec-dock"
 
@@ -66,9 +69,7 @@ def _run_update(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
             exit_code=127,
             text=CliText(
                 stdout_lines=[],
-                stderr_lines=[
-                    "error: uvx could not be executed. Install uv/uvx or ensure uvx is on PATH, then retry."
-                ],
+                stderr_lines=["error: uvx could not be executed. Install uv/uvx or ensure uvx is on PATH, then retry."],
                 warnings=[],
             ),
         )

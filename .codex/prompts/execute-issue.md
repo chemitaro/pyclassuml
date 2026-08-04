@@ -65,8 +65,9 @@ When implementation is ready:
 - Use each step's card-style nested `具体テストケース一覧`, closure ids, close
   conditions, verification commands, alternative evidence paths, and report
   evidence destinations.
-- Preserve the `1 implementation step = 1 review scope = 1 commit`
-  contract unless the approved issue plan is amended and re-reviewed first.
+- Preserve reviewable commit history through the approved plan's `commit候補`
+  or approved-no-op gates. Review scope and commit scope may match, but are not
+  defined as always identical.
 - If implementation reveals a new specification, bug class, external contract
   risk, or closure obligation outside the approved step contract, stop for plan
   amendment and re-review instead of closing it with report evidence alone.

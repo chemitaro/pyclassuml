@@ -1,19 +1,28 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ..application.contracts import CheckDepsRequest, MutateDepsError, MutateDepsRequest, TargetRef, UseCases
-from ..presentation.cli_text import (
+from spec_dock_runtime.application.contracts import (
+    CheckDepsRequest,
+    MutateDepsError,
+    MutateDepsRequest,
+    TargetRef,
+    UseCases,
+)
+from spec_dock_runtime.commands.contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.commands.node_id_normalizer import normalize_node_id
+from spec_dock_runtime.commands.targets import parse_explicit_target_flags
+from spec_dock_runtime.presentation.cli_text import (
     render_deps_check_text,
     render_deps_mutation_error_text,
     render_deps_mutation_text,
 )
-from ..presentation.contracts import CliText
-from ..presentation.json_state import render_deps_check_json
-from .contracts import CommandArgs, CommandOutcome, CommandSpec
-from .node_id_normalizer import normalize_node_id
-from .targets import parse_explicit_target_flags
+from spec_dock_runtime.presentation.contracts import CliText
+from spec_dock_runtime.presentation.json_state import render_deps_check_json
+
+if TYPE_CHECKING:
+    import argparse
 
 
 @dataclass(frozen=True)
@@ -71,13 +80,19 @@ def _add_deps_add_arguments(parser: argparse.ArgumentParser) -> None:
         "--from",
         dest="from_id",
         required=True,
-        help="Issue node id for dependency source (e.g. iss-00123 or iss-local-00001)",
+        help=(
+            "Existing initiative, epic, or issue node id for dependency source "
+            "(e.g. init-00123 / epic-00123 / iss-00123)"
+        ),
     )
     parser.add_argument(
         "--to",
         dest="to_id",
         required=True,
-        help="Issue node id for dependency target (e.g. iss-00124 or iss-local-00002)",
+        help=(
+            "Existing initiative, epic, or issue node id for dependency target "
+            "(e.g. init-00124 / epic-00124 / iss-00124)"
+        ),
     )
 
 

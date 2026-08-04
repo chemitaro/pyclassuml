@@ -1,13 +1,9 @@
 ---
 name: dev-coder
 description: Implementation agent for approved code changes with minimal necessary tests and tight scope control.
-model: gpt-5.4
 tools: ['read', 'search', 'edit', 'execute', 'todo']
 user-invocable: false
 ---
-
-Reasoning profile:
-- Target depth: high.
 
 Role: Dev Coder (Implementer).
 

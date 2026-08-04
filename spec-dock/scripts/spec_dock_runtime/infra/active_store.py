@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
+import shutil
 from typing import Any
 
-from ..domain.authority import (
+from spec_dock_runtime.domain.authority import (
     GRANT_IMPLEMENTATION_START,
     GRANT_ISSUE_FINISH,
     evaluate_authority_gate,
@@ -13,14 +13,14 @@ from ..domain.authority import (
     load_evidence_adoption_ledger_entries,
     validate_delegated_authority_artifact,
 )
-from .clock import now_iso
-from .contracts import (
+from spec_dock_runtime.infra.clock import now_iso
+from spec_dock_runtime.infra.contracts import (
     ActiveManifest,
     ActiveManifestEntry,
     ActiveManifestLoadResult,
     ActiveStateSnapshot,
 )
-from .json_store import load_json, write_json
+from spec_dock_runtime.infra.json_store import load_json, write_json
 
 _AGENT_DIRNAME = ".agent"
 _LEGACY_WORK_DIRNAME = ".work"
@@ -129,11 +129,13 @@ def _active_placeholder_dir(specdock_dir: Path, layer: str) -> Path:
     return path
 
 
-def _unlink_any(path: Path) -> None:
+def _unlink_any(path: Path, *, allow_directory: bool = True) -> None:
     if path.is_symlink() or path.is_file():
         path.unlink(missing_ok=True)
         return
     if path.is_dir():
+        if not allow_directory:
+            raise RuntimeError(f"Refusing to remove directory at generated file path: {path}")
         shutil.rmtree(path)
 
 
@@ -144,12 +146,12 @@ def _write_pathfile(active_dir: Path, name: str, target: Path) -> None:
 
 
 def _render_context_pack(manifest: ActiveManifest | None, *, repo_root: Path | None = None) -> str:
-    has_init = manifest is not None and manifest.initiative is not None
-    has_epic = manifest is not None and manifest.epic is not None
-    has_issue = manifest is not None and manifest.issue is not None
-    init_id = manifest.initiative.id if has_init else "(none)"
-    epic_id = manifest.epic.id if has_epic else "(none)"
-    issue_id = manifest.issue.id if has_issue else "(none)"
+    initiative = manifest.initiative if manifest is not None else None
+    epic = manifest.epic if manifest is not None else None
+    issue = manifest.issue if manifest is not None else None
+    init_id = initiative.id if initiative is not None else "(none)"
+    epic_id = epic.id if epic is not None else "(none)"
+    issue_id = issue.id if issue is not None else "(none)"
 
     lines: list[str] = []
     lines.append("# Context Pack (generated)")
@@ -161,11 +163,13 @@ def _render_context_pack(manifest: ActiveManifest | None, *, repo_root: Path | N
     lines.append("")
     lines.append("## Authority")
     lines.append("- source: `spec-dock/.agent/active.json`")
-    lines.append("- rule: proposed or missing authority cannot authorize implementation, issue ready, issue finish, or phase completion.")
+    lines.append(
+        "- rule: proposed or missing authority cannot authorize implementation, issue ready, issue finish, or phase completion."
+    )
     for label, entry in (
-        ("initiative", manifest.initiative if has_init and manifest is not None else None),
-        ("epic", manifest.epic if has_epic and manifest is not None else None),
-        ("issue", manifest.issue if has_issue and manifest is not None else None),
+        ("initiative", initiative),
+        ("epic", epic),
+        ("issue", issue),
     ):
         if entry is None:
             lines.append(f"- {label}: authority=(none), grants=[]")
@@ -213,19 +217,19 @@ def _render_context_pack(manifest: ActiveManifest | None, *, repo_root: Path | N
         "- `spec-dock/active/context-pack.md` is human guidance that mirrors this contract; it is not the sole source of truth."
     )
     lines.append("- Then follow the active documents:")
-    if has_init:
+    if initiative is not None:
         lines.append("- `spec-dock/active/initiative/requirement.md`")
         lines.append("- `spec-dock/active/initiative/design.md`")
         lines.append("- `spec-dock/active/initiative/plan.md`")
     else:
         lines.append("- `spec-dock/active/initiative/README.md`")
-    if has_epic:
+    if epic is not None:
         lines.append("- `spec-dock/active/epic/requirement.md`")
         lines.append("- `spec-dock/active/epic/design.md`")
         lines.append("- `spec-dock/active/epic/plan.md`")
     else:
         lines.append("- `spec-dock/active/epic/README.md`")
-    if has_issue:
+    if issue is not None:
         lines.append("- `spec-dock/active/issue/requirement.md`")
         lines.append("- `spec-dock/active/issue/design.md`")
         lines.append("- `spec-dock/active/issue/plan.md`")
@@ -332,8 +336,19 @@ def apply_active_pointers(specdock_dir: Path, manifest: ActiveManifest | None, r
     active_dir = specdock_dir / _ACTIVE_DIRNAME
     active_dir.mkdir(parents=True, exist_ok=True)
 
-    for name in ("initiative", "epic", "issue", "context-pack.md", "initiative.path", "epic.path", "issue.path"):
-        _unlink_any(active_dir / name)
+    generated_file_names = {"context-pack.md", "current-runbook.json", "current-runbook.md"}
+    for name in (
+        "initiative",
+        "epic",
+        "issue",
+        "context-pack.md",
+        "current-runbook.json",
+        "current-runbook.md",
+        "initiative.path",
+        "epic.path",
+        "issue.path",
+    ):
+        _unlink_any(active_dir / name, allow_directory=name not in generated_file_names)
 
     def _target_dir(layer: str) -> Path:
         if manifest is None:
@@ -345,7 +360,7 @@ def apply_active_pointers(specdock_dir: Path, manifest: ActiveManifest | None, r
         link = active_dir / name
         rel_target = os.path.relpath(target, start=active_dir)
         try:
-            os.symlink(rel_target, link)
+            Path(link).symlink_to(rel_target)
         except OSError:
             _write_pathfile(active_dir, name, target)
 
@@ -384,8 +399,8 @@ def snapshot_current_state(specdock_dir: Path) -> ActiveStateSnapshot:
         if not path.exists():
             managed_agent_state[name] = None
             continue
-        _loaded = load_json(path)
-        if not isinstance(_loaded, dict):
+        loaded = load_json(path)
+        if not isinstance(loaded, dict):
             raise RuntimeError(f"invalid JSON shape (expected object): {path}")
         managed_agent_state[name] = path.read_text(encoding="utf-8")
 

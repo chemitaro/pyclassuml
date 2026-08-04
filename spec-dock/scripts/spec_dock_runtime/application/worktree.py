@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import re
+from dataclasses import dataclass
 from pathlib import Path
+import re
+from typing import TYPE_CHECKING
 
-from .contracts import (
+from spec_dock_runtime.application.contracts import (
     GitWorktreeRecord,
     WorktreeCommandError,
     WorktreeCreateRequest,
@@ -16,8 +18,10 @@ from .contracts import (
     WorktreeShowRequest,
     WorktreeShowResult,
 )
-from .ports import Ports
+from spec_dock_runtime.application.worktree_target import resolve_worktree_target
 
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
 
 _LABEL_RE = re.compile(r"^[a-z0-9-]+$")
 _MAX_ATTEMPTS = 10000
@@ -27,7 +31,15 @@ _RETRYABLE_GIT_WORKTREE_ERRORS = (
     "a branch named",
 )
 _WORKTREE_ROOT_ENV = "SPEC_DOCK_WORKTREE_ROOT"
-_WORKTREE_ROOT_EXAMPLE = "export SPEC_DOCK_WORKTREE_ROOT=\"$HOME/workspace/worktrees\""
+_WORKTREE_ROOT_EXAMPLE = 'export SPEC_DOCK_WORKTREE_ROOT="$HOME/workspace/worktrees"'
+
+
+@dataclass(frozen=True)
+class _WorktreeClassificationContext:
+    central_root: Path | None
+    namespace: Path | None
+    available: bool
+    reason: str
 
 
 def worktree_create(req: WorktreeCreateRequest, ports: Ports) -> WorktreeCreateResult:
@@ -143,14 +155,14 @@ def worktree_list(req: WorktreeListRequest, ports: Ports) -> WorktreeListResult:
 def worktree_show(req: WorktreeShowRequest, ports: Ports) -> WorktreeShowResult:
     _require_repo_and_gateways(ports, command="worktree_show")
     inventory = _build_inventory(ports, command="show", target=req.target)
-    worktree = _resolve_target(req.target, inventory, command="show")
+    worktree = resolve_worktree_target(req.target, inventory, command="show")
     return WorktreeShowResult(target=req.target, worktree=worktree, warnings=[])
 
 
 def worktree_remove(req: WorktreeRemoveRequest, ports: Ports) -> WorktreeRemoveResult:
     _require_repo_and_gateways(ports, command="worktree_remove", filesystem_required=True)
     inventory = _build_inventory(ports, command="remove", target=req.target)
-    worktree = _resolve_target(req.target, inventory, command="remove")
+    worktree = resolve_worktree_target(req.target, inventory, command="remove")
     blockers = _non_bypassable_remove_blockers(worktree)
     if blockers:
         raise WorktreeCommandError(
@@ -165,8 +177,17 @@ def worktree_remove(req: WorktreeRemoveRequest, ports: Ports) -> WorktreeRemoveR
     assert ports.repo_root is not None
     assert ports.git_gateway is not None
     assert ports.filesystem_gateway is not None
-    records = _git_worktree_list(ports, command="remove", target=req.target)
-    if not _record_still_exists(worktree, records):
+    refreshed_inventory = _build_inventory_from_records(
+        ports,
+        records=_git_worktree_list(ports, command="remove", target=req.target),
+        command="remove",
+        target=req.target,
+    )
+    try:
+        refreshed_worktree = resolve_worktree_target(req.target, refreshed_inventory, command="remove")
+    except WorktreeCommandError as exc:
+        if exc.code != "target_not_found":
+            raise
         raise WorktreeCommandError(
             code="remove_blocked",
             message="worktree record is no longer present",
@@ -174,33 +195,52 @@ def worktree_remove(req: WorktreeRemoveRequest, ports: Ports) -> WorktreeRemoveR
             target=req.target,
             worktree=worktree,
             remove_blockers=["record_missing"],
+        ) from exc
+    if _canonical_path(refreshed_worktree.path) != _canonical_path(worktree.path):
+        raise WorktreeCommandError(
+            code="remove_blocked",
+            message="worktree record changed before removal",
+            command="remove",
+            target=req.target,
+            worktree=worktree,
+            remove_blockers=["record_missing"],
         )
-    _guard_remove_containment(worktree, inventory, ports.repo_root, command="remove", target=req.target)
+    blockers = _non_bypassable_remove_blockers(refreshed_worktree)
+    if blockers:
+        raise WorktreeCommandError(
+            code="remove_blocked",
+            message="worktree remove blocked",
+            command="remove",
+            target=req.target,
+            worktree=refreshed_worktree,
+            remove_blockers=blockers,
+        )
+    _guard_remove_containment(refreshed_worktree, refreshed_inventory, ports, command="remove", target=req.target)
 
     try:
-        ports.git_gateway.remove_worktree(ports.repo_root, path=worktree.path, force=req.force)
+        ports.git_gateway.remove_worktree(ports.repo_root, path=refreshed_worktree.path, force=True)
     except RuntimeError as exc:
         raise WorktreeCommandError(
             code="git_worktree_remove_failed",
             message="git worktree remove failed",
             command="remove",
             target=req.target,
-            worktree=worktree,
+            worktree=refreshed_worktree,
             git_error=str(exc),
         ) from exc
 
     removed_directory = True
     try:
-        _guard_remove_containment(worktree, inventory, ports.repo_root, command="remove", target=req.target)
-        if ports.filesystem_gateway.path_exists(worktree.path):
-            ports.filesystem_gateway.remove_tree(worktree.path)
+        _guard_remove_containment(refreshed_worktree, refreshed_inventory, ports, command="remove", target=req.target)
+        if ports.filesystem_gateway.path_exists(refreshed_worktree.path):
+            ports.filesystem_gateway.remove_target(refreshed_worktree.path)
     except RuntimeError as exc:
         raise WorktreeCommandError(
             code="post_remove_cleanup_failed",
-            message="post-remove directory cleanup failed",
+            message="post-remove target cleanup failed",
             command="remove",
             target=req.target,
-            worktree=worktree,
+            worktree=refreshed_worktree,
             git_error=str(exc),
             removed_record=True,
             removed_directory=False,
@@ -208,7 +248,7 @@ def worktree_remove(req: WorktreeRemoveRequest, ports: Ports) -> WorktreeRemoveR
 
     return WorktreeRemoveResult(
         target=req.target,
-        resolved_target=worktree,
+        resolved_target=refreshed_worktree,
         removed_record=True,
         removed_directory=removed_directory,
         branch_deleted=False,
@@ -244,31 +284,6 @@ def _resolve_worktree_root(ports: Ports) -> Path:
             f"for example: {_WORKTREE_ROOT_EXAMPLE}"
         )
     return _validate_worktree_root(raw_value)
-
-
-def _resolve_worktree_root_for_command(ports: Ports, *, command: str, target: str | None = None) -> Path:
-    assert ports.environment_gateway is not None
-    raw_value = ports.environment_gateway.getenv(_WORKTREE_ROOT_ENV)
-    if raw_value is None or not raw_value.strip():
-        raise WorktreeCommandError(
-            code="worktree_root_required",
-            message=(
-                f"{_WORKTREE_ROOT_ENV} is required for worktree {command}. "
-                "Set it to an absolute directory for spec-dock managed worktrees, "
-                f"for example: {_WORKTREE_ROOT_EXAMPLE}"
-            ),
-            command=command,
-            target=target,
-        )
-    try:
-        return _validate_worktree_root(raw_value)
-    except RuntimeError as exc:
-        raise WorktreeCommandError(
-            code="invalid_worktree_root",
-            message=str(exc),
-            command=command,
-            target=target,
-        ) from exc
 
 
 def _validate_worktree_root(raw_value: str) -> Path:
@@ -343,8 +358,17 @@ def _git_worktree_list(ports: Ports, *, command: str, target: str | None = None)
 
 
 def _build_inventory(ports: Ports, *, command: str, target: str | None = None) -> list[WorktreeRecordView]:
-    central_root = _resolve_worktree_root_for_command(ports, command=command, target=target)
     records = _git_worktree_list(ports, command=command, target=target)
+    return _build_inventory_from_records(ports, records=records, command=command, target=target)
+
+
+def _build_inventory_from_records(
+    ports: Ports,
+    *,
+    records: list[GitWorktreeRecord],
+    command: str,
+    target: str | None,
+) -> list[WorktreeRecordView]:
     if not records:
         raise WorktreeCommandError(
             code="git_worktree_list_failed",
@@ -354,21 +378,25 @@ def _build_inventory(ports: Ports, *, command: str, target: str | None = None) -
         )
     assert ports.repo_root is not None
     main_record = records[0]
-    namespace = central_root / main_record.path.name
+    classification = _worktree_classification_context(ports, main_record=main_record)
     ordered = sorted(enumerate(records), key=lambda item: (_canonical_path(item[1].path), item[0]))
     raw_ids: list[str] = []
     for _, record in ordered:
-        raw_ids.append(_raw_worktree_id(record, main_record=main_record, namespace=namespace))
+        raw_ids.append(_raw_worktree_id(record, main_record=main_record, classification=classification))
     counts: dict[str, int] = {}
     views_by_index: dict[int, WorktreeRecordView] = {}
-    for (original_index, record), raw_id in zip(ordered, raw_ids):
+    for (original_index, record), raw_id in zip(ordered, raw_ids, strict=True):
         counts[raw_id] = counts.get(raw_id, 0) + 1
         stable_id = raw_id if counts[raw_id] == 1 else f"{raw_id}~{counts[raw_id]}"
         main = _canonical_path(record.path) == _canonical_path(main_record.path)
         current = _canonical_path(record.path) == _canonical_path(ports.repo_root)
-        managed = _is_managed_path(record.path, namespace)
-        path_exists = record.path.exists()
-        blockers = _remove_blockers(record, managed=managed, main=main, current=current, path_exists=path_exists)
+        managed = (
+            classification.available
+            and classification.namespace is not None
+            and _is_managed_path(record.path, classification.namespace)
+        )
+        path_exists = _path_exists(record.path)
+        blockers = _remove_blockers(record, main=main, current=current, path_exists=path_exists)
         views_by_index[original_index] = WorktreeRecordView(
             id=stable_id,
             path=record.path,
@@ -382,17 +410,79 @@ def _build_inventory(ports: Ports, *, command: str, target: str | None = None) -
             record_exists=True,
             removable=not blockers,
             remove_blockers=blockers,
+            managed_classification_available=classification.available,
+            classification_reason=classification.reason,
+            origin=_worktree_origin(managed=managed, classification=classification),
         )
     return [views_by_index[index] for index in range(len(records))]
 
 
-def _raw_worktree_id(record: GitWorktreeRecord, *, main_record: GitWorktreeRecord, namespace: Path) -> str:
+def _worktree_classification_context(ports: Ports, *, main_record: GitWorktreeRecord) -> _WorktreeClassificationContext:
+    assert ports.environment_gateway is not None
+    raw_value = ports.environment_gateway.getenv(_WORKTREE_ROOT_ENV)
+    if raw_value is None:
+        return _WorktreeClassificationContext(
+            central_root=None,
+            namespace=None,
+            available=False,
+            reason="root_missing",
+        )
+    if not raw_value.strip():
+        return _WorktreeClassificationContext(
+            central_root=None,
+            namespace=None,
+            available=False,
+            reason="root_blank",
+        )
+    try:
+        central_root = _validate_worktree_root(raw_value)
+    except RuntimeError:
+        return _WorktreeClassificationContext(
+            central_root=None,
+            namespace=None,
+            available=False,
+            reason="root_invalid",
+        )
+    namespace = central_root / main_record.path.name
+    if namespace.is_symlink():
+        return _WorktreeClassificationContext(
+            central_root=central_root,
+            namespace=namespace,
+            available=False,
+            reason="namespace_symlink",
+        )
+    return _WorktreeClassificationContext(
+        central_root=central_root,
+        namespace=namespace,
+        available=True,
+        reason="root_valid",
+    )
+
+
+def _worktree_origin(*, managed: bool, classification: _WorktreeClassificationContext) -> str:
+    if not classification.available:
+        return "classification_unavailable"
+    return "spec_dock_managed" if managed else "external"
+
+
+def _raw_worktree_id(
+    record: GitWorktreeRecord,
+    *,
+    main_record: GitWorktreeRecord,
+    classification: _WorktreeClassificationContext,
+) -> str:
     if _canonical_path(record.path) == _canonical_path(main_record.path):
         return "main"
     basename = record.path.name
     repo_prefix = f"{main_record.path.name}-"
-    if _is_managed_path(record.path, namespace) and basename.startswith(repo_prefix) and len(basename) > len(repo_prefix):
-        return basename[len(repo_prefix):]
+    if (
+        classification.available
+        and classification.namespace is not None
+        and _is_managed_path(record.path, classification.namespace)
+        and basename.startswith(repo_prefix)
+        and len(basename) > len(repo_prefix)
+    ):
+        return basename[len(repo_prefix) :]
     return basename
 
 
@@ -412,17 +502,24 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return False
 
 
+def _path_exists(path: Path) -> bool:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+    return True
+
+
 def _remove_blockers(
     record: GitWorktreeRecord,
     *,
-    managed: bool,
     main: bool,
     current: bool,
     path_exists: bool,
 ) -> list[str]:
     blockers: list[str] = []
-    if not managed:
-        blockers.append("unmanaged")
     if main:
         blockers.append("main_worktree")
     if current:
@@ -431,8 +528,6 @@ def _remove_blockers(
         blockers.append("path_missing")
     if record.bare:
         blockers.append("bare_worktree")
-    if record.locked:
-        blockers.append("locked")
     return blockers
 
 
@@ -440,80 +535,34 @@ def _non_bypassable_remove_blockers(worktree: WorktreeRecordView) -> list[str]:
     return [
         blocker
         for blocker in worktree.remove_blockers
-        if blocker in {"unmanaged", "main_worktree", "current_worktree", "path_missing", "record_missing", "bare_worktree"}
+        if blocker in {"main_worktree", "current_worktree", "path_missing", "record_missing", "bare_worktree"}
     ]
-
-
-def _resolve_target(target: str, inventory: list[WorktreeRecordView], *, command: str) -> WorktreeRecordView:
-    target_path = Path(target).expanduser()
-    target_canonical = _canonical_path(target_path) if target_path.is_absolute() else None
-    id_matches = [worktree for worktree in inventory if worktree.id == target]
-    if len(id_matches) == 1:
-        return id_matches[0]
-    matches: list[WorktreeRecordView] = []
-    for worktree in inventory:
-        forms = {worktree.basename}
-        if target_canonical is not None and _canonical_path(worktree.path) == target_canonical:
-            forms.add(target)
-        if target in forms:
-            matches.append(worktree)
-    unique = {_canonical_path(item.path): item for item in matches}
-    matches = list(unique.values())
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        raise WorktreeCommandError(
-            code="ambiguous_target",
-            message=f"ambiguous worktree target: {target}",
-            command=command,
-            target=target,
-            candidates=matches,
-        )
-    if any(record.branch == target for record in inventory):
-        raise WorktreeCommandError(
-            code="unsupported_branch_target",
-            message=f"worktree target must be id, absolute path, or basename, not branch: {target}",
-            command=command,
-            target=target,
-        )
-    raise WorktreeCommandError(
-        code="target_not_found",
-        message=f"worktree target not found: {target}",
-        command=command,
-        target=target,
-    )
-
-
-def _record_still_exists(worktree: WorktreeRecordView, records: list[GitWorktreeRecord]) -> bool:
-    target = _canonical_path(worktree.path)
-    return any(_canonical_path(record.path) == target for record in records)
 
 
 def _guard_remove_containment(
     worktree: WorktreeRecordView,
     inventory: list[WorktreeRecordView],
-    repo_root: Path,
+    ports: Ports,
     *,
     command: str,
     target: str,
 ) -> None:
+    assert ports.repo_root is not None
     main = next((item for item in inventory if item.main), None)
     if main is None:
         raise RuntimeError("main worktree record is missing")
-    namespace = worktree.path.parent
     target_path = Path(_canonical_path(worktree.path))
-    namespace_path = Path(_canonical_path(namespace))
     blocked: list[str] = []
-    if namespace.is_symlink():
-        blocked.append("outside_managed_namespace")
-    if not _is_relative_to(target_path, namespace_path) or target_path == namespace_path:
-        blocked.append("outside_managed_namespace")
-    if target_path == Path(_canonical_path(repo_root)):
+    if target_path == Path(_canonical_path(ports.repo_root)):
         blocked.append("current_worktree")
     if target_path == Path(_canonical_path(main.path)):
         blocked.append("main_worktree")
-    if not worktree.managed:
-        blocked.append("unmanaged")
+    for protected_path in _protected_cleanup_paths(ports, main=main):
+        protected_target = Path(_canonical_path(protected_path))
+        if target_path == protected_target or _is_relative_to(protected_target, target_path):
+            blocked.append("protected_cleanup_path")
+        if protected_path.is_symlink() and _is_relative_to(Path(worktree.path), protected_path):
+            blocked.append("protected_cleanup_path")
     if worktree.main:
         blocked.append("main_worktree")
     if worktree.current:
@@ -528,6 +577,17 @@ def _guard_remove_containment(
             worktree=worktree,
             remove_blockers=deduped,
         )
+
+
+def _protected_cleanup_paths(ports: Ports, *, main: WorktreeRecordView) -> list[Path]:
+    main_record = GitWorktreeRecord(path=main.path, head=main.head, branch=main.branch)
+    classification = _worktree_classification_context(ports, main_record=main_record)
+    paths: list[Path] = []
+    if classification.central_root is not None:
+        paths.append(classification.central_root)
+    if classification.namespace is not None:
+        paths.append(classification.namespace)
+    return paths
 
 
 def _is_retryable_worktree_add_error(message: str) -> bool:
@@ -557,9 +617,4 @@ def _artifact_state(
         branch_exists = "unknown"
     path_exists = worktree_path.exists()
     record_exists = _canonical_path(worktree_path) in record_paths
-    return (
-        "artifact_state="
-        f"path_exists:{path_exists},"
-        f"branch_exists:{branch_exists},"
-        f"record_exists:{record_exists}"
-    )
+    return f"artifact_state=path_exists:{path_exists},branch_exists:{branch_exists},record_exists:{record_exists}"
