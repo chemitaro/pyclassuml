@@ -27,9 +27,10 @@ ID: "epic-00002"
 
 ## 承認済みの範囲外補正 Issue
 - `iss-00044-diff-default-depth` は、`diff` のdefault depthをCLI/configのresolverで補正するための、M1計画外のcorrective issueとする。
+- `iss-00045-diff-implicit-base-safety` は、`iss-00036-diff-default-branch-base` で導入したimplicit base解決を、実運用で確認された巨大履歴走査から保護するための、M1計画外のcorrective issueとする。
 - 承認根拠はsource task delegation `019fcba8-ca5e-71d2-a6a7-ddec18085eff` と最新のユーザー指示である。
-- 本Issueのclosure ownerは `iss-00044` のcanonical `requirement.md` / `design.md` / `plan.md` / `report.md` とする。
-- 本Issueは既存M1の6 Issue closureに含めず、E-RQおよびM1 closureの定義を変更しない。
+- 各corrective issueのclosure ownerは、それぞれのcanonical `requirement.md` / `design.md` / `plan.md` / `report.md` とする。
+- これらのIssueは既存M1の6 Issue closureに含めず、E-RQおよびM1 closureの定義を変更しない。
 
 ## Issue 一覧（順序 / tranche 付き）
 1. `iss-00007-model-execution-contracts`

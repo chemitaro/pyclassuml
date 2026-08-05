@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "type": "issue",
+  "id": "iss-00045",
+  "title": "Diff Implicit Base Safety",
+  "slug": "diff-implicit-base-safety",
+  "created_at": "2026-08-05T16:39:18+09:00",
+  "updated_at": "2026-08-05T16:39:18+09:00",
+  "parent_id": "epic-00002",
+  "initiative_id": "init-00001",
+  "epic_id": "epic-00002",
+  "_spec_dock": {
+    "managed": true,
+    "do_not_edit": true,
+    "edit_via": "spec-dock"
+  },
+  "github": {
+    "issue_number": 45,
+    "repo_owner": "chemitaro",
+    "repo_name": "pyclassuml"
+  }
+}
