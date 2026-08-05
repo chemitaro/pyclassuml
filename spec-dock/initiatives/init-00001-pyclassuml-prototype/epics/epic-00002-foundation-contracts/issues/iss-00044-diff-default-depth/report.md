@@ -615,13 +615,13 @@ pass (no output)
 | S01 | pre-implementation spec review #13 | spec-reviewer | fresh | failed | no | blocked / follow-up required | #13 retryでproduct CLI grade rationaleとtc-010 closureを指摘。D-013で修正 |
 | S01 | pre-implementation spec review #14 | spec-reviewer | fresh | failed | no | blocked / follow-up required | Standard profileのStrict trigger、policy authority、tc-010個別closure不足を指摘。D-014で記録 |
 | S01 | pre-implementation spec review #15 | spec-reviewer | fresh | pending | no | blocked / review required | #14 P1解消後に正式Strict/policy route、canonical docs、assurance binding、tc-010 closureを再確認 |
-| S01 | code review | code-reviewer | not_started | not_started | N/A | blocked | source未実装 |
-| S01 | QA review | qa-reviewer | not_started | not_started | N/A | blocked | source/test未実装 |
+| S01 | code review | code-reviewer | current | passed | no | local implementation gate pass | findingsなし。focused current snapshotを独立確認 |
+| S01 | QA review | qa-reviewer | current | passed | no | local QA gate pass; P2 follow-upあり | full 473、focused config/app 153、app generate/diff 83、changed-path Ruff、diff check、SpecDock再検証を確認。scope感度とinactive対称性は追加testで補強し、非canonical projectionのみfollow-up |
 
 #### ステップ commit ゲート（Step Commit Gate）
 | ステップ（step） | クロージャ状態（closure state） | コミット範囲（commit scope） | コミットハッシュ / 最終台帳（commit hash / final ledger） | コミット後 clean 確認（post-commit clean check） | 差分なし根拠（no-op rationale） | 差分なし確認済み契約 / ファイル（no-op checked contracts / files） | 差分なし diff-clean コマンド（no-op diff-clean command） | 差分なし read-only 確認（no-op read-only confirmation） |
 |---|---|---|---|---|---|---|---|---|
-| S01 | not_started / no commit by instruction | no commit | none | not applicable; worktree intentionally retains user/managed diffs | implementation未開始、commit/push/merge禁止 | issue docs + assurance binding checked | `git diff --check` -> pass | no commit operation performed |
+| S01 | completed locally; formal promotion pending | `118b7d6` implementation + `a8f23ae` report | `118b7d6`, `a8f23ae` | `.serena/project.yml`の既存Mのみ。push/merge/PRなし | D-016 bounded admission下で実装と報告をコミット | source/tests/README/Issue docs/assurance binding checked | `git diff HEAD~2..HEAD --check` -> pass | protected skill status空、source boundary差分なし |
 
 #### 変更したファイル
 - `spec-dock/initiatives/init-00001-pyclassuml-prototype/epics/epic-00002-foundation-contracts/issues/iss-00044-diff-default-depth/requirement.md` - canonical requirement and INV/EC traceability.
@@ -689,7 +689,7 @@ S00後の再確認では、protected skillのstatusは空、`.serena/project.yml
 ### 最終 QA ゲート（Final QA Gate）
 | レビュアー（reviewer） | 範囲 | 統合テスト判断（integration test decision） | 証跡（evidence） | 結果（result） |
 |---|---|---|---|---|
-| qa-reviewer | whole issue obligation coverage | app/config integration and full-suite evidence completed | `uv run pytest -q` 472 passed、app generate/diff 83 passed、changed-path Ruff check pass、`git diff --check` pass。SpecDock final refreshも全成功 | provisional; fresh re-review result pending |
+| qa-reviewer | whole issue obligation coverage | app/config integration and full-suite evidence completed | `uv run pytest -q` 473 passed、focused config/app 153 passed、app generate/diff 83 passed、changed-path Ruff check pass、`git diff --check` pass。scope除外assertとinactive schema対称testを追加。SpecDock final refreshも全成功。P2は非canonical projectionのみ | pass |
 
 ### 最終コードレビューゲート（Final Code Review Gate）
 | レビュアー（reviewer） | 範囲 | 指摘 / 修正（findings / fixes） | 再 review 回数（re-review count） | 結果（result） |
@@ -749,7 +749,7 @@ S00後の再確認では、protected skillのstatusは空、`.serena/project.yml
 ### 検証結果
 
 - 実装前の意図したbaselineは、既定depthに関する `2 failed, 3 passed` であった。
-- 実装後の最新 `uv run pytest -q` は `472 passed in 18.67s`。resolver、CLI bind、app generate/diff、traversal、parse、VCSのfocused testも成功し、app generate/diffは `83 passed in 5.64s` だった。
+- 実装後の最新 `uv run pytest -q` は `473 passed in 20.15s`。resolver、CLI bind、app generate/diff、traversal、parse、VCSのfocused testも成功し、config/appは `153 passed in 7.84s`、app generate/diffは `83 passed in 7.39s` だった。QA P2のscope外変更除外assertとinactive `[generate]` schema対称testもGreenである。
 - scoped `uv run ruff check` は変更対象source/testsで成功し、`git diff --check` も成功した。scoped `uv run ruff format --check` は3つの既存形式差分を含むtest fileを再format対象として exit 1。全体formatも既存baseline drift（175 files）でexit 1であり、無関係なmass reformatは行っていない。
 - 全体Ruffは、変更対象外の `src/pyclassuml/render/document.py` に既存のF821（`ClassReference` / `Path`、4箇所）があるため失敗した。全体format checkは175 filesがbaseline driftで再format対象となり、変更対象format checkは3つの既存test fileを含むためexit 1だった。`ruff format --diff`で新規追加hunk由来のformat違反がないことを確認し、無関係なmass reformatは行っていない。
 - 最終のread-only SpecDock検証は `sync`、`assurance classify`、`assurance verify`、`validate`、`doctor`をすべてexit 0で完了した。assuranceは`status=valid`、`verify=ok`、`authorized_profile=standard`、`complexity_tier=normal`、`validate nodes=41`、`doctor findings=0`。GitHub `target_unavailable` はinfo診断であり、managed state変更はない。
@@ -763,7 +763,7 @@ S00後の再確認では、protected skillのstatusは空、`.serena/project.yml
 ### 残るゲートと次アクション
 
 - production実装開始はユーザー明示指示で許可されたが、formal ChatGPT-Firstのfresh spec-reviewer / assurance promotion gateを完了したことは意味しない。未完了のformal gateは未完了として扱う。
-- code-reviewerは現行snapshotでpass（findingsなし）。qa-reviewerの更新後re-reviewは待機中だが、full suite 472 passedとapp 83 passed、scoped Ruff check、SpecDock再検証を親で実測済みである。D-014/#15のformal Strict/policy routeは未解消であり、Issueのformal promotion/completionとは分離して残る。
+- code-reviewerは現行snapshotでpass（findingsなし）、qa-reviewerもpass（P2 follow-upのみ）。full suite 473 passedとapp 83 passed、scoped Ruff check、SpecDock再検証を親で実測済みである。D-014/#15のformal Strict/policy routeは未解消であり、Issueのformal promotion/completionとは分離して残る。
 - 実装コミット `118b7d6` 後にprotected path、`.serena/project.yml`保持、commit diff、`git diff --check`を確認した。push、merge、PRはユーザー指示があるまで行わない。
 - この追補を含む実装変更は、`.serena/project.yml`を除くIssueの許可範囲だけをコミット対象とする。push、merge、PRはユーザー指示があるまで行わない。
 
@@ -775,6 +775,7 @@ S00後の再確認では、protected skillのstatusは空、`.serena/project.yml
 | D-016 | resolved | operation / deviation | user instruction + orchestrator | formal promotion前に実装を開始する必要が生じ、旧S01 gateはblocked/not_startedを記録していた | formal #15まで停止; ユーザー明示のbounded exceptionでlocal implementationを開始 | 仕様書コミット後の実装開始を許可するが、formal assurance/reviewer/promotionをwaiveしない | ユーザーの明示指示、対象path限定、rollback可能なsource/tests/README変更 | applied | plan §20、report S01/Parent Implementation Exception、実装commit `118b7d6`、worker evidence | formal D-014/#15、qa再review、formal promotionは別途完了させる |
 | D-017 | deferred | test-strategy / follow-up | QA review + orchestrator | Ruff format checkは既存test formatting driftを含む3ファイルで非0、全体formatも175 filesのbaseline driftがある | 全対象をmass reformat; source/test追加hunkだけを維持しbaselineを別Issueへ送る | 新規追加hunk由来のformat違反がないことを確認し、scoped Ruff checkとdiff checkを必須化して無関係なmass reformatは今回行わない | `uv run ruff format --check` / `--diff`実測、`git diff --unified=0`で新規hunkの追加を確認、small diff原則 | deferred | scoped/full format command output、report検証節、plan §2/§14.2のbaseline分類 | repository-wide format maintenanceは別Issueで扱う。今回の新規format errorが検出された場合は本Issueへ戻す |
 | D-018 | resolved | compatibility / test-strategy | ChatGPT-Use advisory + spec review | 元仕様のdeterminism表現が自動出力名timestampと図内容・順序を区別していなかった | 完全なdeterminismを主張; effective configと固定timestamp下の図内容・順序へ契約を限定する | effective configと図内容・順序をdeterministic契約とし、自動出力名timestampは対象外とした | resolver/tests/READMEの実測とadvisoryの「完全な決定性を主張しない」勧告 | applied | requirement RQ-012、README known constraint、fixed timestamp app tests | timestamp非依存の出力名を追加する場合は別Issueで扱う |
+| D-019 | deferred | operation / follow-up | qa-reviewer + orchestrator | 非canonical guidance projectionが旧classification/authority状態を示し得る | managed projectionを手修復する; formal routeで正規更新する; 本Issueの実装QAと分離してfollow-upに送る | scope外変更assertとinactive `[generate]` schema対称testは追加してGreen化した。managed projectionは手修復せず、formal D-014/#15 routeまたは別運用Issueで扱う | QA再レビューのP2 finding、追加focused 153 passed、全体473 passed、SpecDock validate/doctor/assurance再検証 | deferred | QA reviewer result `pass`、追加test nodeids、report最終QA row、現行SpecDock結果 | formal Strict/policy routeまたはSpecDock運用Issueで非canonical guidance projectionを正規更新する。今回の実装QAはnon-blocking |
 
 ### 実装開始例外に対する台帳の現在値
 

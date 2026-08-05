@@ -850,9 +850,11 @@ def test_diff_command_section_project_root_and_output_use_config(
     execution = tmp_path / "execution"
     execution.mkdir()
     write_file(project / "pkg" / "model.py", "class User:\n    pass\n")
+    write_file(project / "outside.py", "class Outside:\n    pass\n")
     commit_all(project, "base")
     tag_base(project)
     write_file(project / "pkg" / "model.py", "class User:\n    value = 1\n")
+    write_file(project / "outside.py", "class Outside:\n    value = 1\n")
     write_file(
         execution / ".pyclassuml.toml",
         """
@@ -873,10 +875,12 @@ output = "artifacts/diff.puml"
 
     artifact = execution / "artifacts" / "diff.puml"
     output = artifact.read_text(encoding="utf-8")
-    assert result.outcome_kind == "clean_success"
+    assert result.outcome_kind == "warning_only_success"
     assert result.command_result.exit_code == 0
     assert result.command_result.artifact_path == artifact.resolve()
+    assert result.command_result.summary.counters["diff_scope_excluded_count"] == 1
     assert "<<DiffChanged>>" in class_declaration(output, "User")
+    assert 'class "Outside" as ' not in output
     assert before_head == after_head
     assert before_branch == after_branch
     assert before_status == after_status

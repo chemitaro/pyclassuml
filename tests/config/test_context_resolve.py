@@ -621,6 +621,25 @@ output = "inactive.puml"
     assert config.output is None
 
 
+def test_inactive_generate_section_type_is_validated_for_diff_command(
+    tmp_path: Path,
+) -> None:
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+[generate]
+project_root = 1
+""",
+    )
+
+    assert_failure(
+        resolve_context(diff_request(tmp_path)),
+        FailureReason.INVALID_CONFIG_OR_CONFIG_PATH,
+        code="invalid_config",
+        message_contains="generate.project_root must be a string",
+    )
+
+
 def test_command_project_root_diagnostic_qualifies_active_section_field(
     tmp_path: Path,
 ) -> None:
