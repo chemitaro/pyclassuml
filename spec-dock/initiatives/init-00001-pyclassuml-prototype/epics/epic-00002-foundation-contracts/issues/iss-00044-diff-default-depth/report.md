@@ -718,3 +718,13 @@ S00後の再確認では、protected skillのstatusは空、`.serena/project.yml
 
 ## 省略/例外メモ (必須)
 - 該当なし
+
+## ChatGPT-First仕様書のIssue展開記録（2026-08-05）
+
+- ユーザー指示に基づき、ChatGPT-Useで取得した候補の `requirement.md`、`design.md`、`plan.md` を、既存のIssue-local canonicalファイルを削除したうえで、ファイルコピーにより同じパスへ配置した。
+- 配置元候補とのSHA-256一致を確認した。`requirement.md`: `9c27e7ab57ad15340aa5e17a99055dfa57f810ab70f199b68cdd85bb438b179d`、`design.md`: `a290588a4eff5d475141cdbd7a7324d9740a39642be9f6357201e2981db2e6ab`、`plan.md`: `000298b030420b179ad7939ce893302dc7257c8e1c8737da2a0979036a7e58d7`。
+- 追加のChatGPT成果物 `onboarding-context.md` は、名前衝突を避けるため `artifacts/20260805t010439z-chatgpt-first-onboarding-context.md` としてコピーした。配置元とのSHA-256は `7cdcc28feb811af21dacf90739ae5597336ea27e74f324e0468662e6e369d88b` で一致する。
+- canonical Issue docsの配置後、正規コマンド `./spec-dock/scripts/spec-dock sync` を実行し、active projectionを再生成した。`validate` は `nodes=41` で成功し、`doctor` は `findings=0` で成功した。GitHub capabilityの `target_unavailable` は情報診断である。
+- この展開は、ユーザーの明示指示によるIssue-local docsの直接配置であり、SpecDock `planning apply` による正式pack採用ではない。元候補のformal pack reviewは `evidence_only` / `unreviewed` / `rejected` であり、fresh spec-reviewerによる確認と採用ゲートは未完了である。production実装は引き続き保留する。
+- 既存の `.serena/project.yml` 変更、source/tests/README、`.agents/skills/pyclassuml-repo-map` は変更していない。既存ログ中の過去時点のGit状態・commit記録は履歴として保持し、現時点のbranch/commit状態は `codex/iss-00044-chatgpt-first-planning` / `d04c6aa175d1f6261c7c4378435b5d54b4efef27` とする。
+- `git diff --check` は、ChatGPT生成 `requirement.md` のMarkdown強制改行を表す行末スペースで失敗した。配置元とのバイト一致を優先し、内容の正規化・手編集は行っていない。

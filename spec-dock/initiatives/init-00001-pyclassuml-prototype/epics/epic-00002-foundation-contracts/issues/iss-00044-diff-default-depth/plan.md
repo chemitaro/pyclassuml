@@ -3,376 +3,741 @@
 ID: "iss-00044"
 タイトル: "Diff Default Traversal Depth"
 状態: "draft"
-作成者: "iwasawayuuta"
-最終更新: "2026-08-04"
+作成者: "ChatGPT"
+最終更新: "2026-08-05"
 依存: ["requirement.md", "design.md"]
 親: ["epic-00002", "init-00001"]
 ---
 
-# iss-00044 Diff Default Traversal Depth — 実装計画
+# iss-00044 Diff Default Traversal Depth — 実装計画（canonical 候補）
 
-## 1. 計画の目的と完了条件
+> 本書は implementation candidate である。branch `codex/iss-00044-chatgpt-first-planning` / commit `d04c6aa175d1f6261c7c4378435b5d54b4efef27` に対する変更を実行したものではなく、commit、push、PR、canonical promotion、review pass を主張しない。
 
-この計画は、`diff`の未指定defaultだけを `1`へ変え、`generate`、explicit CLI/config、traversal、VCS、DTOの契約を保つための実行契約である。実装後にAC-001〜AC-007、EC-001〜EC-008を検証し、READMEの利用者契約を更新し、SpecDock validate/doctor、focused/full test、lint/format、diff check、fresh code/QA/spec reviewを通す。commit、push、PR、merge、Issue finishはこの計画の完了操作に含めない。
+## 1. 計画の目的
 
-## 2. 実行前ゲート
+次の target behavior を、責務境界を壊さずに実装・検証する。
 
-- `active show`で `init-00001` / `epic-00002` / `iss-00044` がactiveであることを確認する。
-- `requirement.md`、`design.md`、`plan.md`のfront matterが現行parser schemaであることを確認する。
-- ChatGPT-Use advisory artifact `artifacts/20260804t093411z-chatgpt-output-chatgpt-depth-design-review.md`をevidence-onlyとして参照し、採用 claimをlocal source/testsで検証する。
-- `.serena/project.yml`、SpecDock managed update差分、`.agents/skills/pyclassuml-repo-map`に触れない。
-- fresh `spec-reviewer`がrequirement/design/planをpassするまで、本番コードの実装stepへ進まない。レビュー指摘により不足したnamed testだけは、S00のtest-only preparationとして先に追加できる。review pass後も、S00-PROMOTEのcanonical design promotionとworkflow/runbook readinessが完了するまでS01へ進まない。
-- S00-PROMOTE/S01のadmissionは、S99 final quality gateで閉じるfull-suite/Ruff baselineとは分離する。EAL-005の環境差異はS00-PROMOTE/S01ではnon-blocking（owner: orchestrator/qa-reviewer、focused evidenceと再現条件を保持）だが、S99ではgreen full-suiteまたは明示したsupported verification pathが必須である。
+- トップレベル共通設定を正式ベースとして維持する。
+- `[generate]` / `[diff]` に 9 個すべての共通設定を許可する。
+- `CLI > command section > top-level common > command default` を全フィールドに適用する。
+- `relative_path_base` を config-origin path より先に解決する。
+- `current_state` / `include_untracked` を Diff 固有として維持する。
+- default depth を `generate=None`, `diff=1` とする。
+- explicit `depth=0` を保持する。
+- targets / `--base` / VCS / traversal / DTO / module limit / read-only / AST-only を変更しない。
 
-## 3. ステップ依存サマリー
+## 2. 完了条件
 
-| step | 依存 | 主な対象 | 完了後のunblock |
-|---|---|---|---|
-| S00 | planning docs | EC-002/004/005、default/raw-boundary、CLI/config app integrationの不足したnamed testだけを既存testsへ追加（production source変更なし） | S01/S02の実行可能なtest contract |
-| S00-PROMOTE | fresh spec-reviewer #15 pass + S00 extension | report gate update、canonical design promotion、active/runbook、assurance/SpecDock gates | S01 execution admission |
-| S01 | S00-PROMOTE | resolver + config tests | effective depth契約をgreenにする |
-| S02 | S01 | bind/app/traversal/VCS regression tests | command境界と実出力を確認する |
-| S90 | S01 | README、必要ならCLI help | 利用者向け契約を閉じる |
-| S99 | S02, S90 | 全体品質・全review | Issue-wide completion evidenceを揃える |
+次をすべて満たした時点で implementation complete 候補とする。
 
-## 4. 仕様固定クロージャ索引
+1. `requirement.md` の `AC-001`〜`AC-015` が test/evidence に対応する。
+2. `design.md` の schema、selection、path order が source と一致する。
+3. current intended Red tests が Green になる。
+4. 9 個の共通キーの top/common/command/CLI precedence を focused tests が検証する。
+5. invalid config、collision、empty/zero/false の edge case を focused tests が検証する。
+6. VCS/traversal/parse/DTO production source に不要な変更がない。
+7. app-level generate/diff depth behavior が Green。
+8. README が target config shape と一致する。
+9. focused tests、full tests、changed-path lint/format、`git diff --check` が合格する。
+10. repository-wide既存 baseline failure がある場合、Issue 由来の failure と分離して report へ記録する。
+11. SpecDock validate/doctor と必要な review gate を通す。
+12. report に actual commands、results、changed files、unresolved risks を記録する。
 
-| ID | step | 種別 | 仕様リンク | 固定する期待値 | 観測方法 | 必須 |
-|---|---|---|---|---|---|---|
-| tc-001 | S01 | acceptance | AC-001 | diff未指定のeffective depthは1 | `tests/config/test_context_resolve.py::test_diff_default_depth_is_one_without_cli_or_config` | yes |
-| tc-002 | S01/S02 | acceptance | AC-002 | generate未指定のeffective depthはNoneで、transitive frontierを維持する | `tests/config/test_context_resolve.py::test_generate_default_depth_is_none_without_cli_or_config`; `tests/app/test_generate.py::test_generate_default_depth_remains_unlimited` | yes |
-| tc-003 | S01 | acceptance / edge | AC-003 / EC-001 | CLI > config > default、0を保持し、depth=0はseed-only | `tests/config/test_context_resolve.py::test_cli_and_config_depth_precedence_preserves_zero`; `tests/analyze/test_traversal.py::test_depth_zero_keeps_seed_only` | yes |
-| tc-004 | S02 | acceptance | AC-004 | bind未指定None、明示0は0 | `tests/cli/test_bind.py::test_bind_depth_preserves_none_and_explicit_zero` | yes |
-| tc-005 | S02 | regression | AC-005/006 / EC-007 | traversal/VCS/DTOの責務と既存挙動不変、HEAD比較境界維持 | source diff `git diff -- src/pyclassuml/analyze src/pyclassuml/vcs src/pyclassuml/model`; VCS nodeids listed below | yes |
-| tc-006 | S02 | integration | AC-001/002/003 | A→B→Cでdiffのdepth=1/2、CLI/config経路、generateのfrontier差を観測 | `tests/app/test_diff.py::test_diff_explicit_depth_two_reaches_transitive_dependency`; `tests/app/test_diff.py::test_diff_config_depth_two_reaches_transitive_dependency`; `tests/app/test_diff.py::test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth`; `tests/app/test_generate.py::test_generate_default_depth_remains_unlimited` | yes |
-| tc-007 | S02 | edge | EC-002/003/004/005/006 | multi-seed、cycle、複数candidate、depth=1 parse diagnostic、module limitを維持 | exact nodeids listed in edge closure table below | yes |
-| tc-008 | S90 | inspect-only | AC-007 / EC-005/008 | READMEがdefaults/precedence/Git/parse/unlimited limitsを記載 | DOC-001〜DOC-007 grep/目視と`EXEC-S90-EC-008` positive/negative schema inspection | yes |
-| tc-009 | S99 | quality | AC-006/007 / EC-001/005/006/007/008 | INV-001〜INV-006、validate、tests、lint、diff check、review pass | exact named tests/source inspection/quality commands/review listed below | yes |
-| tc-010 | S00-PROMOTE | workflow gate | AC-006/007 | fresh reviewer passをreportへ反映し、approved design、active issue、assurance、workflow/runbook readinessを実装前に固定 | `EXEC-S00-PROMOTE`のreport gate/status、canonical doc/status、post-promotion active show、workflow status、guidance、assurance verify、validate、doctor、diff check | yes |
+## 3. 実行前 baseline
 
-証跡レベルは、`tc-001`〜`tc-004`/`tc-006`をred-required、`tc-005`/`tc-007`をcovered-existingまたはred-required、`tc-008`をinspect-only、`tc-009`をmanual-requiredとする。実装中に新しいbug classや仕様変更が出た場合はreportに記録し、plan amendmentと再review要否を判断する。
+### 3.1 repository identity
 
-### エッジケースのclosure対応
-
-| edge ID | owner closure | 固定する期待値 | 観測証跡 |
-|---|---|---|---|
-| EC-001 | tc-003 | 明示`depth=0`はseed-onlyで、command default `1`へfallbackしない | `tests/analyze/test_traversal.py::test_depth_zero_keeps_seed_only` |
-| EC-002 | tc-007 | changed seedは各々hop 0で、別seedのreachable frontierをdepthで失わない | `tests/app/test_diff.py::test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth` |
-| EC-003 | tc-007 | cyclic importは既存reachable setで有限停止する | `tests/analyze/test_traversal.py::test_depth_none_terminates_deterministically_on_cyclic_imports` |
-| EC-004 | tc-007 | 同一importの複数candidateは同じhopで解決候補として扱われる | `tests/analyze/test_traversal.py::test_multiple_import_candidates_share_same_hop` と`_candidate_paths`/`import_candidate_paths` inspection |
-| EC-005 | tc-007 / tc-009 | `AnalysisConfig(depth=1)`でもdepthはparse safety limitではなく、深いmoduleのsyntax diagnosticが残り得る | `tests/parse/test_module_parse_and_index.py::test_parse_target_set_keeps_deeper_syntax_diagnostic_with_depth_one`、`EXEC-S99-INV-005-006`、README parse frontier記述 |
-| EC-006 | tc-007 / tc-009 | module limitとlimit diagnosticはdepth変更後も有効 | `tests/analyze/test_traversal.py::test_module_limit_returns_partial_result_and_fatal_diagnostic`; `tests/analyze/test_traversal.py::test_module_limit_applies_to_initial_seed_frontier` |
-| EC-007 | tc-005 | `current_state=head`はGit比較対象だけを変え、working-tree parse内容をHEADへ固定しない | `tests/vcs/test_diff_file_collect.py::test_head_diff_uses_head_not_working_tree`、README current-state記述 |
-| EC-008 | tc-008 / tc-009 | explicit unlimited diff入力は現行契約になく、sentinelを追加しない | `EXEC-S90-EC-008`: CLI/config schema inspectionと禁止token不在のnegative inspection、README unlimited記述、別Issue延期記録 |
-
-### tc-005 exact VCS regression nodeids
-
-`tc-005`はsource diff inspectionに加え、次の既存VCS nodeidをすべて実行する。これらはdepth defaultの責務をVCS collectorへ移していないこと、およびGit比較方式を保持することを確認する。
-
-```text
-tests/vcs/test_diff_file_collect.py::test_working_tree_tracked_added_modified_renamed_and_delete_excluded
-tests/vcs/test_diff_file_collect.py::test_explicit_base_sets_authoritative_base_resolution
-tests/vcs/test_diff_file_collect.py::test_no_base_feature_branch_resolves_default_branch_merge_base
-tests/vcs/test_diff_file_collect.py::test_no_base_without_usable_candidate_uses_initial_commit_fallback
-tests/vcs/test_diff_file_collect.py::test_head_diff_uses_head_not_working_tree
-tests/vcs/test_diff_file_collect.py::test_working_tree_untracked_included_excluded_and_empty_success
-```
-
-### AC-006 invariant closure対応
-
-`INV-001`〜`INV-006`は`tc-009`で最終結果をreportへ記録し、各stepで得た個別テスト結果を再利用する。`INV-005`のsyntax/parse regressionと`INV-006`のAST-only/read-only inspectionは、抽象的な「全体test」だけでは閉じず、requirementの検証表に記載したnamed pathを実行または記録する。
-
-## 5. 共通実行ルール
-
-- 1 stepは1 behavior sliceと1 review scopeに限定する。
-- source変更の許可pathはplanに列挙したものだけとし、traversal/VCS/DTOへの変更は停止条件とする。
-- observed resultはreportへ記録し、planはplanned contractを保持する。
-- 既存のユーザー変更をstash、reset、checkout、cleanで消去しない。
-- commit/push/PR/mergeは実行しない。必要になった場合はGit状態と変更範囲を報告して指示を待つ。
-
-## 5.1 step-local execution contract
-
-各stepは、次の契約を満たす入力・証跡・停止条件を持つ。workerはこの表の許可pathだけを変更し、coordinatorは返却された証跡をreportへ統合する。
-
-| step | planned obligation | Red / 代替証跡 | refactor guardrail | report evidence destination | amendment trigger | delegation input / owner | stop condition | required output |
-|---|---|---|---|---|---|---|---|---|
-| S00 | EC-002/004/005、default/raw-boundary、CLI/config app integrationの不足したnamed testを追加し、S02/S99のコマンドを実行可能にする | test-only preparation。テストが既存実装でgreenでも可。本番sourceとREADMEは変更しない。diff default testは旧実装でRedを許容する | `tests/config/test_context_resolve.py`, `tests/cli/test_bind.py`, `tests/app/test_generate.py`, `tests/app/test_diff.py`, `tests/analyze/test_traversal.py`, `tests/parse/test_module_parse_and_index.py`だけ。fixtureはtest内の`tmp_path`に限定 | reportのS00/TDD、changed test paths、`EXEC-S00-TEST-CONTRACT` | named testの意味が既存contractと衝突する、production source変更が必要、許可path外変更 | dev-coderへtest-only bounded taskを入力 | production source/docs変更、named path未生成、test不能、path外変更 | changed test files、focused pytest output、path/status evidence、未解決risk |
-| S00-PROMOTE | fresh spec-reviewer #15 pass後にreportのreview/evidence gateを更新し、canonical designをapprovedへ昇格し、active/runbook/assurance/SpecDock状態を再生成・検証する | review pass前はdesignのdraft状態、reportの#15 required、workflow blockedを保持する。review pass後にmain orchestratorがreportのSpec Authoring Gate、Reviewer Gate Status、Final Spec Review Gate、current gate、target/source evidenceをpassへ更新し、その後canonical design front matterをapprovedへ変更する。active/runbook/metadataは正規コマンドで更新する。EAL-005のfull-suite環境差異はS99 final quality gateのblockingであり、S00-PROMOTE/S01のadmission blockerではない | issue-local `report.md`のfresh pass evidenceと`design.md`の状態更新、`active set`、post-promotion `active show`、`guidance`、assurance/validate/doctor/diff-checkのみ。source/tests/README/managed bundle/skill/Serenaは禁止 | reportの`EXEC-S00-PROMOTE`、tc-010、workflow/runbook JSON、post-promotion active show、protected status、EAL-005 scope disposition | reportとprojectionのreview status不一致、approved statusとreviewer target hash不一致、runbookがreadyにならない、managed state手修復が必要 | fresh spec-reviewerへrequirement/design/plan/reportを入力。#15 pass後、main orchestratorがreportとcanonical design statusだけを更新し、spec-managerへcommand-first bounded taskをhandoffする | fresh spec-reviewer未pass、report gate未更新、active scope不一致、assurance verify failure、workflow blocked、validate/doctor/diff-check failure | report/status diff、exact commands/results、post-promotion active scope、runbook readiness、assurance/SpecDock evidence、EAL-005 final-quality disposition、risk |
-| S01 | resolverのcommand-aware defaultとCLI/config precedenceを実装し、tc-001〜tc-003をgreenにする | S00-PROMOTE完了後、実装前`tests/config/test_context_resolve.py`のsensitivityを記録。diff default testはRed、generate/precedence testsは既存実装でgreenでもよい | resolverのdepth merge以外を変更しない。bind/model/traversal/VCS/READMEは禁止 | reportのTDD表、S01 closure、changed files | `depth=0`優先やgenerate=Noneを同時に成立できない、許可path外変更が必要 | fresh spec-reviewer #15 passとS00-PROMOTE完了後、dev-coderへrequirement/design/planとresolver+config testを入力 | fresh spec-reviewer未pass、S00-PROMOTE未完、test不能、path外変更 | changed files、focused test output、risk、review request |
-| S02 | bind raw境界、A→B→C、多seed/cycle/limit、複数candidate、depth=1 parse diagnostic、VCS regressionをtc-004〜tc-007で閉じる | 既存test coverageを確認し、必要なintegration/edge testをtests内へ追加 | sourceのbind policy、traversal/VCS/DTOを変更しない。testsの許可path外変更は禁止 | reportのS02 closure、VCS command output、EC-002〜EC-007、QA/code review | traversal/VCS/DTO変更が必要、Git semanticsが変わる、named edge証跡が取れない | dev-coderへS02 allowed test pathsとS01結果を入力。qa-reviewer/code-reviewerへdiffを入力 | S01未完、VCS regression failure、scope boundary violation | changed tests、focused/VCS outputs、closure update、review verdict |
-| S90 | DOC-001〜DOC-007をREADMEへ反映し、EC-005/008の利用者制約とCLI/config schema制約を明文化する | docs-only inspection。READMEだけで不足する場合はdoc-writerへ委任 | source/tests/managed bundle/skillsを変更しない | reportのtc-008、`EXEC-S90-EC-008`、README path、docs inspection result | READMEで契約を誤読させる、未知の恒久docs変更が必要 | doc-writerへREADMEとDOC checklistを入力 | source/managed/skill変更要求、契約不一致 | changed README、grep/inspection evidence、schema inspection、docs review |
-| S99 | tc-009と全体品質・全reviewを完了し、実装前後のGit/SpecDock状態を記録する | command failureの原因を分類し、環境info以外は未完了とする | commit/push/merge/finishなし。SpecDock操作はspec-manager原則 | reportのFinal Quality Gate、closure coverage、protected-boundary baseline、Git status | required check failure、review fail、未解消open entry | spec-manager/code-reviewer/qa-reviewer/spec-reviewerへ各scopeを入力 | any blocking gate fail、managed state手修復が必要 | exact commands/results、review statuses、protected path classification、unresolved risks、handoff |
-
-### step-local executable case cards
-
-各stepのnamed caseは、実装担当が前提・操作・期待結果・失敗検出・検証方法を同じ契約で実行できるように固定する。closure indexの各IDは、下記の実在nodeidまたは明示したsource/inspection commandで閉じる。
-
-#### CASE-S00-PROMOTE-001 — report gate, canonical design promotion, and runbook readiness
-
-- 前提: S00 test-only preparationが完了し、fresh `spec-reviewer #15`がrequirement/design/plan/reportをpassしている。reviewer target hashとcanonical docsの内容が一致し、production source/READMEに実装差分がない。
-- 操作: まずmain orchestratorがissue-local canonical `report.md`のSpec Authoring Gate、Reviewer Gate Status、Final Spec Review Gate、current gate、target/source evidenceへ#15 passを反映する。次にcanonical `design.md`のfront matter状態を`draft`から`approved`へ更新する。その後、spec-managerが次を順に実行する。
+実装開始前に次を固定する。
 
 ```bash
-./spec-dock/scripts/spec-dock active set --id iss-00044
-./spec-dock/scripts/spec-dock active show
-./spec-dock/scripts/spec-dock assurance classify --stage requirement --issue iss-00044 --format json
-./spec-dock/scripts/spec-dock assurance verify --issue iss-00044
-./spec-dock/scripts/spec-dock workflow status --format json
-./spec-dock/scripts/spec-dock guidance issue-execution
-./spec-dock/scripts/spec-dock validate
-./spec-dock/scripts/spec-dock doctor
-git diff --check
+git branch --show-current
+git rev-parse HEAD
+git status --short --untracked-files=all
 ```
 
-- 期待結果: reportのcurrent gateとReviewer Gate Statusは#15 pass、active scopeは`iss-00044`、designは`approved`、assuranceはvalid、`workflow status`はready、`guidance issue-execution`のrunbookは`may_execute_approved_plan=true`、validate/doctor/diff-checkはpassである。GitHub capability infoはnon-blockingとする。
-- 失敗検出: review pass前のreport/status変更、reviewer target hash不一致、active scope不一致、workflow blocked、runbook projection未更新、assurance/validate/doctor/diff-check非0、protected pathの新規差分をfailとする。
-- 検証方法: `tc-010`、`EXEC-S00-PROMOTE`、report diff、post-promotion active show、workflow/runbook JSON、assurance verify、validate/doctor/diff-check結果をreportへ記録し、S01をadmitする。
+期待 snapshot:
 
-#### CASE-S01-001 — resolver default and precedence
+```text
+branch: codex/iss-00044-chatgpt-first-planning
+HEAD: d04c6aa175d1f6261c7c4378435b5d54b4efef27
+```
 
-- 前提: S00-PROMOTEが完了し、`fresh spec-reviewer #15`がpassしている。`EXEC-PROTECTED-BASELINE`でproduction source/READMEに実装差分がない。
-- 操作: `uv run pytest tests/config/test_context_resolve.py -q`を実装前後に実行し、diff/generateのconfigなし、config `0/3`、CLI `0/2`のresolverケースを確認する。
-- 期待結果: diff未指定は`AnalysisConfig.depth == 1`、generate未指定は`None`、configはdefaultに勝ち、CLIはconfigに勝ち、`0`は保持される。
-- 失敗検出: pytest非0、assertion failure、invalid bool/negative validationの差分、または許可外source diffをfailとしてS01を閉じない。
-- 検証方法: `tc-001`〜`tc-003`とnamed test outputをreportのTDD/S01 closureへ記録し、code-reviewer passを取得する。
+異なる場合は target ref を再確認し、別 snapshot の結果を混在させない。
 
-#### CASE-S02-001 — raw bind boundary
+### 3.2 source/test mismatch baseline
 
-- 前提: S01がgreenで、CLI parserの既存契約を変更していない。
-- 操作: `uv run pytest tests/cli/test_bind.py -q`を実行し、`--depth`未指定と`--depth 0`をbindする。
-- 期待結果: `CommandOptions.depth`は未指定なら`None`、明示`0`なら`0`。effective値の`diff=1`はresolver後だけに現れ、bindが`1`を注入しない。
-- 失敗検出: bind assertion failure、CLI help/parser差分、`None`と`1`の観測点混同をfailとする。
-- 検証方法: `tc-004`、`tests/cli/test_bind.py` output、source diffで`bind.py`無変更をreportへ記録する。
+現行 source inspection:
 
-#### CASE-S02-002 — A→B→C integration and VCS regression
+```bash
+rg -n "_TOP_LEVEL_KEYS|_DIFF_KEYS|_merged_depth|depth=_merged_depth" \
+  src/pyclassuml/config/resolver.py
+```
 
-- 前提: S01がgreenで、diff fixtureのGit repositoryが初期化される。
-- 操作: A→B→C fixtureを使うapp testsを実行し、CLI `depth=1/2`とtop-level config `depth=2`を別nodeidで検証する。`tests/vcs/test_diff_file_collect.py`は explicit base、merge-base、initial fallback、current-state、include-untrackedの順に含めて実行する。
-- 期待結果: diff未指定はA/Bまで、CLIまたはtop-level configのdepth 2はCまで、generate未指定はCまで。Gitのbase/seed/untracked/rename結果は既存期待値から変わらない。
-- 失敗検出: app/VCS pytest非0、changed seedの欠落、Git metadataの変化、traversal/VCS/DTO source diffをfailとする。
-- 検証方法: `tc-005`/`tc-006`、S02 pytest output、`git diff -- src/pyclassuml/analyze src/pyclassuml/vcs src/pyclassuml/model`をreportへ記録する。
+現行期待:
 
-#### CASE-S02-003 — edge behavior and candidate/parse evidence
+- `[generate]` schema なし。
+- `[diff]` common override なし。
+- `_merged_depth(None, None) -> None`。
+- `diff` default test は Red になり得る。
 
-- 前提: S01がgreenで、test-only additionsがplanのallowed test pathsに限定される。
-- 操作: `uv run pytest tests/app/test_diff.py::test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth tests/analyze/test_traversal.py::test_multiple_import_candidates_share_same_hop tests/parse/test_module_parse_and_index.py::test_parse_target_set_keeps_deeper_syntax_diagnostic_with_depth_one tests/analyze/test_traversal.py::test_depth_none_terminates_deterministically_on_cyclic_imports tests/analyze/test_traversal.py::test_module_limit_returns_partial_result_and_fatal_diagnostic tests/analyze/test_traversal.py::test_module_limit_applies_to_initial_seed_frontier -q`、`rg -n "^def _candidate_paths|import_candidate_paths" src/pyclassuml/parse/indexer.py src/pyclassuml/analyze/traversal.py`を実行する。
-- 期待結果:複数changed seedは各々hop 0で残り、複数candidateは同じhopで扱われ、`AnalysisConfig(depth=1)`でも深いbroken moduleの`bad_syntax` diagnosticが残り、candidate集合の責務はparse/traversal境界にある。
-- 失敗検出: named test非0、`_candidate_paths`/`import_candidate_paths`が確認できない、depth=1でdiagnosticが消える、またはtest path外変更をfailとする。
-- 検証方法: 6 named nodeid、`EC-002`〜`EC-006`、`EXEC-S02-EDGE-001`、`tc-007`をreportへ記録し、qa-reviewerがmulti-seed/cycle/limit coverageをpassする。
+実装前に exact focused tests を実行し、Red/Green を report へ記録する。
 
-#### CASE-S90-001 — README contract checklist
+```bash
+uv run pytest \
+  tests/config/test_context_resolve.py::test_diff_default_depth_is_one_without_cli_or_config \
+  tests/config/test_context_resolve.py::test_generate_default_depth_is_none_without_cli_or_config \
+  tests/cli/test_bind.py::test_bind_depth_preserves_none_and_explicit_zero \
+  tests/app/test_diff.py::test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth \
+  tests/app/test_generate.py::test_generate_default_depth_remains_unlimited \
+  -q
+```
 
-- 前提: S01/S02のeffective contractがgreenで、README変更はdoc-writerのallowed scopeに限定される。
-- 操作: READMEをDOC-001〜DOC-007の順に目視/grepし、`generate=None`、`diff=1`、precedence、Git方式、changed seed、current-state、unlimited制約を確認する。
-- 期待結果: 利用者向け文書がsourceの実挙動と一致し、hop semanticsと既知制約を誤解させない。
-- 失敗検出: DOCコードの欠落、`[diff].depth`やexplicit unlimitedが存在するとの誤記、README以外の許可外恒久docs変更をfailとする。
-- 検証方法: `tc-008`、`DOC-001`〜`DOC-007`、S90 docs inspectionをreportへ記録し、doc-writer reviewをpassさせる。
+### 3.3 process baseline
 
-#### CASE-S90-002 — explicit unlimited schema limitation
+current report が記録する assurance/profile、fresh spec reviewer、environment variance は独立 gate として再確認する。本計画はそれらを自動的に解消しない。
 
-- 前提: 現行CLI/config schemaが非負整数のみで、sentinel追加はscope外である。
-- 操作: `rg -n '"depth"|_TOP_LEVEL_KEYS|_DIFF_KEYS|_non_negative_int' src/pyclassuml/config/resolver.py src/pyclassuml/cli/bind.py`でpositive schema evidenceを確認し、続けて `rg -n '\[diff\]\.depth|diff\.depth|unlimited|sentinel' src/pyclassuml/config/resolver.py src/pyclassuml/cli/bind.py`を実行する。後者はexit `1`を期待し、READMEのunlimited制約記述と照合する。
-- 期待結果: `depth`はtop-level key、`[diff].depth`は存在せず、CLI parserは非負整数を受け、explicit unlimited sentinelはない。
-- 失敗検出: positive schema evidenceの欠落、negative inspectionのexit `0`、READMEとの不整合、sentinel追加のsource diffをfailとする。
-- 検証方法: `EC-008`、`EXEC-S90-EC-008`、`tc-008`をreportへ記録する。
+## 4. 変更範囲
 
-#### CASE-S99-001 — protected boundary and no-op ownership
+### 4.1 production source
 
-- 前提: `EXEC-PROTECTED-BASELINE`の317 status entriesと所有分類がreportに記録済みである。
-- 操作: baselineと同じ4つの`git status`コマンドを実装前後に実行し、`.agents/skills/pyclassuml-repo-map`、`.serena/project.yml`、`src/tests/README`をpath別比較する。
-- 期待結果: protected skillは空、Serenaの既存`M`は保持、managed bundleはbaselineから変化せず、実装surfaceはallowed pathだけになる。
-- 失敗検出: protected pathの新規status、Serena既存変更の消失、managed差分の変更、allowed path外のsource/docs変更をfailとする。
-- 検証方法: `EXEC-PROTECTED-BASELINE`、`tc-009`、report protected-boundary tableへ前後出力と分類を記録する。
+必須:
 
-#### CASE-S99-002 — INV-005/INV-006 named evidence
+- `src/pyclassuml/config/resolver.py`
 
-- 前提: source/tests/README実装が完了し、S02/S90のreviewがpassしている。
-- 操作: named pytest、`sed`で`parse_target_set`/`parse_module_source_text`の範囲表示、禁止token `rg`を実行し、前後Git statusを取得する。
-- 期待結果: syntax/parse diagnostic testsがgreen、AST parse callとnamed function範囲が表示され、禁止token `rg`はexit `1`、前後statusのprotected分類が一致する。
-- 失敗検出: named test非0、`sed`範囲欠落、禁止tokenrgがexit `0`、前後status不一致をfailとする。
-- 検証方法: `INV-005`/`INV-006`、`EXEC-S99-INV-005-006`、`tc-009`へcommand/output/exit statusを記録する。
+原則変更しない:
 
-#### CASE-S99-003 — final quality and reviewer admission
+- `src/pyclassuml/cli/bind.py`
+- `src/pyclassuml/model/contracts.py`
+- `src/pyclassuml/analyze/traversal.py`
+- `src/pyclassuml/vcs/diff_collect.py`
+- targets / parse / render / report production modules
 
-- 前提: S01/S02/S90のclosureがgreenで、未解消のblocking entryがない。
-- 操作: `assurance verify`、`validate`、`doctor`、focused/full pytest、ruff check/format、`git diff --check`をspec-manager経由で実行し、code/QA/spec reviewerをfreshで取得する。
-- 期待結果: 必須commandがpass（doctorのGitHub target infoはnon-blocking）、全reviewが`review_status: pass`、commit/push/merge/finishは未実施のままhandoff可能になる。
-- 失敗検出: command非0（info以外）、review fail、未解消open entry、commit作成をfail/stopとする。
-- 検証方法: `tc-009`、Final Quality Gate、Git status、review outputsをreportへ記録する。
+`bind.py` は CLI help text だけで README 要件を満たせない場合に限り変更候補とする。raw bind/default/presence contract は変更しない。
 
-## 6. 実装ステップ S01 — resolverのcommand-aware default
+### 4.2 tests
 
-### 目標と対象
+- `tests/config/test_context_resolve.py`
+- `tests/cli/test_bind.py`
+- `tests/app/test_diff.py`
+- `tests/app/test_generate.py`
+- `tests/analyze/test_traversal.py`
+- `tests/parse/test_module_parse_and_index.py`
+- `tests/vcs/test_diff_file_collect.py`
 
-`src/pyclassuml/config/resolver.py`のdepth mergeだけを変更し、`CommandName.DIFF`かつCLI/config双方がNoneのときだけ1を返す。`tests/config/test_context_resolve.py`へ必要な回帰テストを追加する。
+新 fixture は同じ test file の `tmp_path` 内に限定し、repository fixture/data を恒久変更しない。
 
-### 許可・禁止
+### 4.3 docs
 
-- allowed: `src/pyclassuml/config/resolver.py`, `tests/config/test_context_resolve.py`
-- forbidden: `src/pyclassuml/cli/bind.py`のdefault policy変更、`contracts.py`の型変更、traversal/VCS/DTO変更、README変更
+- `README.md`
+- Issue `requirement.md`, `design.md`, `plan.md`, `report.md` は canonical adoption workflow が許可した場合だけ更新する。
 
-### 具体テストケース
+### 4.4 forbidden
 
-- `tc-s01-001` / `tc-001`: diff request、configなし -> `config.depth == 1`。
-- `tc-s01-002` / `tc-002`: generate request、configなし -> `config.depth is None`。
-- `tc-s01-003` / `tc-003`: config `depth=3`、CLI未指定 -> 3；config `depth=0` -> 0；CLI `0`/`2` -> CLI値。
-- `tc-s01-004` / `tc-003`: invalid bool/negativeの既存validationを維持する。
+- target project source/Git metadata の変更
+- `.agents/skills/pyclassuml-repo-map`
+- unrelated SpecDock managed bundle
+- `.serena/project.yml` の既存 user change
+- dependency 追加
+- commit/push/PR/merge/Issue close（別途明示指示がない限り）
 
-### 実行・closure
+## 5. 実装順序
 
-実装前に次を実行して新規テストが失敗すること、または既存test sensitivityをreportに記録する。
+| step | 目的 | 依存 | 主な path |
+|---|---|---|---|
+| `S00` | spec/baseline/Red の固定 | なし | docs/report、inspection |
+| `S01` | schema validation と key set | S00 | resolver + config tests |
+| `S02` | layered selection と CLI presence | S01 | resolver + config/bind tests |
+| `S03` | relative path order / roots / depth default | S02 | resolver + config tests |
+| `S04` | app/traversal/VCS/parse regression | S03 | tests only |
+| `S90` | README / migration / known constraints | S03 | README |
+| `S99` | full quality、review、handoff | S04, S90 | full repo checks/report |
+
+順序を変更し、path resolve を schema/selection より先に実装してはならない。
+
+## 6. S00 — specification / baseline gate
+
+### 6.1 作業
+
+- latest user decision と candidate requirement/design/plan を照合する。
+- current canonical docs の旧記述を一覧化する。
+- source/test baseline を exact command で記録する。
+- current branch/HEAD/status を固定する。
+- process gate の blocking/non-blocking を report で分類する。
+
+### 6.2 exit criteria
+
+- command-specific only / top-level 廃止案が active requirement に残っていない。
+- source 未実装と先行 tests を明確に分離。
+- S01 の allowed path と Red test が確定。
+- unrelated working tree change を消していない。
+
+## 7. S01 — schema と validation
+
+### 7.1 production change
+
+`resolver.py` の key set を次へ再構成する。
+
+```python
+_COMMON_CONFIG_KEYS
+_DIFF_ONLY_CONFIG_KEYS
+_COMMAND_TABLE_KEYS
+_TOP_LEVEL_KEYS
+_GENERATE_KEYS
+_DIFF_KEYS
+```
+
+追加/変更 helper 候補:
+
+```python
+_validate_config_schema
+_validate_common_section
+_validate_generate_section
+_validate_diff_section
+_validate_non_empty_path_string
+_qualified_field_name
+```
+
+### 7.2 必須 behavior
+
+- top-level: common + `generate` / `diff`
+- `[generate]`: common only
+- `[diff]`: common + diff-only
+- common/diff-only disjoint guard
+- non-table section failure
+- all-section type/domain validation
+- path string non-empty
+- `ignore=[]` valid
+- `depth` bool/negative invalid
+- section-qualified message
+
+### 7.3 tests
+
+新規 test 候補:
+
+```text
+test_top_level_common_schema_remains_valid
+test_generate_table_accepts_all_common_keys
+test_diff_table_accepts_all_common_keys_and_diff_specific_keys
+test_non_table_generate_is_failure
+test_non_table_diff_is_failure
+test_unknown_generate_key_is_failure
+test_unknown_diff_key_is_failure
+test_top_level_diff_only_key_is_failure
+test_generate_diff_only_key_is_failure
+test_generate_targets_config_key_is_failure
+test_diff_base_config_key_is_failure
+test_command_common_value_validation_reports_qualified_field
+test_empty_config_path_value_is_failure
+test_command_ignore_empty_list_is_valid
+```
+
+既存 validation parameterization は top-level / generate / diff の各 origin を追加する。
+
+### 7.4 focused command
 
 ```bash
 uv run pytest tests/config/test_context_resolve.py -q
 ```
 
-実装後に同じcommandを再実行し、`tc-001`〜`tc-003`がgreenであることをStep Contract Closureへ記録する。resolverのdiffはcommand defaultとvalidationのみに限定する。
+### 7.5 exit criteria
 
-### レビューゲート
+- schema tests Green。
+- path resolution behavior はまだ変更してもよいが、unknown/type/domain contract が固定。
+- `traversal.py`, `diff_collect.py`, `contracts.py`, `bind.py` に production diff なし。
 
-`code-reviewer`はresolver/testの責務、`0`の扱い、generate回帰を確認する。pass条件は `review_status: pass`。指摘があれば修正後にfresh reviewを再実行する。
+## 8. S02 — layered selection と presence
 
-## 7. 実装ステップ S02 — bind/app/regressionとGit契約
+### 8.1 production change
 
-### 目標と対象
+private origin/presence helper を追加する。
 
-CLI bindが未指定Noneを保持すること、A→B→Cの実出力がresolver値を消費すること、既存traversal/VCS契約を変更していないことを確認する。必要なテストだけを追加する。
-
-### 許可・禁止
-
-- allowed: `tests/cli/test_bind.py`, `tests/app/test_diff.py`, `tests/app/test_generate.py`, `tests/analyze/test_traversal.py`, `tests/parse/test_module_parse_and_index.py`, `tests/vcs/test_diff_file_collect.py`、必要なfixtureの同じtest file内
-- forbidden: `src/pyclassuml/cli/bind.py`のcommand default追加、`src/pyclassuml/analyze/traversal.py`、`src/pyclassuml/vcs/diff_collect.py`、`src/pyclassuml/model/contracts.py`の変更
-
-### 具体テストケース
-
-- `tc-s02-001` / `tc-004`: `diff`/`generate`の `--depth`未指定はNone、`--depth 0`は0。
-- `tc-s02-001`の境界: bind直後の`CommandOptions.depth`は両commandとも未指定なら`None`、明示`0`なら`0`。その後resolverが`diff`だけ`1`へ解決し、`generate`は`None`を維持する。このraw bind値とeffective値を同じassertionとして扱わない。
-- `tc-s02-002` / `tc-006`: `tests/app/test_diff.py::test_diff_explicit_depth_two_reaches_transitive_dependency`と`tests/app/test_diff.py::test_diff_config_depth_two_reaches_transitive_dependency`でA→B→C fixtureを使い、CLI/configのdepth `1`はA/Bまで、depth `2`はCまで、`tests/app/test_generate.py::test_generate_default_depth_remains_unlimited`でgenerate未指定はNone。
-- `tc-s02-003` / `tc-007`: `test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth`で複数changed seedを失わないことを確認する（EC-002）。cycleは停止する（EC-003）。module limitは既存diagnosticを返す（EC-006）。複数candidateが同じhopで到達可能であることを`test_multiple_import_candidates_share_same_hop`で確認する（EC-004）。
-- `tc-s02-004` / `tc-007`: `test_parse_target_set_keeps_deeper_syntax_diagnostic_with_depth_one`で`AnalysisConfig(depth=1)`を渡し、depthがparse safety limitではなく、深いbroken moduleの`bad_syntax` diagnosticを残すことを確認する（EC-005）。
-- `tc-s02-005` / `tc-005`: VCS既存testsを実行し、explicit base/default merge-base/current-state/include-untracked/initial fallbackの結果を維持する。
-
-### 実行・closure
-
-```bash
-uv run pytest tests/cli/test_bind.py tests/app/test_diff.py tests/app/test_generate.py tests/analyze/test_traversal.py tests/parse/test_module_parse_and_index.py tests/vcs/test_diff_file_collect.py -q
-uv run pytest tests/app/test_diff.py::test_diff_explicit_depth_two_reaches_transitive_dependency -q
-uv run pytest tests/analyze/test_traversal.py::test_multiple_import_candidates_share_same_hop tests/parse/test_module_parse_and_index.py::test_parse_target_set_keeps_deeper_syntax_diagnostic_with_depth_one -q
-rg -n "^def _candidate_paths|import_candidate_paths" src/pyclassuml/parse/indexer.py src/pyclassuml/analyze/traversal.py
+```python
+_MISSING
+_ValueOrigin
+_SelectedValue
+_select_value
 ```
 
-期待値は、multi-seed/multiple-candidate/deeper-diagnosticのnamed testsがgreen、`_candidate_paths`と`import_candidate_paths`のsource inspectionがcandidate集合の責務を示し、EC-002〜EC-007の結果を`EXEC-S02-EDGE-001`としてreportへ記録できることである。
+または同等の明示的 implementation とする。必須条件は次。
 
-app fixtureを追加できない場合は、既存testがresolver結果を検出できる根拠をreportに記録し、`covered-existing`へ格下げしない限りS02を閉じない。
+- config layer は `key in mapping` で presence 判定。
+- CLI `depth` は `is not None`。
+- command `depth=0` を保持。
+- command `ignore=[]` を保持。
+- Diff bool/enum は existing `*_cli_provided` を使う。
+- `ignore` は replacement。
+- `mode` は `--strict` true のときだけ CLI override。
+- `relative_path_base` に CLI layer を作らない。
 
-### レビューゲート
+### 8.2 tests
 
-`code-reviewer`はsource変更範囲、app integration、seed/VCS境界を確認する。`qa-reviewer`はA→B→C、多seed、explicit base/untrackedのcoverageを確認する。両方passが必要である。
-
-## 8. ドキュメント影響解消 S90
-
-### 対象と内容
-
-`README.md`へdepthのhop semantics、`generate=None`、`diff=1`、`CLI > config > command default`、top-level configの共通適用、changed seed、Git比較方式、current-stateの既知制約、明示unlimited未提供を追記する。既存のdiff base/current-state説明を削除・反転しない。
-
-README以外の恒久docsが必要と判明した場合は、doc-writerへ対象pathを明示して委任し、Issue reportに変更範囲を記録する。managed templatesや`.agents/skills`は変更しない。
-
-### 具体検証
-
-- `tc-s90-001` / `tc-008`: READMEをgrep/目視し、次のDOC-001〜DOC-007をすべて確認する。
-  - `DOC-001`: seed=hop 0、直接import=hop 1のhop semantics。
-  - `DOC-002`: `generate`未指定=`None`、`diff`未指定=`1`。
-  - `DOC-003`: CLI > top-level config > command default、およびtop-level configが両commandに適用されること。
-  - `DOC-004`: changed fileがdepthにかかわらずdiff seedになること。
-  - `DOC-005`: explicit base、merge-base、initial fallback、working-tree/head、include-untrackedのGit比較方式。
-  - `DOC-006`: `current_state=head`でもparse内容は自動的にHEADへ固定されない既知制約。
-  - `DOC-007`: 明示的なunlimited diff入力が現行契約にないことと別Issue延期。
-- `EC-008` / `EXEC-S90-EC-008`: positive schema inspectionで`depth`がtop-level key、CLI parserが非負整数であることを確認し、`rg -n '\[diff\]\.depth|diff\.depth|unlimited|sentinel' src/pyclassuml/config/resolver.py src/pyclassuml/cli/bind.py`がexit `1`・出力なしであることを確認する。両方の出力・exit statusと「explicit unlimited sentinelなし」の判定をreportへ記録する。
-- CLI helpへ説明を追加するのはREADMEだけで契約が満たせない場合に限り、bindの未指定値は変えない。
-
-## 9. 最終品質ゲート S99
-
-### 必須コマンド
-
-SpecDockの操作コマンドは原則`spec-manager`へ委任し、workerから返された実行結果をreportへ転記する。今回のように同一worktreeの実装前後ゲートを直ちに確認する必要があり、spec-managerの起動が利用できない場合に限り、coordinatorが同じrepo-local scriptをbounded read/validation operationとして直接実行してよい。その場合はreportに例外理由、対象コマンド、結果を記録し、managed stateの手編集は行わない。
-
-実装前に`EXEC-PROTECTED-BASELINE`として、所有範囲を分けて次を実行する。
-
-```bash
-git status --short --untracked-files=all
-git status --short -- .agents/skills/pyclassuml-repo-map
-git status --short -- .serena/project.yml
-git status --short -- src tests README.md
+```text
+test_generate_command_section_overrides_top_level_common_values
+test_diff_command_section_overrides_top_level_common_values
+test_inactive_command_section_does_not_override_active_command
+test_cli_common_values_override_command_and_top_level_config
+test_cli_and_config_depth_precedence_preserves_zero
+test_command_depth_zero_overrides_top_level_depth
+test_command_ignore_empty_list_clears_top_level_ignore
+test_cli_ignore_replaces_command_and_top_level_ignore
+test_command_mode_warn_overrides_top_level_strict_without_cli
+test_cli_strict_overrides_command_mode_warn
+test_cli_diff_unset_current_state_uses_config_before_default
+test_cli_no_include_untracked_overrides_config_true
 ```
 
-期待値と分類は次のとおりである。`pyclassuml-repo-map`は空、`.serena/project.yml`はユーザー既存変更として保持、S00実行前の`src/tests/README`は空、SpecDock updater bundle（`.agents/.codex/.github/spec-dock`）は本Issue実装外の既存managed差分として保持する。S00後はproduction `src=0`、README=0、許可された6 test pathsだけが変更されている状態を保つ。Issue-local planning docs、artifact、assurance stateは本Issueの計画証跡として別分類する。実装後は同じpath別statusを再実行し、protected pathに新規差分がないことと、source/tests/READMEの差分がplan許可pathだけであることをreportへ記録する。
+9 個の共通キーすべてについて、少なくとも top/common/command selection を parameterized または明示 test で閉じる。roots は directory fixture、output は path assertion、scalar/list は direct assertion を使う。
+
+### 8.3 CLI boundary
+
+既存 test を維持/拡張する。
 
 ```bash
-./spec-dock/scripts/spec-dock active show
-./spec-dock/scripts/spec-dock assurance verify --issue iss-00044
-./spec-dock/scripts/spec-dock validate
-./spec-dock/scripts/spec-dock doctor
-uv run pytest tests/config/test_context_resolve.py tests/cli/test_bind.py tests/analyze/test_traversal.py tests/app/test_diff.py tests/app/test_generate.py tests/vcs/test_diff_file_collect.py tests/parse/test_module_parse_and_index.py -q
+uv run pytest tests/cli/test_bind.py -q
+```
+
+必須 assertion:
+
+- `generate` / `diff` の `--depth` 未指定は raw `None`
+- `--depth 0` は raw `0`
+- `--strict` 未指定は raw `False`
+- Diff `--no-include-untracked` は value `False` + provided `True`
+- resolver 後だけ default `diff=1` が現れる
+
+### 8.4 exit criteria
+
+- all precedence tests Green。
+- truthiness bug を再現する negative case がある。
+- public DTO field change なし。
+- bind raw contract change なし。
+
+## 9. S03 — path order、roots、depth default
+
+### 9.1 production change
+
+順序:
+
+1. active command section
+2. effective `relative_path_base`
+3. config base
+4. project/package/scope selection
+5. origin-aware path resolution
+6. existence/containment
+7. output
+8. remaining AnalysisConfig
+9. Diff specific
+
+`_merged_root` / `_config_base` / `_merged_depth` は責務に合わせて改名・分割してよいが、不要な public abstraction は追加しない。
+
+depth helper:
+
+```python
+def _default_depth(command: CommandName) -> int | None:
+    if command is CommandName.DIFF:
+        return 1
+    if command is CommandName.GENERATE:
+        return None
+    raise AssertionError(f"unsupported command: {command}")
+```
+
+### 9.2 path tests
+
+```text
+test_command_relative_path_base_cwd_resolves_command_paths_from_execution_cwd
+test_command_relative_path_base_applies_to_inherited_top_level_paths
+test_generate_and_diff_can_resolve_same_top_level_path_from_different_effective_bases
+test_cli_paths_ignore_config_relative_path_base
+test_default_project_root_remains_config_parent_when_path_is_absent
+test_package_and_scope_defaults_use_resolved_effective_parent
+test_command_project_root_changes_diff_vcs_root_after_config_discovery
+test_cli_project_root_still_has_config_discovery_priority
+test_config_project_root_does_not_participate_in_config_discovery
+test_command_root_containment_violation_is_failure
+```
+
+### 9.3 depth tests
+
+既存:
+
+```text
+tests/config/test_context_resolve.py::test_diff_default_depth_is_one_without_cli_or_config
+tests/config/test_context_resolve.py::test_generate_default_depth_is_none_without_cli_or_config
+tests/config/test_context_resolve.py::test_cli_and_config_depth_precedence_preserves_zero
+```
+
+追加:
+
+```text
+test_diff_command_depth_overrides_top_level_depth
+test_generate_command_depth_overrides_top_level_depth
+test_top_level_depth_applies_to_both_commands_when_command_depth_absent
+test_diff_default_depth_applies_only_when_all_layers_absent
+```
+
+### 9.4 focused command
+
+```bash
+uv run pytest tests/config/test_context_resolve.py tests/cli/test_bind.py -q
+```
+
+### 9.5 exit criteria
+
+- current intended resolver Red が Green。
+- inherited path + command base contract が Green。
+- roots/containment regression なし。
+- diff-specific behavior regression なし。
+
+## 10. S04 — integration / regression
+
+### 10.1 app integration
+
+必須 nodeids:
+
+```text
+tests/app/test_diff.py::test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth
+tests/app/test_diff.py::test_diff_explicit_depth_two_reaches_transitive_dependency
+tests/app/test_diff.py::test_diff_config_depth_two_reaches_transitive_dependency
+tests/app/test_generate.py::test_generate_default_depth_remains_unlimited
+```
+
+追加:
+
+```text
+test_diff_command_section_depth_two_reaches_transitive_dependency
+test_generate_command_section_depth_zero_keeps_seed_only
+test_generate_and_diff_use_different_output_and_scope_from_same_config
+```
+
+A→B→C fixture 期待:
+
+| command/config | reachable |
+|---|---|
+| default `diff` | A, B |
+| top-level `depth=2` | A, B, C for both |
+| `[diff].depth=2` | A, B, C for diff |
+| default `generate` | A, B, C |
+| `[generate].depth=0` | seed only |
+
+### 10.2 traversal regression
+
+```bash
+uv run pytest tests/analyze/test_traversal.py -q
+```
+
+重要 nodeids:
+
+```text
+test_depth_zero_keeps_seed_only
+test_depth_one_includes_direct_import_only
+test_multiple_import_candidates_share_same_hop
+test_depth_none_traverses_transitively
+test_depth_none_terminates_deterministically_on_cyclic_imports
+test_module_limit_returns_partial_result_and_fatal_diagnostic
+test_module_limit_applies_to_initial_seed_frontier
+test_reachable_files_and_edges_are_deterministically_ordered
+```
+
+`src/pyclassuml/analyze/traversal.py` に production diff がないことを確認する。
+
+### 10.3 parse / AST-only regression
+
+```bash
+uv run pytest tests/parse/test_module_parse_and_index.py -q
+rg -n "ast\.parse|importlib|__import__|exec\(|eval\(" src/pyclassuml/parse/indexer.py
+```
+
+重要 contract:
+
+- depth=1 でも parse frontier を狭めない。
+- deeper syntax diagnostic が必要な既存 test は維持。
+- target modules を import/exec/eval しない。
+
+### 10.4 VCS regression
+
+```bash
+uv run pytest tests/vcs/test_diff_file_collect.py -q
+```
+
+重要 nodeids:
+
+```text
+test_working_tree_tracked_added_modified_renamed_and_delete_excluded
+test_explicit_base_sets_authoritative_base_resolution
+test_invalid_explicit_base_does_not_fallback
+test_no_base_feature_branch_resolves_default_branch_merge_base
+test_no_base_without_usable_candidate_uses_initial_commit_fallback
+test_head_diff_uses_head_not_working_tree
+test_working_tree_untracked_included_excluded_and_empty_success
+```
+
+`src/pyclassuml/vcs/diff_collect.py` に production diff がないことを確認する。
+
+### 10.5 DTO regression
+
+```bash
+git diff -- src/pyclassuml/model/contracts.py
+```
+
+期待: empty。`AnalysisConfig.depth` / `CommandOptions.depth` は `int | None` のまま。
+
+### 10.6 exit criteria
+
+- app/traversal/parse/VCS focused tests Green。
+- default diff behavior 以外の output/diagnostics regression なし。
+- source diff が resolver に局在。
+- read-only / AST-only evidence が残る。
+
+## 11. S90 — README と migration
+
+### 11.1 README 更新
+
+最低限、次を反映する。
+
+1. top-level common 9 keys
+2. `[generate]` / `[diff]` common override
+3. Diff 固有 `current_state/include_untracked`
+4. precedence
+5. `generate=None` / `diff=1`
+6. seed hop 0 / direct import hop 1
+7. explicit `depth=0`
+8. `relative_path_base` を先に解決し inherited path にも適用
+9. CLI path は execution_cwd
+10. ignore は project_root-relative
+11. command `ignore=[]` clear / CLI empty clear 不可
+12. generate targets は positional only
+13. diff base は CLI-only
+14. Git explicit/no-base/current-state/untracked behavior
+15. explicit unlimited diff なし
+16. `--strict` one-way
+17. current-state head の current-side source 制約
+
+### 11.2 example
+
+README example は requirement/design と同じ config shape を使い、トップレベル key を table 宣言より前に置く。
+
+### 11.3 docs validation
+
+```bash
+rg -n "\[generate\]|\[diff\]|relative_path_base|depth|current_state|include_untracked|--base" README.md
+```
+
+誤記禁止:
+
+- top-level common は deprecated
+- command-specific only
+- `[generate].targets`
+- `[diff].base`
+- `depth` が parse frontier を制限
+- `current_state=head` が自動的に HEAD blob を render
+
+### 11.4 exit criteria
+
+- source/test behavior と README が一致。
+- migration/known constraints が明示。
+- source/tests へ docs step 由来の変更なし。
+
+## 12. test closure matrix
+
+| Test ID | requirement | design obligation | concrete evidence |
+|---|---|---|---|
+| `TC-001` | AC-001/002 | schema + active section | config section tests |
+| `TC-002` | AC-003/004 | generic selection/default | precedence/default tests |
+| `TC-003` | AC-005 | list replacement | empty/CLI ignore tests |
+| `TC-004` | AC-006/007 | base-first/origin path | relative path tests |
+| `TC-005` | AC-008/009 | collision/full validation | invalid config tests |
+| `TC-006` | AC-010/011 | targets/base boundaries | config reject + existing target/VCS tests |
+| `TC-007` | AC-012 | downstream unchanged | traversal/parse/VCS/DTO |
+| `TC-008` | AC-013 | app wiring | generate/diff A→B→C |
+| `TC-009` | AC-014 | backward compatibility | existing top-level/diff config tests |
+| `TC-010` | AC-015 | docs/full quality | README/full suite/lint/SpecDock |
+
+## 13. focused test command set
+
+```bash
+uv run pytest tests/config/test_context_resolve.py -q
+uv run pytest tests/cli/test_bind.py -q
+uv run pytest \
+  tests/app/test_diff.py::test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth \
+  tests/app/test_diff.py::test_diff_explicit_depth_two_reaches_transitive_dependency \
+  tests/app/test_diff.py::test_diff_config_depth_two_reaches_transitive_dependency \
+  tests/app/test_generate.py::test_generate_default_depth_remains_unlimited \
+  -q
+uv run pytest tests/analyze/test_traversal.py -q
+uv run pytest tests/parse/test_module_parse_and_index.py -q
+uv run pytest tests/vcs/test_diff_file_collect.py -q
+```
+
+新規 exact nodeids は実装時に report の closure table へ確定名で記録する。
+
+## 14. S99 — full quality gate
+
+### 14.1 full tests
+
+```bash
 uv run pytest
+```
+
+必須判断:
+
+- new functional failure: blocking
+- environment/network-only failure: command/output/reproduction を記録し、supported verification path で再実行
+- pre-existing failure: baseline と同一であることを証明し、別 owner を明示
+- intended Red: implementation後は残してはならない
+
+### 14.2 lint / format
+
+既存 report の reproducibility に合わせる場合:
+
+```bash
 uvx --from ruff==0.9.3 ruff check src tests
 uvx --from ruff==0.9.3 ruff format --check src tests
-uvx --from ruff==0.9.3 ruff check tests/config/test_context_resolve.py tests/cli/test_bind.py tests/app/test_diff.py tests/app/test_generate.py tests/analyze/test_traversal.py tests/parse/test_module_parse_and_index.py tests/vcs/test_diff_file_collect.py
-uvx --from ruff==0.9.3 ruff format --check tests/config/test_context_resolve.py tests/cli/test_bind.py tests/app/test_diff.py tests/app/test_generate.py tests/analyze/test_traversal.py tests/parse/test_module_parse_and_index.py tests/vcs/test_diff_file_collect.py
+```
+
+変更 path は必ず Green:
+
+```bash
+uvx --from ruff==0.9.3 ruff check \
+  src/pyclassuml/config/resolver.py \
+  tests/config/test_context_resolve.py \
+  tests/cli/test_bind.py \
+  tests/app/test_diff.py \
+  tests/app/test_generate.py
+
+uvx --from ruff==0.9.3 ruff format --check \
+  src/pyclassuml/config/resolver.py \
+  tests/config/test_context_resolve.py \
+  tests/cli/test_bind.py \
+  tests/app/test_diff.py \
+  tests/app/test_generate.py
+```
+
+repository-wide baseline を無関係に修復するための broad reformat は行わない。
+
+### 14.3 repository / SpecDock
+
+```bash
 git diff --check
+git status --short --untracked-files=all
+./spec-dock/scripts/spec-dock validate
+./spec-dock/scripts/spec-dock doctor
 ```
 
-### 品質ツールの再現性と既存baselineの扱い
+必要な workflow/assurance command は current SpecDock policy に従い、managed state を手編集しない。
 
-- lint / format toolは `ruff==0.9.3` を固定し、標準コマンドは `uvx --from ruff==0.9.3 ruff check ...` / `uvx --from ruff==0.9.3 ruff format --check ...` とする。`uv run ruff --version`で同じversionが利用できる場合は同等結果として記録できる。Ruffは現行`pyproject.toml`/`uv.lock`のdev dependencyには追加せず、このIssueで依存管理を拡張しない。
-- 実装前baseline（S00前）では、全体`ruff check src tests`に、今回の許可path外である`src/pyclassuml/render/document.py`の既存F821が4件あり、全体format checkは32 filesをreformat対象とする。これは本Issueのresolver/default変更で作ったfailureではないため、今回の実装で修復・全体formatする対象に含めない。
-- S99では全体lint/formatを診断コマンドとして実行し、baselineのerror/file listをreportへ固定する。同時に、Issue変更path（S00の6 test pathsとS01/S02/S90の許可path）へscoped `ruff check`を実行してexit 0を必須とし、format checkも同じpathで実行する。format checkが非0の場合は、同じ固定versionの`ruff format --diff`を実行し、出力をIssue追加hunk（`git diff --unified=0`）と照合する。既存行だけのbaseline driftはnon-blockingとしてfile/line分類をreportへ残せるが、追加hunkをreformat対象に含む場合はそのtest/doc-writer workerが追加ブロックだけをformatしてから再確認する。`git diff --check`とcode-reviewerのhunk reviewで新規format driftがないことを確認し、baseline外の新規errorはblockingとする。
-- baselineの恒久修復は別 maintenance issue のownerとし、iss-00044のcompletion条件へ混ぜない。baseline dispositionが不明、またはIssue変更pathに新規errorが出た場合はS99を閉じずplan amendmentへ戻る。
-
-`tc-009`のINV-005/006は全体pytestへの包含だけで閉じず、S99で次の順序を実行してreportへ個別記録する。
+### 14.4 source boundary inspection
 
 ```bash
-git status --short
-uv run pytest tests/parse/test_module_parse_and_index.py::test_syntax_error_dependency_is_excluded_from_parsed_modules_and_indexes tests/app/test_diff.py::test_diff_colorized_output_is_deterministic tests/app/test_diff.py::test_diff_syntax_error_preserves_diagnostics_and_emits_no_fabricated_diff_changed tests/app/test_diff.py::test_head_current_parse_failure_emits_warning_and_no_fabricated_decoration -q
-rg -n "ast\\.parse|importlib|__import__" src/pyclassuml/parse/indexer.py
-git status --short
+git diff -- \
+  src/pyclassuml/cli/bind.py \
+  src/pyclassuml/model/contracts.py \
+  src/pyclassuml/analyze/traversal.py \
+  src/pyclassuml/vcs/diff_collect.py
 ```
 
-期待値は、named testsがgreen、source inspectionでAST parse経路と対象moduleのimport実行を区別でき、実行前後のGit statusに実装対象外のsource/Git変更が追加されないことである。コマンド出力・前後status・INV-005/006判定はreportの`tc-009`/`EXEC-S99-INV-005-006`へ記録する。
+期待: empty、または事前承認された help-only diff。
 
-`INV-006`のsource inspectionは次の追加コマンドでnamed functionの範囲を固定する。
+## 15. review gate
 
-```bash
-sed -n '/^def parse_target_set/,/^def parse_module_source_text/p' src/pyclassuml/parse/indexer.py
-sed -n '/^def parse_module_source_text/,/^def _parsed_module_from_tree/p' src/pyclassuml/parse/indexer.py
-rg -n "importlib|__import__|exec\\(|eval\\(" src/pyclassuml/parse/indexer.py
-```
+### code review
 
-前2コマンドは`parse_target_set`/`parse_module_source_text`の実行範囲と`ast.parse`呼び出しを示し、最後のcommandはexit status `1`（禁止されたruntime import/eval tokenなし）を期待する。実測出力、exit status、前後statusは`EXEC-S99-INV-005-006`としてreportへ記録する。
+確認事項:
 
-利用可能なproject commandが異なる場合は既存 `pyproject.toml`/CI commandを確認し、代替commandと理由をreportへ記録する。SpecDock doctorのGitHub capability情報は、対象repoが利用不能というinfoであれば失敗と扱わない。
+- key set の single source
+- presence-based merge
+- `relative_path_base` first
+- path origin
+- future command fail-closed
+- no DTO/VCS/traversal policy leakage
+- qualified errors
+- minimal source diff
 
-### レビューと完了条件
+### QA review
 
-- `code-reviewer`: issue-wide source/tests diff、scope、回帰riskがpass。
-- `qa-reviewer`: closure indexの全obligation、integration、known limitationsがpass。
-- `spec-reviewer`: requirement/design/plan/report/実装/tests/README整合がfresh pass。
-- `tc-009`の証跡がreportにあり、SpecDock validate/doctor、全テスト、全体lint/format診断、Issue-scoped lint、diff checkが実行済みで、baseline外のfailureがない。既存baselineの恒久failureは別owner/maintenance issueとして明示されている。
-- commitは作成せず、Git statusと変更pathを最終報告する。
+確認事項:
 
-## 10. 実装委任契約
+- all 9 common fields
+- false/zero/empty cases
+- inactive section behavior
+- config discovery vs effective project_root
+- app A→B→C
+- VCS/traversal/parse invariants
+- migration/known constraints
+- full-suite classification
 
-実装が可能な場合は `dev-coder`へS01/S02、docs変更が必要な場合は `doc-writer`へS90、レビューは各ゲートごとにfresh `code-reviewer`/`qa-reviewer`/`spec-reviewer`へ委任する。入力は本Issueのrequirement/design/plan、親Epic docs、既存source/testsである。workerは許可path外の変更、managed stateの手修復、commit/push/mergeを行わない。必須出力はchanged files、verification、未解決risk、report更新内容であり、path外・仕様衝突・検証不能は停止条件とする。
+### spec review
 
-## 11. ロールバックと中断条件
+確認事項:
 
-resolver/tests/READMEの変更をIssue diff単位で戻せば、既定depthは従来値へ戻る。ユーザー既存変更やSpecDock updater差分を対象に含めない。次の場合は実装を止め、reportとユーザー報告で指示を待つ。
+- requirement/design/plan/README/report consistency
+- latest user decision reflected
+- superseded command-specific-only wording absent
+- candidate/canonical authority correctly stated
+- process blocker disposition
 
-- fresh spec-reviewerがfailまたは要件gapを指摘した。
-- `depth=0`を未指定として扱う実装しか成立しない。
-- traversal/VCS/DTOの変更が必要になった。
-- Git comparison semantics、parse frontier、unlimited explicit inputの要件が変更された。
-- required test/lint/SpecDock validationが環境要因以外で解消できない。
+全 reviewer が pass するまで completion を主張しない。
 
-## 12. 未確定事項
+## 16. report evidence
 
-実装順序、責務配置、検証範囲について未確定事項はない。明示的unlimited diffは別Issueへ延期し、今回のplanではsentinel追加を行わない。レビューで新たな判断が必要になった場合だけplan amendmentを行い、fresh spec reviewへ戻る。
+各 step で最低限、次を report に記録する。
+
+- target branch/HEAD
+- before/after changed files
+- exact command
+- exit status
+- test counts
+- Red→Green 対応
+- acceptance/Test ID
+- source boundary diff
+- environment variance
+- baseline failure classification
+- reviewer verdict
+- unresolved risk/follow-up
+- no commit/push/PR/merge の状態
+
+## 17. stop conditions
+
+次の場合は step を閉じず、design/plan amendment または owner 判断へ戻る。
+
+- common key の一部だけ異なる precedence が必要になった。
+- command-specific `relative_path_base` の inherited path 適用を変更したい。
+- `[generate].targets` / `[diff].base` が必要になった。
+- explicit unlimited sentinel が同一 Issue に必要になった。
+- DTO/traversal/VCS production change が必要になった。
+- config discovery に config 内 `project_root` を使いたい。
+- current-state head の source blob behavior を変更したい。
+- required full test/review が未解消。
+- unrelated user/managed change の消去が必要になった。
+
+## 18. rollback
+
+rollback 単位:
+
+1. resolver schema/merge/path/default diff
+2. focused tests
+3. app integration tests
+4. README
+5. canonical docs/report reflection
+
+traversal/VCS/DTO/data migration はないため、rollback は code/docs/test diff の revert で完結する。ユーザー既存変更や managed bundle を巻き戻さない。
+
+## 19. handoff
+
+実装担当へ渡す input:
+
+- candidate `requirement.md`
+- candidate `design.md`
+- 本 `plan.md`
+- current issue report
+- latest ADR artifact
+- target branch/commit
+- current source/tests
+- baseline command output
+
+実装担当の required output:
+
+- changed files
+- exact test/lint/SpecDock results
+- acceptance/Test ID closure
+- unresolved risks
+- report update proposal
+- commit/push/PR/merge 未実施の明記

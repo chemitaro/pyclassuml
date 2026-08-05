@@ -3,170 +3,414 @@
 ID: "iss-00044"
 タイトル: "Diff Default Traversal Depth"
 状態: "draft"
-作成者: "iwasawayuuta"
-最終更新: "2026-08-04"
+作成者: "ChatGPT"
+最終更新: "2026-08-05"
 親: ["epic-00002", "init-00001"]
 ---
 
-# iss-00044 Diff Default Traversal Depth — 要件定義
+# iss-00044 Diff Default Traversal Depth — 要件定義（canonical 候補）
 
-## 1. 目的と観測可能な成果
+> 本書は `chemitaro/pyclassuml` の branch `codex/iss-00044-chatgpt-first-planning`、commit `d04c6aa175d1f6261c7c4378435b5d54b4efef27`、および提供された source / tests / SpecDock 文書 / artifacts を根拠に作成した候補である。repository、active state、canonical docs、GitHub Issue を変更したものではなく、review pass や実装完了を主張しない。
 
-`diff` のCLIおよび設定ファイルで `depth` が指定されていない場合だけ、依存探索・図出力の既定 frontier を import hop 1 に制限する。`generate` の未指定時の既定値は現行どおり無制限を表す `None` とし、明示値の既存挙動を保つ。
+## 1. 目的
 
-完了後、利用者はCLI、トップレベル設定、command defaultの優先順位を文書で確認でき、同じ入力に対して `diff` と `generate` の既定 depth が意図どおり異なることをテストと出力で観測できる。
+`diff` の依存探索既定値を import hop `1` に限定しつつ、`generate` の既定値 `None`（unlimited）を維持する。同時に、同一 `.pyclassuml.toml` におけるトップレベル共通設定を正式なベースとし、`[generate]` と `[diff]` が共通設定をコマンド単位で上書きできる設定契約を確立する。
 
-## 2. 背景・現状
+利用者から観測できる最終契約は次のとおりである。
 
-現行の責務分担は、CLI bindが未指定の `--depth` を `None` として `CommandOptions` に保持し、config resolverがCLI値とトップレベル `depth` をマージして `AnalysisConfig.depth` を作り、traversalが解決済みの値だけを消費する形である。現在のresolver defaultは両commandとも `None` である。
+- 共通設定はトップレベルに一度記述できる。
+- `generate` または `diff` だけ値を変えたい場合は、対応する `[generate]` または `[diff]` に同じ共通キーを記述する。
+- 解決優先順位は、各フィールドについて `CLI の当該コマンドで明示した値 > コマンド別設定 > トップレベル共通設定 > コマンド既定値` である。
+- CLI/config のいずれにも `depth` がない場合、`generate` は `None`、`diff` は `1` となる。
+- 明示 `--depth 0` および config の `depth = 0` は有効値であり、未指定として扱わない。
+- `current_state` と `include_untracked` は Diff 固有キーとして `[diff]` にだけ置く。
+- Git 比較、target normalization、traversal、DTO、module limit、read-only / AST-only / non-invasive の既存境界を変更しない。
 
-traversalではseedをhop 0、直接importをhop 1として扱い、`None` はhop上限なしを表す。解析対象のpackage-local候補はparse seamで読み込まれるため、depthはparse対象全体ではなく、主にreachable traversal/render frontierを制限する。既存のmodule limit、diagnostic、AST-only、read-only、決定性の契約は別に維持する。
+## 2. 背景と現状
 
-`diff` のGit比較はVCS seamが担当し、明示 `--base`、base未指定時のdefault branchとのmerge-base、initial commit fallback、working-tree/head、include-untrackedの既存規則でchanged filesをseedとして集める。depthはGitの比較対象・base解決・seed収集を変更しない。
+現行 `src/pyclassuml/config/resolver.py` は、共通値をトップレベルからだけ読み、`[diff]` では `current_state` と `include_untracked` だけを許可する。`[generate]` は未定義であり、`depth` は `CLI > トップレベル > None` として両コマンド共通に解決される。このため、現行 source では `diff` の全未指定時も `AnalysisConfig.depth is None` である。
 
-## 3. 対象範囲
+一方、現行 tests には `diff` の全未指定時に `depth == 1` を要求する先行テストと、A→B→C の dependency chain で default `diff` が A/B だけを到達可能にすることを要求する先行テストが含まれる。したがって、現時点の source と tests は意図的な Red 状態を含み得る。
 
-### 3.1 必須変更
+既存 Issue 文書は主として「トップレベル `depth` と command default」の補正だけを扱い、`[generate]` / `[diff]` による全共通設定の上書きを対象外としている。2026-08-05 の最新ユーザー決定により、command-specific only および旧トップレベル廃止案は撤回され、トップレベル共通ベース + command override が採用方針となった。
 
-- `diff` のCLI/config未指定時のeffective `AnalysisConfig.depth` を `1` にする。
-- `generate` のCLI/config未指定時のeffective `AnalysisConfig.depth` を `None` のまま維持する。
-- 優先順位を `CLI --depth > top-level config depth > command default` と固定する。
-- `0` を未指定と区別し、CLI/configの明示 `0` を必ず優先する。
-- resolver、CLI契約、Git比較方式、depthのhop semantics、既知制約をテストまたはREADMEで明文化する。
-- focus testと全体テストで既存のgenerate、traversal、VCS契約への回帰がないことを確認する。
+## 3. 用語
 
-### 3.2 変更対象の責務
+- **共通設定**: `generate` と `diff` の双方に適用可能な config key。
+- **コマンド別設定**: `[generate]` または `[diff]` 内の共通設定。対応コマンドについてトップレベル共通設定を上書きする。
+- **Diff 固有設定**: `[diff].current_state` と `[diff].include_untracked`。
+- **CLI 明示値**: CLI parser が「利用者がそのオプションを指定した」と判定できる値。`depth=0` や `include_untracked=false` を truthiness で未指定扱いしてはならない。
+- **command default**: CLI、コマンド別設定、トップレベル共通設定がすべて未指定の場合に resolver が採用する値。
+- **seed / hop 0**: `generate` の explicit target または `diff` の changed file。
+- **import hop 1**: seed から直接 import される内部候補。
+- **traversal frontier**: `AnalysisConfig.depth` により制限される reachable dependency graph。
+- **parse frontier**: AST parse の候補範囲。`depth` の制限対象ではない。
+- **config-origin path**: トップレベルまたは command table から選択された path 値。
+- **CLI-origin path**: CLI option から選択された path 値。
 
-- command defaultの所有者は `src/pyclassuml/config/resolver.py` のconfig resolution seamとする。
-- `src/pyclassuml/cli/bind.py` は未指定を `None`、明示値を非負整数として保持する既存契約を維持する。
-- `AnalysisConfig.depth` と `CommandOptions.depth` の `int | None` 型を維持する。
-- traversal、VCS diff collector、target normalization、DTOはcommand policyを解釈せず、変更しない。
+## 4. 設定ファイル契約
 
-## 4. 対象外
+### 4.1 正式な設定形状
 
-- `[diff].depth` という新しい設定キーの追加。
-- `None` をCLIまたはTOMLから明示的に要求するための新しいsentinel、文字列、特殊値の追加。
-- parse frontierをdepthで制限する設計変更、深いmoduleのsyntax diagnostic範囲の変更。
-- traversalアルゴリズム、module limit、cycle処理、relation抽出、PlantUML rendererの変更。
-- GitHub API、remote fetch、checkout、Git比較方式、base解決、untracked/rename規則の変更。
-- `.agents/skills/pyclassuml-repo-map`、user-level skill、SpecDock managed bundle、Issueのmerge/close、commit/push/PR。
+```toml
+# トップレベル: generate / diff の共通ベース
+project_root = "."
+package_root = "src"
+scope_root = "src"
+output = "diagram.puml"
+ignore = ["tests/**", "build/**"]
+depth = 3
+mode = "warn"
+target_python = "3.12"
+relative_path_base = "config"
 
-## 5. 非交渉制約と不変条件
+# generate だけの上書き
+[generate]
+output = "generate.puml"
+depth = 5
+ignore = []
 
-- PyClassUMLは解析対象へ組み込まない外部CLIであり、対象プロジェクトのファイルを変更しない。
-- 解析はASTベースの静的解析だけで行い、対象コードをimport実行しない。
-- 同一入力では決定的な結果を返す。
-- `execution_cwd`、`project_root`、`package_root`、`scope_root`の境界を崩さない。
-- top-level `depth` は `generate` と `diff` の共通設定であり、設定が存在する場合はcommand defaultより優先する。
-- changed fileはdepthにかかわらずdiffのseed（hop 0）として扱う。
+# diff だけの共通設定上書き + Diff 固有設定
+[diff]
+output = "diff.puml"
+depth = 1
+current_state = "working-tree"
+include_untracked = true
+```
 
-## 6. 利用シナリオと優先順位
+TOML の仕様上、トップレベル共通キーは `[generate]` または `[diff]` の table 宣言より前に記述する。`diff.current_state = "head"` の dotted key 表記は `[diff]` table と同じ意味として扱う。
 
-利用者が `diff` を実行したとき、CLI/config双方に `depth` がなければ直接依存までを既定で図示する。利用者が `depth = 3` または `--depth 3` を指定すれば、その明示値が使われる。`--depth 0` はseed-onlyとして扱われる。
+### 4.2 共通設定一覧
 
-| command | CLI `--depth` | config `depth` | effective depth |
-|---|---:|---:|---:|
-| `generate` | 未指定 | 未指定 | `None` |
-| `diff` | 未指定 | 未指定 | `1` |
-| `diff` | 未指定 | `0` | `0` |
-| `diff` | 未指定 | `3` | `3` |
-| `diff` | `0` | `3` | `0` |
-| `diff` | `2` | `0` | `2` |
-| `generate` | 未指定 | `3` | `3` |
+| key | config 型 | トップレベル | `[generate]` | `[diff]` | CLI 対応 | command default |
+|---|---|---:|---:|---:|---|---|
+| `project_root` | non-empty string path | 可 | 可 | 可 | `--project-root` | config file がある場合はその parent、なければ `execution_cwd` |
+| `package_root` | non-empty string path | 可 | 可 | 可 | `--package-root` | effective `project_root` |
+| `scope_root` | non-empty string path | 可 | 可 | 可 | `--scope-root` | effective `package_root` |
+| `output` | non-empty string path | 可 | 可 | 可 | `--output` | `None`。downstream が自動命名する |
+| `ignore` | string list | 可 | 可 | 可 | repeatable `--ignore` | empty tuple |
+| `depth` | non-negative integer | 可 | 可 | 可 | `--depth` | `generate=None`, `diff=1` |
+| `mode` | `"warn"` / `"strict"` | 可 | 可 | 可 | `--strict` は `"strict"` の明示指定 | `"warn"` |
+| `target_python` | `3.<minor>` string | 可 | 可 | 可 | `--target-python` | `None` |
+| `relative_path_base` | `"config"` / `"cwd"` | 可 | 可 | 可 | なし | `"config"` |
+
+`ignore = []` は有効であり、command table に置いた場合はトップレベル `ignore` を明示的に空へ置換する。複数レイヤーの `ignore` は連結しない。
+
+### 4.3 Diff 固有設定
+
+| key | 許可位置 | CLI 対応 | default |
+|---|---|---|---|
+| `current_state` | `[diff]` のみ | `--current-state` | `"working-tree"` |
+| `include_untracked` | `[diff]` のみ | `--include-untracked` / `--no-include-untracked` | `true` |
+
+`current_state` と `include_untracked` はトップレベルまたは `[generate]` に置いてはならない。`[diff]` では共通設定と Diff 固有設定の両方を記述できる。
+
+### 4.4 config key ではない入力
+
+次の入力は config layering の対象にしない。
+
+| 入力 | 位置づけ |
+|---|---|
+| `--cwd` | `execution_cwd` を決める CLI-only meta option |
+| `--config` | config file を明示する CLI-only meta option |
+| `generate [targets ...]` | CLI positional inputs。`[generate].targets` は追加しない |
+| `diff --base <ref>` | CLI-only VCS input。`[diff].base` / `[diff].base_ref` は追加しない |
+
+## 5. 機能要件
+
+### RQ-001 — トップレベル共通設定
+
+resolver はトップレベルにある 9 個の共通設定を、`generate` と `diff` の双方に適用可能な正式ベースとして扱わなければならない。これは legacy fallback ではなく、継続する公開設定契約である。
+
+### RQ-002 — command override
+
+resolver は `[generate]` と `[diff]` の双方で、9 個すべての共通設定を許可しなければならない。command table に key が存在する場合、その値は対応コマンドについてトップレベル値を置換する。
+
+値の選択は「key が存在するか」で判断し、truthiness で判断してはならない。したがって、`depth = 0`、`ignore = []`、`include_untracked = false` は有効な上書きである。
+
+### RQ-003 — 解決優先順位
+
+共通設定の effective value は、フィールドごとに次の順序で選択する。
+
+1. CLI の当該コマンドで明示した値
+2. `[generate]` または `[diff]` の値
+3. トップレベル共通値
+4. command default
+
+CLI 表現が存在しない `relative_path_base` は 2→3→4 の順序で解決する。CLI が `"warn"` を明示する surface は現行提供されず、`--strict` が指定された場合だけ `mode="strict"` として最優先になる。
+
+### RQ-004 — depth default と hop semantics
+
+- `generate` で CLI / `[generate]` / top-level の `depth` がすべて未指定なら、effective `AnalysisConfig.depth` は `None`。
+- `diff` で CLI / `[diff]` / top-level の `depth` がすべて未指定なら、effective `AnalysisConfig.depth` は `1`。
+- `depth=0` は seed-only。
+- seed は hop 0、直接 import は hop 1。
+- 複数 changed file は各々 hop 0 の seed であり、別 seed であることを理由に depth で除外してはならない。
+- `depth` は traversal/render frontier だけを制限し、Git changed-file collection、base resolution、target normalization、parse frontier を変更してはならない。
+
+### RQ-005 — `relative_path_base` と path 解決順序
+
+resolver は active command の effective `relative_path_base` を、他の config-origin path を解決する前に確定しなければならない。
+
+- effective `relative_path_base="config"`: config-origin path は config file の parent 基準。
+- effective `relative_path_base="cwd"`: config-origin path は `execution_cwd` 基準。
+- command table の `relative_path_base` は active command 全体の effective base であり、command table 由来の path だけでなく、継承されたトップレベル path にも適用する。
+- CLI-origin path は常に `execution_cwd` 基準であり、`relative_path_base` の影響を受けない。
+- `ignore` pattern は path 値ではなく、effective `project_root` 相対の filter として評価する。
+- default `project_root` は、config file がある場合は config file parent、ない場合は `execution_cwd`。この default は `relative_path_base` で再解釈しない。
+- default `package_root` と `scope_root` は、すでに解決済みの effective root を継承する。
+
+### RQ-006 — config discovery
+
+config discovery の順序を維持する。
+
+1. `--config` があれば、`execution_cwd` 基準で解決した明示 path
+2. CLI `--project-root` があれば、その directory 直下の `.pyclassuml.toml`
+3. `execution_cwd` から parent 方向への `.pyclassuml.toml` 探索
+
+config file 内のトップレベルまたは command-specific `project_root` は、config file 自身の discovery には使用しない。config を load した後の effective context にだけ使用する。
+
+### RQ-007 — Diff 固有設定と collision 防止
+
+共通キー集合と Diff 固有キー集合は disjoint でなければならない。将来同名 collision が発生した場合、暗黙の last-write-wins を採用せず、schema 定義または test を失敗させ、明示的な設計判断を要求する。
+
+- `[generate]` の許可キー: 共通キーのみ。
+- `[diff]` の許可キー: 共通キー + `current_state` + `include_untracked`。
+- トップレベルの許可キー: 共通キー + table 名 `generate` + `diff`。
+- unknown key、非 table の `generate` / `diff`、Diff 固有キーの誤配置は fail-fast。
+
+### RQ-008 — CLI 明示値の検出
+
+- optional path / string は `is not None` で明示判定する。
+- `depth` は `is not None` で判定し、`0` を保持する。
+- repeatable `--ignore` は 1 個以上なら CLI 明示値。現行 CLI は「空 list を明示して config ignore を消す」surface を持たない。
+- `--strict` は `True` のときだけ CLI 明示値。現行 CLI は `--no-strict` / `--mode warn` を持たない。
+- `DiffOptions.current_state_cli_provided` と `include_untracked_cli_provided` を維持し、enum default や bool value 自体を明示判定に流用しない。
+- 将来、明示 `false` や empty collection を持つ共通 CLI option を追加する場合は、value と presence を分離する metadata を追加する。
+
+### RQ-009 — validation と diagnostics
+
+config 全体に対して unknown key、section type、value type、enum domain を検証する。inactive command section も schema/type validation の対象とするが、filesystem existence と containment は active command の effective path に対してだけ実施する。
+
+必須 validation:
+
+- `project_root`, `package_root`, `scope_root`, `output`: non-empty string
+- `ignore`: string list。各要素は non-empty。empty list 自体は有効
+- `depth`: bool ではない non-negative integer
+- `mode`: `warn` または `strict`
+- `target_python`: `3.<minor>`
+- `relative_path_base`: `config` または `cwd`
+- `current_state`: `working-tree` または `head`
+- `include_untracked`: bool
+- root existence と directory 判定
+- `package_root` が `project_root` の内側または同一
+- `scope_root` が `package_root` の内側または同一
+
+既存の `ConfigError`、`Diagnostic.origin_seam=CONFIG`、fatal recoverability、failure reason の境界を維持する。message は `generate.depth`、`diff.relative_path_base` のように section-qualified field を識別可能にする。
+
+### RQ-010 — Generate targets と Diff `--base`
+
+- `generate` targets は CLI positional input のまま維持する。
+- targets の相対 path は `execution_cwd` 基準で normalize する。
+- file / directory / glob、ignore、scope outside、zero target の既存契約を変更しない。
+- `diff --base <ref>` は CLI-only のまま維持する。
+- 明示 base が invalid な場合は failure とし、no-base resolution へ fallback しない。
+- no-base の default branch merge-base、initial commit fallback、`working-tree` / `head`、untracked、rename の既存規則を変更しない。
+- config resolver は `base_ref` の検証や Git command 実行を担わない。
+
+### RQ-011 — traversal / VCS / DTO の責務維持
+
+次の production module は command-specific config policy を解釈してはならない。
+
+- `src/pyclassuml/analyze/traversal.py`
+- `src/pyclassuml/vcs/diff_collect.py`
+- `src/pyclassuml/model/contracts.py`
+- target normalization modules
+
+`AnalysisConfig.depth: int | None`、`CommandOptions.depth: int | None` を維持する。`DEFAULT_TRAVERSAL_MODULE_LIMIT = 1000`、cycle termination、deterministic ordering、scope/package stop、diagnostic behavior を維持する。
+
+### RQ-012 — non-invasive / read-only / AST-only
+
+- 解析対象 source を変更しない。
+- 解析対象 package に dependency を追加しない。
+- 解析対象 module を import 実行しない。
+- AST static analysis を維持する。
+- Git metadata、branch、index、working tree を変更しない。
+- `.puml` output 以外の対象 project artifact を生成しない。
+- 同一 input/config/Git state から deterministic な effective config と出力を得る。
+
+### RQ-013 — documentation / migration / quality
+
+README または同等の利用者向け文書に、config shape、全共通キー、precedence、path base、depth defaults、Diff 固有キー、targets/base の非 config 性、known constraints を記載する。
+
+実装は focused tests と full tests の双方で検証し、既存 baseline と新規 failure を分離する。repository-wide lint/format の既存 failure を本 Issue の機能実装に混入させず、変更 path の新規 failure は許容しない。
+
+## 6. 不変条件
+
+1. `CLI > command section > top-level common > command default` は全共通フィールドで同一。
+2. layer selection は presence-based であり、truthiness-based ではない。
+3. `relative_path_base` は config-origin path resolution より先に一度だけ解決する。
+4. CLI-origin path は常に `execution_cwd` 基準。
+5. root containment は symlink 解決後の absolute path で判定する。
+6. `generate` default depth は `None`、`diff` default depth は `1`。
+7. `depth=0` は有効。
+8. changed files は常に diff seed / hop 0。
+9. `current_state` / `include_untracked` は Diff 固有。
+10. `targets` / `base_ref` は config key にしない。
+11. resolver は Git 読み取りや traversal を実行しない。
+12. VCS/traversal/DTO は command default を知らない。
+13. module limit、cycle、determinism、read-only、AST-only を維持する。
 
 ## 7. 受け入れ条件
 
-### AC-001 — diff command default
+### AC-001 — schema と共通ベース
 
-- 前提: CLI/configの `depth` が未指定で、AがBを直接importし、BがCをimportする。
-- 操作: `diff` を実行する。
-- 期待: effective `AnalysisConfig.depth == 1`、AとBはreachable/render対象、Cはdepthによるreachable frontier外となる。
-- 観測: resolver focused testおよびapp-level testで確認する。
+**Given** 9 個の共通値をトップレベルに持つ config  
+**When** `generate` と `diff` をそれぞれ resolve する  
+**Then** 両コマンドがトップレベル値を effective value として使用する。
 
-### AC-002 — generate default compatibility
+### AC-002 — 全共通設定の command override
 
-- 前提: CLI/configの `depth` が未指定で、A→B→Cの依存がある。
-- 操作: `generate` を実行する。
-- 期待: effective `AnalysisConfig.depth is None`、既存のtransitive traversalが維持される。
+**Given** トップレベルと active command table に同じ共通キーがある  
+**When** resolve する  
+**Then** active command table の値が選択され、inactive command table の値は選択されない。9 個の共通キーすべてで同じ規則が成立する。
 
-### AC-003 — explicit precedence and zero
+### AC-003 — CLI precedence と明示 `0`
 
-- 前提: config `depth = 3` または `depth = 0` を用意する。
-- 操作: CLI未指定、CLI `--depth 0`、CLI `--depth 2`をそれぞれ実行する。
-- 期待: config値はcommand defaultに勝ち、CLIの明示値はconfig値に勝ち、`0` は有効値として保持される。
+**Given** top-level `depth=4`、`[diff].depth=2`  
+**When** `diff --depth 0` を実行する  
+**Then** effective depth は `0`。CLI 未指定なら `2`、`[diff].depth` も未指定なら `4`。
 
-### AC-004 — CLI bind boundary
+### AC-004 — command defaults
 
-- 操作: `--depth`未指定および `--depth 0` をbindする。
-- 期待: 未指定は `None`、明示 `0` は `0` であり、CLI parserが `1` を注入しない。
+**Given** depth が全レイヤーで未指定  
+**When** `generate` / `diff` を resolve する  
+**Then** `generate=None`、`diff=1`。
 
-### AC-005 — Git comparison compatibility
+### AC-005 — list replacement と clear
 
-- 操作: explicit base、base未指定、working-tree/head、include-untracked、initial commit fallbackの既存テストとdiffを実行する。
-- 期待: base解決、changed-file収集、seed選択、untracked/renameの規則はdepth変更前後で不変である。depthはGit commandの引数や比較結果の選択に影響しない。
+**Given** top-level `ignore=["tests/**"]`、`[generate].ignore=[]`  
+**When** `generate` を resolve する  
+**Then** effective ignore は empty tuple。top-level list と連結しない。
 
-### AC-006 — invariant and error preservation
+### AC-006 — `relative_path_base` の先行解決
 
-- 期待: invalid depthは既存のvalidation errorを返し、対象source/Gitを変更せず、import実行せず、同一入力で決定的に動作する。module limit、cycle、diagnosticの契約も維持する。
+**Given** config file が `config/`、`execution_cwd` が `work/`、top-level `project_root="project"`、`[diff].relative_path_base="cwd"`  
+**When** `diff` を resolve する  
+**Then** inherited top-level `project_root` は `work/project` に解決される。`generate` に command override がなければ `config/project` に解決される。
 
-#### AC-006の検証対応
+### AC-007 — CLI path independence
 
-| 検証ID | 不変条件 | 検証証跡 |
+**Given** config の effective `relative_path_base="config"` と CLI `--output out.puml`  
+**When** resolve する  
+**Then** output は `execution_cwd/out.puml`。config directory 基準にしない。
+
+### AC-008 — Diff 固有キーの配置
+
+**Given** `[diff].current_state` / `[diff].include_untracked`  
+**When** `diff` を resolve する  
+**Then** CLI 明示値があれば CLI、なければ `[diff]`、なければ default。トップレベルまたは `[generate]` に置いた場合は `invalid_config`。
+
+### AC-009 — invalid config
+
+unknown key、non-table section、invalid type/domain、empty path string、negative/bool depth、containment violation は downstream VCS/targets/parse を呼ぶ前に fatal config diagnostic となる。
+
+### AC-010 — Generate targets boundary
+
+`[generate].targets` は unknown key として failure。CLI targets は既存どおり normalize され、scope outside / zero target の既存 failure contract を維持する。
+
+### AC-011 — Diff base boundary
+
+`[diff].base` / `[diff].base_ref` は unknown key として failure。CLI `--base` の explicit/no-base behavior は現行 VCS tests と一致する。
+
+### AC-012 — traversal / VCS regression
+
+depth 0/1/None、multi-seed、multiple candidate、cycle、module limit、explicit base、merge-base、initial fallback、current-state、untracked、rename の既存 test が回帰しない。
+
+### AC-013 — app integration
+
+A→B→C の fixture で、default `diff` は A/B、`diff --depth 2` または `[diff].depth=2` は A/B/C、default `generate` は A/B/C を出力する。
+
+### AC-014 — compatibility
+
+既存のトップレベル-only config と `[diff]` の `current_state/include_untracked` config は引き続き有効。command-specific only / top-level 廃止を要求しない。
+
+### AC-015 — docs と全体品質
+
+README の設定例と source behavior が一致し、focused test、full test、changed-path lint/format、`git diff --check`、SpecDock validation の必要な evidence が揃う。
+
+## 8. acceptance / test matrix
+
+| Test ID | 主な acceptance | 検証対象 |
 |---|---|---|
-| INV-001 | invalid depthのvalidation error | `tests/config/test_context_resolve.py::test_invalid_config_file_schema_values_are_failures`、`tests/cli/test_bind.py`の非負整数parserケース |
-| INV-002 | depth=0のseed-onlyとdepth境界 | `tests/analyze/test_traversal.py::test_depth_zero_keeps_seed_only`、`test_depth_one_includes_direct_import_only` |
-| INV-003 | cycle停止と決定的なreachable結果 | `tests/analyze/test_traversal.py::test_depth_none_terminates_deterministically_on_cyclic_imports`、`test_reachable_files_and_edges_are_deterministically_ordered` |
-| INV-004 | module limitとdiagnosticの維持 | `tests/analyze/test_traversal.py::test_module_limit_returns_partial_result_and_fatal_diagnostic`、`test_module_limit_applies_to_initial_seed_frontier` |
-| INV-005 | diffの決定性とdiagnostic維持 | `tests/app/test_diff.py::test_diff_colorized_output_is_deterministic`、`test_diff_syntax_error_preserves_diagnostics_and_emits_no_fabricated_diff_changed`、`test_head_current_parse_failure_emits_warning_and_no_fabricated_decoration`、`tests/parse/test_module_parse_and_index.py::test_syntax_error_dependency_is_excluded_from_parsed_modules_and_indexes`。結果はreportの`tc-009`へ記録する |
-| INV-006 | read-only・no-import境界 | `src/pyclassuml/parse/indexer.py::parse_target_set` / `parse_module_source_text`のAST parse source inspection（`ast.parse`のみで対象moduleをimport実行しないこと）、`tests/parse/test_module_parse_and_index.py`、実行前後の`git status --short`。結果とinspection commandはreportの`tc-009`へ記録する |
+| `TC-001` | AC-001, AC-002 | top-level common と `[generate]` / `[diff]` の全共通キー |
+| `TC-002` | AC-003, AC-004 | precedence、default、明示 `depth=0` |
+| `TC-003` | AC-005 | `ignore` replacement / empty clear |
+| `TC-004` | AC-006, AC-007 | `relative_path_base`、CLI/config path origin |
+| `TC-005` | AC-008, AC-009 | Diff 固有 key、unknown/type/domain/containment |
+| `TC-006` | AC-010, AC-011 | generate targets / diff `--base` boundary |
+| `TC-007` | AC-012 | traversal / VCS / DTO regression |
+| `TC-008` | AC-013 | app-level depth behavior |
+| `TC-009` | AC-014 | existing config compatibility |
+| `TC-010` | AC-015 | README、focused/full quality gates |
 
-### AC-007 — documentation
+## 9. 移行と互換性
 
-- READMEまたは同等の利用者向け文書に、hop semantics、commandごとのdefault、CLI > config > default、top-level configの適用範囲、Git比較方式、既知制約を記載する。
+### 9.1 維持する互換性
 
-## 8. エッジケースと既知制約
+- 既存トップレベル共通設定はそのまま有効。
+- 既存 `[diff].current_state` と `[diff].include_untracked` はそのまま有効。
+- CLI option 名、型、generate targets、diff `--base` を維持。
+- `AnalysisConfig` / `CommandOptions` の公開型を維持。
+- Git 比較と traversal algorithm を維持。
 
-- **EC-001**: `depth=0` はseed-onlyであり、既定値 `1`へのfallbackではない。
-- **EC-002**: 複数のchanged fileは各々hop 0のseedであり、あるseedから深い依存でも別seedなら残る。
-- **EC-003**: cyclic importは既存のreachable set/cycle処理で停止する。
-- **EC-004**: 同じimportが複数候補へ解決される場合、候補は同じhopで扱われる。
-- **EC-005**: depth=1でもparse seamがpackage-local候補を読み、深いmoduleのsyntax errorがdiagnosticとして観測される可能性がある。depthをparse safety limitと解釈しない。
-- **EC-006**: module limitは引き続き有効で、depth=1でもseed数・直接候補数によりlimit diagnosticが発生し得る。
-- **EC-007**: `current_state=head` はGitの比較対象をHEADへ切り替えるが、parse対象のworking-tree内容までHEADへ固定する契約ではない。正確なHEAD図にはclean working treeが必要である。
-- **EC-008**: 明示的な無制限 `diff` を表すCLI/config入力は現行契約にない。今回の範囲では新sentinelを追加せず、この互換性制約を文書化し、必要なら別Issueで扱う。
+### 9.2 新規に有効になる形状
 
-## 9. Git比較契約
+- `[generate]` に全共通キー。
+- `[diff]` に全共通キー + 既存 Diff 固有キー。
+- command-specific `relative_path_base`。
+- command-specific empty `ignore=[]` による common ignore clear。
 
-- `--base <ref>` がある場合、そのrefを明示baseとして使い、無効refをdefault branchへ黙ってfallbackしない。
-- base未指定時はdefault branchとのmerge-baseをbest-effortで解決し、比較不能な履歴ではinitial commit fallbackを使う既存規則を維持する。
-- working-tree/current-stateは、baseと現在状態の比較方法を選ぶVCS設定であり、depthとは独立である。
-- `include_untracked` はGit差分収集時のseed選択だけを変える。depthはuntracked fileのseed性を変えない。
-- VCS seamはGit read-only操作とchanged-file収集を担い、dependency traversalのdefault policyを担わない。
+### 9.3 意図的な挙動変更
 
-## 10. 根拠と用語
+- `diff` の depth 全未指定時は `None` から `1` へ変わる。
+- empty path string は fail-fast とする。基準 directory を表す場合は `"."` を明示する。
+- command-specific `relative_path_base` は inherited top-level path の解釈も変える。
 
-根拠は上位Initiative/Epicの要件・設計、既存 `resolver.py`、`bind.py`、`contracts.py`、`traversal.py`、`diff_collect.py`、関連tests、README、research discussion、およびChatGPT-Useの設計レビューartifactである。ChatGPT出力はadvisory evidenceであり、canonical authorityやreview passではない。採用する主張はlocal source/testsで再検証する。
+### 9.4 既知の互換性制約
 
-### 10.1 SpecDock assurance profileの適用範囲
+- 現行 CLI/TOML には `diff` の unlimited `None` を明示する sentinel がない。
+- `--strict` は strict への one-way override であり、CLI から warn を強制できない。
+- CLI から config `ignore` を empty へ clear する option はない。
+- command-specific `project_root` は config discovery を変更せず、load 後の effective context だけを変更する。
+- `current_state=head` は Git changed-file comparison を HEAD に切り替えるが、図の current-side source を自動的に HEAD blob に固定するものではない。
 
-このIssueはPyClassUML外部CLIの利用者向け既定挙動を変更するため、`runtime_behavior_change=true`である。この事実を「公開挙動に影響しない」とは扱わない。一方、現行SpecDockの`authorized_profile`が直接統制するSpecDock自身の公開CLI、workflow、active/validate/lifecycle、template、metadata、workspace scaffold、永続状態は変更しない。変更対象はPyClassUML本体の`resolver`と利用者向けREADMEであり、SpecDockの運用契約ではない。
+## 10. 対象外
 
-したがって、現行のprofile scopeでは次のStandard適用例外を採用する。
+- explicit unlimited depth sentinel の追加。
+- `--mode warn`、`--no-strict`、CLI ignore clear option の追加。
+- `[generate].targets`、`[diff].base` / `[diff].base_ref` の追加。
+- config file include / profile / environment expansion。
+- multiple `package_root` / `scope_root`。
+- traversal、parse frontier、module limit、Git algorithm、renderer、DTO の再設計。
+- target project source、Git metadata、SpecDock managed state の変更。
+- commit、push、PR、merge、Issue close。
 
-- `public_contract_change=false`: PyClassUMLの既存`diff` / `--depth`入力面、型、設定schema、終了契約を変更せず、未指定時のeffective policyだけを変更する。
-- `migration_or_persistence_change=false`、`rollback_difficulty_high=false`、`security_or_privacy_sensitive=false`: 永続データ、workspace、GitHub状態、secret、不可逆migrationを扱わない。
-- `docs_only_change=false`: runtime behaviorは実際に変更するため、docs-onlyとは主張しない。
-- `assurance classify`はrisk factを入力するCLIを現行提供せず、`.assurance.json`は正規コマンド生成物である。managed stateを手修復してStrictを自己主張しない。
+## 11. 根拠と未検証事項
 
-この例外はユーザー向け互換性リスクの免除ではない。公開挙動変更に対する補償として、ChatGPT-Use advisoryのlocal検証、fresh `spec-reviewer`、resolver/app/focused/full test、VCS・read-only・no-import inspection、README、code/QA reviewを必須化する。将来、変更がSpecDockの公開CLI/workflow契約へ広がる、またはrisk factを正規入力してStrictへ再分類できる実装が利用可能になった場合は、実装前にStrictへ引き上げる。
+主な根拠:
 
-- effective depth: resolverがCLI/config/defaultから確定して `AnalysisConfig`へ渡す値。
-- seed/hop 0: generateの明示targetまたはdiffのchanged file。
-- import hop 1: seedから直接importされる候補。
-- traversal/render frontier: depthで制限されるreachable・図出力の範囲。
-- parse frontier: parserが診断のために読み込む範囲。今回depthでは制限しない。
-- current-state: diffが比較対象としてworking treeまたはHEADを選ぶ設定。
+- `AGENTS.md`
+- `README.md`
+- `src/pyclassuml/config/resolver.py`
+- `src/pyclassuml/cli/bind.py`
+- `src/pyclassuml/model/contracts.py`
+- `src/pyclassuml/analyze/traversal.py`
+- `src/pyclassuml/vcs/diff_collect.py`
+- 関連 config / CLI / app / traversal / VCS tests
+- parent Epic の requirement / design / plan
+- Issue `iss-00044` の既存 requirement / design / plan / report
+- `20260804t232417z-adr-common-config-command-overrides-decision.md`
+- 2026-08-05 の最新ユーザー決定
 
-## 11. 未確定事項
-
-今回の実装に必要な要件上の未確定事項はない。無制限 `diff` の明示指定は現行制約として別Issueへ延期する。canonical promotion、実装着手、README変更の最終レビューはfresh reviewer gateで確認する。
+本書作成時には test suite、lint、SpecDock command を実行していない。既存 report に記録された過去の pass/fail 数は evidence として参照するが、独立再検証済みとは扱わない。
