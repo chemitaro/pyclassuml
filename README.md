@@ -115,6 +115,8 @@ pyclassuml diff [options] [--base <ref>]
 
 `--include-untracked` / `--no-include-untracked` は、未追跡ファイルを差分対象に含めるかを指定します。デフォルトは include です。`--current-state head` の場合、未追跡ファイルは Git の `HEAD` 差分に含まれないため、この指定は実質的に効きません。
 
+名前変更として検出されたファイルは、比較前後のパスを保持して扱います。履歴側の source は読み取り専用の Git blob として収集し、Git metadata、branch、index、working tree は変更しません。
+
 `diff` の summary には、実際に使った base を確認するための情報が表示されます。
 
 - `base_resolution`: `explicit_base`、`default_branch_merge_base`、`initial_commit_fallback` のいずれかです。
@@ -167,6 +169,7 @@ CLI に渡す相対パスは、基本的に `execution_cwd` 基準で解決さ�
 設定ファイル名は `.pyclassuml.toml` です。`pyproject.toml` は PyClassUML の設定ファイルとしては使いません。
 
 ```toml
+# generate / diff の共通ベース
 project_root = "."
 package_root = "src"
 scope_root = "src"
@@ -177,26 +180,38 @@ mode = "warn"
 target_python = "3.12"
 relative_path_base = "config"
 
+# generate だけの上書き
+[generate]
+output = "generate.puml"
+depth = 5
+ignore = []
+
+# diff の共通設定上書きと diff 固有設定
 [diff]
+output = "diff.puml"
+depth = 1
 current_state = "working-tree"
 include_untracked = true
 ```
 
-現在利用できる主な設定は次のとおりです。
+トップレベルには次の 9 個の共通キーを記述できます。`[generate]` はこの 9 個、`[diff]` はこの 9 個に `current_state` と `include_untracked` を加えたキーを記述できます。
 
-- `project_root`, `package_root`, `scope_root`
-- `output`
-- `ignore`
-- `depth`
+- `project_root`, `package_root`, `scope_root`, `output`, `ignore`, `depth`
 - `mode`: `warn` または `strict`
 - `target_python`
 - `relative_path_base`: `config` または `cwd`
 - `[diff].current_state`: `working-tree` または `head`
 - `[diff].include_untracked`: `true` または `false`
 
-CLI オプションで指定した値は、設定ファイルの値より優先されます。
+各共通キーの優先順位は、`CLI で明示した値 > active command の section > トップレベル共通設定 > command default` です。`relative_path_base` には CLI オプションがないため、command section、トップレベル、default の順で解決されます。`generate` の positional `targets` と `diff --base <ref>` は CLI-only であり、設定ファイルには記述できません。
 
-設定ファイル内の相対パスは、デフォルトでは設定ファイル自身の場所を基準に解決されます。`relative_path_base = "cwd"` を指定すると、設定ファイル内の `project_root`、`package_root`、`scope_root`、`output` は `execution_cwd` 基準で解決されます。CLI オプションで渡した相対パスは、この設定に関係なく `execution_cwd` 基準です。
+`ignore` は各レイヤーで連結しません。command section の `ignore = []` はトップレベルの ignore を clear します。CLI の `--ignore` は 1 回以上指定した場合に設定値を置換しますが、空の CLI 指定で clear する方法はありません。`--strict` は `strict` への一方向の上書きであり、CLI から `warn` を明示するオプションはありません。
+
+`depth` は import hop の最大値です。seed は hop 0 であり、`depth = 0` は seed-only です。全レイヤーで未指定の場合、`generate` の depth は unlimited (`None`)、`diff` の depth は 1 です。
+
+設定ファイル内の相対 path は、デフォルトでは設定ファイル自身の場所を基準に解決されます。active command の `relative_path_base = "cwd"` は、command section に書いた path だけでなく、その command が継承したトップレベル path にも `execution_cwd` 基準を適用します。CLI オプションで渡した相対 path は、この設定に関係なく `execution_cwd` 基準です。`ignore` の glob は `project_root` 相対で評価されます。
+
+`project_root` の default は、設定ファイルがあればその parent、なければ `execution_cwd` です。この default は `relative_path_base` で再解釈されません。`package_root` と `scope_root` の default は、すでに解決された親 root を継承します。
 
 設定ファイルを明示しない場合、PyClassUML はまず `--project-root` 配下の `.pyclassuml.toml` を探し、見つからない場合は `execution_cwd` から親ディレクトリへ向かって `.pyclassuml.toml` を探します。
 
@@ -223,7 +238,10 @@ PyClassUML は、解析対象プロジェクトに対して非侵襲に動作す
 - 解析対象のソースコードを書き換えません。
 - 解析対象コードを import 実行しません。
 - AST ベースの静的解析だけで扱います。
-- 同じ入力からはできるだけ決定的な出力になるようにします。
+- `depth` は dependency traversal / render frontier だけを制限し、Git の変更ファイル収集や AST parse frontier は制限しません。
+- 同じ入力・設定・Git state では、図の内容と順序が決定的になるようにします。自動出力名は timestamp に依存します。
+
+設定では unlimited を明示する sentinel がありません。特に `diff` を unlimited に戻す、またはトップレベルの nullable な `depth`、`output`、`target_python` を command section から default に reset することはできません。
 
 ## 開発者向け情報
 

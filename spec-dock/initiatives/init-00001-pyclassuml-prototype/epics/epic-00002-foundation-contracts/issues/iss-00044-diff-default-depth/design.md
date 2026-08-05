@@ -520,7 +520,7 @@ invalid_containment
 同じ key が複数 section に存在するため、message は origin section を含める。
 
 ```text
-generate.project_root must be a non-empty string
+generate.project_root must be a string
 diff.depth must be a non-negative integer
 top-level relative_path_base must be config or cwd
 ```
@@ -617,7 +617,7 @@ public diagnostic code は増やさず、message の精度を上げる設計を�
 - new command common override: additive schema
 - CLI/public DTO: unchanged
 - only unconditional behavior change: no-depth `diff` frontier `None -> 1`
-- empty path reject: validation tightening
+- empty path validation: out of scope; preserve existing resolver behavior
 - no data migration / persistence migration
 
 ### rollback

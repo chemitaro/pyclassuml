@@ -222,6 +222,445 @@ output = "out/diagram.puml"
     assert config.output == (execution / "out" / "diagram.puml").resolve()
 
 
+def test_generate_command_section_overrides_all_common_values(tmp_path: Path) -> None:
+    common_project = tmp_path / "common"
+    command_project = tmp_path / "command"
+    for project in (common_project, command_project):
+        (project / "pkg" / "scope").mkdir(parents=True)
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+project_root = "common"
+package_root = "common/pkg"
+scope_root = "common/pkg/scope"
+output = "common.puml"
+ignore = ["common"]
+depth = 4
+mode = "strict"
+target_python = "3.10"
+
+[generate]
+project_root = "command"
+package_root = "command/pkg"
+scope_root = "command/pkg/scope"
+output = "command.puml"
+ignore = []
+depth = 0
+mode = "warn"
+target_python = "3.11"
+[diff]
+current_state = "head"
+include_untracked = false
+""",
+    )
+
+    context, config = assert_success(resolve_context(generate_request(tmp_path)))
+
+    assert context.project_root == command_project.resolve()
+    assert context.package_root == (command_project / "pkg").resolve()
+    assert context.scope_root == (command_project / "pkg" / "scope").resolve()
+    assert config.output == (tmp_path / "command.puml").resolve()
+    assert config.ignore == ()
+    assert config.depth == 0
+    assert config.mode is AnalysisMode.WARN
+    assert config.target_python == "3.11"
+    assert config.diff_current_state is DiffCurrentState.HEAD
+    assert config.diff_include_untracked is False
+
+
+def test_diff_command_section_overrides_common_and_diff_specific_values(
+    tmp_path: Path,
+) -> None:
+    common_project = tmp_path / "common"
+    diff_project = tmp_path / "diff"
+    for project in (common_project, diff_project):
+        (project / "pkg" / "scope").mkdir(parents=True)
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+project_root = "common"
+package_root = "common/pkg"
+scope_root = "common/pkg/scope"
+output = "common.puml"
+ignore = ["common"]
+depth = 4
+mode = "strict"
+target_python = "3.10"
+
+[diff]
+project_root = "diff"
+package_root = "diff/pkg"
+scope_root = "diff/pkg/scope"
+output = "diff.puml"
+ignore = ["diff"]
+depth = 0
+mode = "warn"
+target_python = "3.11"
+current_state = "head"
+include_untracked = false
+""",
+    )
+
+    context, config = assert_success(
+        resolve_context(bind_command_request(("diff", "--base", "main"), tmp_path))
+    )
+
+    assert context.project_root == diff_project.resolve()
+    assert context.package_root == (diff_project / "pkg").resolve()
+    assert context.scope_root == (diff_project / "pkg" / "scope").resolve()
+    assert config.output == (tmp_path / "diff.puml").resolve()
+    assert config.ignore == ("diff",)
+    assert config.depth == 0
+    assert config.mode is AnalysisMode.WARN
+    assert config.target_python == "3.11"
+    assert config.diff_current_state is DiffCurrentState.HEAD
+    assert config.diff_include_untracked is False
+
+
+def test_diff_command_section_inherits_top_level_common_values(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    (project / "pkg" / "scope").mkdir(parents=True)
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+project_root = "project"
+package_root = "project/pkg"
+scope_root = "project/pkg/scope"
+output = "common.puml"
+ignore = ["common"]
+depth = 2
+mode = "strict"
+target_python = "3.11"
+relative_path_base = "config"
+
+[diff]
+current_state = "head"
+include_untracked = false
+""",
+    )
+
+    context, config = assert_success(
+        resolve_context(bind_command_request(("diff", "--base", "main"), tmp_path))
+    )
+
+    assert context.project_root == project.resolve()
+    assert context.package_root == (project / "pkg").resolve()
+    assert context.scope_root == (project / "pkg" / "scope").resolve()
+    assert config.output == (tmp_path / "common.puml").resolve()
+    assert config.ignore == ("common",)
+    assert config.depth == 2
+    assert config.mode is AnalysisMode.STRICT
+    assert config.target_python == "3.11"
+    assert config.diff_current_state is DiffCurrentState.HEAD
+    assert config.diff_include_untracked is False
+
+
+def test_cli_common_values_override_command_and_common_sections(tmp_path: Path) -> None:
+    top_project = tmp_path / "top"
+    command_project = tmp_path / "command"
+    cli_project = tmp_path / "cli"
+    for project in (top_project, command_project, cli_project):
+        (project / "pkg" / "scope").mkdir(parents=True)
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+project_root = "top"
+package_root = "top/pkg"
+scope_root = "top/pkg/scope"
+output = "top.puml"
+ignore = ["top"]
+depth = 4
+mode = "warn"
+target_python = "3.10"
+
+[generate]
+project_root = "command"
+package_root = "command/pkg"
+scope_root = "command/pkg/scope"
+output = "command.puml"
+ignore = ["command"]
+depth = 2
+mode = "warn"
+target_python = "3.11"
+""",
+    )
+
+    context, config = assert_success(
+        resolve_context(
+            generate_request(
+                tmp_path,
+                project_root=Path("cli"),
+                package_root=Path("cli/pkg"),
+                scope_root=Path("cli/pkg/scope"),
+                output=Path("cli.puml"),
+                ignore=("cli",),
+                depth=0,
+                strict=True,
+                target_python="3.12",
+            )
+        )
+    )
+
+    assert context.project_root == cli_project.resolve()
+    assert context.package_root == (cli_project / "pkg").resolve()
+    assert context.scope_root == (cli_project / "pkg" / "scope").resolve()
+    assert config.output == (tmp_path / "cli.puml").resolve()
+    assert config.ignore == ("cli",)
+    assert config.depth == 0
+    assert config.mode is AnalysisMode.STRICT
+    assert config.target_python == "3.12"
+
+
+def test_command_relative_path_base_applies_to_inherited_top_level_paths(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "config"
+    execution = tmp_path / "execution"
+    config_dir.mkdir()
+    execution.mkdir()
+    project = execution / "project"
+    (project / "pkg" / "scope").mkdir(parents=True)
+    write_config(
+        config_dir / "settings.toml",
+        """
+project_root = "project"
+package_root = "project/pkg"
+scope_root = "project/pkg/scope"
+output = "diagram.puml"
+
+[diff]
+relative_path_base = "cwd"
+""",
+    )
+
+    context, config = assert_success(
+        resolve_context(
+            diff_request(
+                execution,
+                config=Path("../config/settings.toml"),
+                diff=DiffOptions(
+                    base_ref="main",
+                    current_state=DiffCurrentState.WORKING_TREE,
+                    include_untracked=True,
+                    current_state_cli_provided=False,
+                    include_untracked_cli_provided=False,
+                ),
+            )
+        )
+    )
+
+    assert context.project_root == project.resolve()
+    assert context.package_root == (project / "pkg").resolve()
+    assert context.scope_root == (project / "pkg" / "scope").resolve()
+    assert config.output == (execution / "diagram.puml").resolve()
+
+
+def test_diff_command_relative_path_base_overrides_top_level_base(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "config"
+    execution = tmp_path / "execution"
+    config_dir.mkdir()
+    execution.mkdir()
+    for root in (config_dir / "project", execution / "project"):
+        (root / "pkg" / "scope").mkdir(parents=True)
+    write_config(
+        config_dir / "settings.toml",
+        """
+project_root = "project"
+package_root = "project/pkg"
+scope_root = "project/pkg/scope"
+output = "diagram.puml"
+relative_path_base = "config"
+
+[diff]
+relative_path_base = "cwd"
+""",
+    )
+
+    context, config = assert_success(
+        resolve_context(
+            diff_request(
+                execution,
+                config=Path("../config/settings.toml"),
+            )
+        )
+    )
+
+    project = execution / "project"
+    assert context.project_root == project.resolve()
+    assert context.package_root == (project / "pkg").resolve()
+    assert context.scope_root == (project / "pkg" / "scope").resolve()
+    assert config.output == (execution / "diagram.puml").resolve()
+
+
+def test_generate_command_relative_path_base_applies_to_command_and_inherited_paths(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "config"
+    execution = tmp_path / "execution"
+    config_dir.mkdir()
+    execution.mkdir()
+    project = execution / "project"
+    (project / "pkg" / "scope").mkdir(parents=True)
+    write_config(
+        config_dir / "settings.toml",
+        """
+project_root = "shadowed"
+package_root = "project/pkg"
+scope_root = "project/pkg/scope"
+output = "diagram.puml"
+
+[generate]
+relative_path_base = "cwd"
+project_root = "project"
+""",
+    )
+
+    context, config = assert_success(
+        resolve_context(
+            generate_request(
+                execution,
+                config=Path("../config/settings.toml"),
+            )
+        )
+    )
+
+    assert context.project_root == project.resolve()
+    assert context.package_root == (project / "pkg").resolve()
+    assert context.scope_root == (project / "pkg" / "scope").resolve()
+    assert config.output == (execution / "diagram.puml").resolve()
+
+
+def test_cli_paths_use_execution_cwd_even_when_config_base_is_config(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "config"
+    execution = tmp_path / "execution"
+    config_dir.mkdir()
+    execution.mkdir()
+    (execution / "cli" / "pkg" / "scope").mkdir(parents=True)
+    write_config(
+        config_dir / "settings.toml",
+        """
+project_root = "shadowed"
+package_root = "shadowed/pkg"
+scope_root = "shadowed/pkg/scope"
+relative_path_base = "config"
+""",
+    )
+
+    context, config = assert_success(
+        resolve_context(
+            diff_request(
+                execution,
+                config=Path("../config/settings.toml"),
+                project_root=Path("cli"),
+                package_root=Path("cli/pkg"),
+                scope_root=Path("cli/pkg/scope"),
+                output=Path("cli.puml"),
+            )
+        )
+    )
+
+    assert context.project_root == (execution / "cli").resolve()
+    assert context.package_root == (execution / "cli" / "pkg").resolve()
+    assert context.scope_root == (execution / "cli" / "pkg" / "scope").resolve()
+    assert config.output == (execution / "cli.puml").resolve()
+
+
+def test_default_project_root_remains_config_parent_when_active_base_is_cwd(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "config"
+    execution = tmp_path / "execution"
+    config_dir.mkdir()
+    execution.mkdir()
+    write_config(
+        config_dir / "settings.toml",
+        """
+[diff]
+relative_path_base = "cwd"
+""",
+    )
+
+    context, _ = assert_success(
+        resolve_context(diff_request(execution, config=Path("../config/settings.toml")))
+    )
+
+    assert context.project_root == config_dir.resolve()
+    assert context.package_root == config_dir.resolve()
+    assert context.scope_root == config_dir.resolve()
+
+
+def test_inactive_command_path_is_schema_checked_without_filesystem_validation(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    (project / "pkg").mkdir(parents=True)
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+project_root = "project"
+package_root = "project/pkg"
+
+[diff]
+project_root = "missing"
+package_root = "missing/pkg"
+scope_root = "missing/pkg/scope"
+output = "inactive.puml"
+""",
+    )
+
+    context, config = assert_success(resolve_context(generate_request(tmp_path)))
+
+    assert context.project_root == project.resolve()
+    assert context.package_root == (project / "pkg").resolve()
+    assert config.output is None
+
+
+def test_command_project_root_diagnostic_qualifies_active_section_field(
+    tmp_path: Path,
+) -> None:
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+[diff]
+project_root = "missing"
+""",
+    )
+
+    assert_failure(
+        resolve_context(diff_request(tmp_path)),
+        FailureReason.INVALID_CONFIG_OR_CONFIG_PATH,
+        code="invalid_root_path",
+        message_contains="diff.project_root does not exist or is not a directory",
+    )
+
+
+def test_command_output_resolution_diagnostic_qualifies_active_section_field(
+    tmp_path: Path,
+) -> None:
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    write_config(
+        tmp_path / ".pyclassuml.toml",
+        """
+[generate]
+output = "loop/diagram.puml"
+""",
+    )
+
+    assert_failure(
+        resolve_context(generate_request(tmp_path)),
+        FailureReason.INVALID_CONFIG_OR_CONFIG_PATH,
+        code="invalid_path_resolution",
+        message_contains="generate.output could not be resolved",
+    )
+
+
 def test_merge_fields_and_dotted_diff_schema(tmp_path: Path) -> None:
     project = tmp_path / "project"
     package = project / "pkg"
@@ -502,6 +941,68 @@ def test_non_table_diff_is_failure(tmp_path: Path) -> None:
         FailureReason.INVALID_CONFIG_OR_CONFIG_PATH,
         code="invalid_config",
         message_contains="diff must be a table",
+    )
+
+
+def test_non_table_generate_is_failure(tmp_path: Path) -> None:
+    write_config(tmp_path / ".pyclassuml.toml", "generate = true\n")
+
+    assert_failure(
+        resolve_context(generate_request(tmp_path)),
+        FailureReason.INVALID_CONFIG_OR_CONFIG_PATH,
+        code="invalid_config",
+        message_contains="generate must be a table",
+    )
+
+
+def test_unknown_generate_key_is_failure(tmp_path: Path) -> None:
+    write_config(tmp_path / ".pyclassuml.toml", "[generate]\nunknown = true\n")
+
+    assert_failure(
+        resolve_context(generate_request(tmp_path)),
+        FailureReason.INVALID_CONFIG_OR_CONFIG_PATH,
+        code="invalid_config",
+        message_contains="unknown generate key: unknown",
+    )
+
+
+def test_generate_targets_config_key_is_failure(tmp_path: Path) -> None:
+    write_config(tmp_path / ".pyclassuml.toml", "[generate]\ntargets = []\n")
+
+    assert_failure(
+        resolve_context(generate_request(tmp_path)),
+        FailureReason.INVALID_CONFIG_OR_CONFIG_PATH,
+        code="invalid_config",
+        message_contains="unknown generate key: targets",
+    )
+
+
+@pytest.mark.parametrize(
+    ("toml", "message_contains"),
+    [
+        ('current_state = "head"\n', "unknown config key: current_state"),
+        ('[generate]\ncurrent_state = "head"\n', "unknown generate key: current_state"),
+        ('[diff]\nbase = "main"\n', "unknown diff key: base"),
+        ("[generate]\nproject_root = 1\n", "generate.project_root must be a string"),
+        ("[diff]\ndepth = -1\n", "diff.depth must be a non-negative integer"),
+        (
+            '[diff]\nrelative_path_base = "project"\n',
+            "diff.relative_path_base must be config or cwd",
+        ),
+    ],
+)
+def test_command_specific_schema_rejects_misplaced_or_invalid_values(
+    tmp_path: Path,
+    toml: str,
+    message_contains: str,
+) -> None:
+    write_config(tmp_path / ".pyclassuml.toml", toml)
+
+    assert_failure(
+        resolve_context(generate_request(tmp_path)),
+        FailureReason.INVALID_CONFIG_OR_CONFIG_PATH,
+        code="invalid_config",
+        message_contains=message_contains,
     )
 
 

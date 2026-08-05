@@ -708,11 +708,12 @@ def test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth(tmp_path:
     result = run_diff(diff_request(repo, output=Path("changed-seeds.puml")), timestamp=TIMESTAMP)
 
     output = (repo / "changed-seeds.puml").read_text(encoding="utf-8")
-    assert result.outcome_kind == "clean_success"
+    assert result.outcome_kind == "warning_only_success"
     assert result.command_result.exit_code == 0
     assert result.command_result.summary.counters["seed_file_count"] == 2
     assert result.command_result.summary.counters["reachable_file_count"] == 3
     assert result.command_result.summary.counters["changed_class_count"] == 2
+    assert result.command_result.summary.counters["warning_count"] == 1
     assert "<<DiffChanged>>" in class_declaration(output, "First")
     assert "<<DiffChanged>>" in class_declaration(output, "Second")
     class_declaration(output, "Helper")
@@ -720,6 +721,7 @@ def test_diff_changed_seed_files_each_remain_hop_zero_at_default_depth(tmp_path:
     assert "seed_file_count: 2" in result.stdout_text
     assert "reachable_file_count: 3" in result.stdout_text
     assert "changed_class_count: 2" in result.stdout_text
+    assert "warning:typed_relation_selection_outside:" in result.stdout_text
 
 
 def test_diff_explicit_depth_two_reaches_transitive_dependency(tmp_path: Path) -> None:
@@ -796,6 +798,88 @@ def test_diff_config_depth_two_reaches_transitive_dependency(tmp_path: Path) -> 
     class_declaration(output, "Source")
     class_declaration(output, "Helper")
     class_declaration(output, "Transitive")
+
+
+def test_diff_command_section_depth_two_reaches_a_b_c(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / ".pyclassuml.toml", "[diff]\ndepth = 2\n")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(
+        repo / "pkg" / "a.py",
+        "from pkg.b import B\n\nclass A:\n    dependency: B\n    value = 0\n",
+    )
+    write_file(
+        repo / "pkg" / "b.py",
+        "from pkg.c import C\n\nclass B:\n    dependency: C\n",
+    )
+    write_file(repo / "pkg" / "c.py", "class C:\n    value = 0\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(
+        repo / "pkg" / "a.py",
+        "from pkg.b import B\n\nclass A:\n    dependency: B\n    value = 1\n",
+    )
+
+    before_head = git(repo, "rev-parse", "HEAD").stdout.strip()
+    before_branch = git(repo, "branch", "--show-current").stdout.strip()
+    before_status = git(repo, "status", "--porcelain").stdout.strip()
+    result = run_diff(
+        diff_request(repo, output=Path("../command-depth-two.puml")),
+        timestamp=TIMESTAMP,
+    )
+    after_head = git(repo, "rev-parse", "HEAD").stdout.strip()
+    after_branch = git(repo, "branch", "--show-current").stdout.strip()
+    after_status = git(repo, "status", "--porcelain").stdout.strip()
+
+    output = (repo.parent / "command-depth-two.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["reachable_file_count"] == 3
+    assert before_head == after_head
+    assert before_branch == after_branch
+    assert before_status == after_status
+    class_declaration(output, "A")
+    class_declaration(output, "B")
+    class_declaration(output, "C")
+
+
+def test_diff_command_section_project_root_and_output_use_config(
+    tmp_path: Path,
+) -> None:
+    project = init_repo(tmp_path / "project")
+    execution = tmp_path / "execution"
+    execution.mkdir()
+    write_file(project / "pkg" / "model.py", "class User:\n    pass\n")
+    commit_all(project, "base")
+    tag_base(project)
+    write_file(project / "pkg" / "model.py", "class User:\n    value = 1\n")
+    write_file(
+        execution / ".pyclassuml.toml",
+        """
+[diff]
+project_root = "../project"
+scope_root = "../project/pkg"
+output = "artifacts/diff.puml"
+""",
+    )
+
+    before_head = git(project, "rev-parse", "HEAD").stdout.strip()
+    before_branch = git(project, "branch", "--show-current").stdout.strip()
+    before_status = git(project, "status", "--porcelain").stdout.strip()
+    result = run_diff(diff_request(execution), timestamp=TIMESTAMP)
+    after_head = git(project, "rev-parse", "HEAD").stdout.strip()
+    after_branch = git(project, "branch", "--show-current").stdout.strip()
+    after_status = git(project, "status", "--porcelain").stdout.strip()
+
+    artifact = execution / "artifacts" / "diff.puml"
+    output = artifact.read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.artifact_path == artifact.resolve()
+    assert "<<DiffChanged>>" in class_declaration(output, "User")
+    assert before_head == after_head
+    assert before_branch == after_branch
+    assert before_status == after_status
 
 
 def test_diff_colorization_coexists_with_relation_notation_regression_fixture(tmp_path: Path) -> None:

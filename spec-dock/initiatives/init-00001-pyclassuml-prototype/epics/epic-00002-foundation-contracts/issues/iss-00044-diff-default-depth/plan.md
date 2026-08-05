@@ -34,11 +34,11 @@ ID: "iss-00044"
 2. `design.md` の schema、selection、path order が source と一致する。
 3. current intended Red tests が Green になる。
 4. 9 個の共通キーの top/common/command/CLI precedence を focused tests が検証する。
-5. invalid config、collision、empty/zero/false の edge case を focused tests が検証する。
+5. invalid config、collision、zero/false の edge case と、空文字pathを変更対象外として扱う判断が focused evidence に反映される。
 6. VCS/traversal/parse/DTO production source に不要な変更がない。
 7. app-level generate/diff depth behavior が Green。
 8. README が target config shape と一致する。
-9. focused tests、full tests、changed-path lint/format、`git diff --check` が合格する。
+9. focused tests、full tests、changed-path lint/format、`git diff --check` の evidence が揃う。changed-path lint/format は今回の差分に起因する新規 failure がないことを必須とし、既存行に由来する baseline drift は `--diff` と変更行分類を report に記録したうえで本Issueの機能実装と分離する。
 10. repository-wide既存 baseline failure がある場合、Issue 由来の failure と分離して report へ記録する。
 11. SpecDock validate/doctor と必要な review gate を通す。
 12. report に actual commands、results、changed files、unresolved risks を記録する。
@@ -193,7 +193,6 @@ _validate_config_schema
 _validate_common_section
 _validate_generate_section
 _validate_diff_section
-_validate_non_empty_path_string
 _qualified_field_name
 ```
 
@@ -205,7 +204,7 @@ _qualified_field_name
 - common/diff-only disjoint guard
 - non-table section failure
 - all-section type/domain validation
-- path string non-empty
+- path value string type（空非空判定は既存挙動を維持）
 - `ignore=[]` valid
 - `depth` bool/negative invalid
 - section-qualified message
@@ -227,7 +226,6 @@ test_generate_diff_only_key_is_failure
 test_generate_targets_config_key_is_failure
 test_diff_base_config_key_is_failure
 test_command_common_value_validation_reports_qualified_field
-test_empty_config_path_value_is_failure
 test_command_ignore_empty_list_is_valid
 ```
 
@@ -403,9 +401,10 @@ tests/app/test_generate.py::test_generate_default_depth_remains_unlimited
 追加:
 
 ```text
-test_diff_command_section_depth_two_reaches_transitive_dependency
-test_generate_command_section_depth_zero_keeps_seed_only
-test_generate_and_diff_use_different_output_and_scope_from_same_config
+tests/app/test_diff.py::test_diff_command_section_depth_two_reaches_a_b_c
+tests/app/test_diff.py::test_diff_command_section_project_root_and_output_use_config
+tests/app/test_generate.py::test_generate_command_section_depth_zero_is_seed_only
+tests/app/test_generate.py::test_generate_command_section_output_and_scope_use_config
 ```
 
 A→B→C fixture 期待:
@@ -593,7 +592,7 @@ uvx --from ruff==0.9.3 ruff check src tests
 uvx --from ruff==0.9.3 ruff format --check src tests
 ```
 
-変更 path は必ず Green:
+変更 path の新規差分は Green。既存行に由来する format baseline drift は、変更hunkに新規のformat違反がないことを `ruff format --diff` と差分分類で確認し、無関係なmass reformatは行わない。
 
 ```bash
 uvx --from ruff==0.9.3 ruff check \
@@ -741,3 +740,12 @@ traversal/VCS/DTO/data migration はないため、rollback は code/docs/test d
 - unresolved risks
 - report update proposal
 - commit/push/PR/merge 未実施の明記
+
+## 20. 実装開始の明示例外（2026-08-05）
+
+formal ChatGPT-Firstのfresh spec-reviewer / assurance promotion gateは、canonical designをapprovedへ昇格するための別ゲートとして維持する。一方、ユーザーは仕様書コミット後の本Issue実装開始を明示したため、次の限定された admission exception を適用する。
+
+- `resolver.py`、Issue対象テスト、READMEの実装・検証を開始してよい。
+- この例外は `requirement.md` / `design.md` のformal status、assurance、SpecDock managed state、reviewer passを自動的に完了扱いにしない。
+- 実装後のcode/QA/spec review、validate/doctor、品質baseline、protected path確認は省略しない。
+- 旧表の `S01 blocked/not_started` は実装前時点の履歴として保持し、この節と最新 `report.md` 追補を現在の admission / execution evidence として扱う。

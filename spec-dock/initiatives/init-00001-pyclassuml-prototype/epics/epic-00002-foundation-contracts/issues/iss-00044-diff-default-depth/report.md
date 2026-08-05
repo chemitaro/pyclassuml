@@ -510,8 +510,8 @@ pass (no output)
 | planning | 代替証跡（Alternative） | inspect-only | ChatGPT advisoryをlocal source/testsで再検証し、canonical docsへ統合 | artifact import、source inspection、assurance classify | pass | reviewer pass前のdraft統合のみ |
 | S00 | 赤フェーズ準備（Test-only contract preparation） | named-test-required | EC-002/004/005のnamed testとdefault/raw-boundaryのexact testsをproduction source変更なしで追加し、深いEC-002 fixtureで旧resolverのRedを確認。tc-001〜tc-004/tc-006 exact testsは4 passed/1 intended Red | `EXEC-S00-TEST-CONTRACT`、test-only worker output | completed | production source implementationではない。full Ruff baselineはD-005で別扱い |
 | S00-PROMOTE | 実装前promotion/readiness gate | workflow-required | fresh spec-reviewer #15 pass後にreport gateを更新し、canonical designをapprovedへ更新し、active/runbook/assurance/SpecDock readinessを確認する | plan S00-PROMOTE / `EXEC-S00-PROMOTE` | blocked / not_started | fresh spec-reviewer #15 pass後にreport先行のspec-manager command-first promotionを実施 |
-| S01 | 赤フェーズ（Red） | red-required | `tests/config/test_context_resolve.py`のexact default testをS00 exact contract extensionで追加済み。現状はproduction source変更前 | plan.mdの実装前gate | blocked / not_started | fresh spec-reviewer #15 passとS00-PROMOTE完了待ち |
-| S01 | 緑フェーズ（Green） | red-required | 未実施 | plan.md S01 command | not_started | source変更未開始 |
+| S01 | 赤フェーズ（Red） | red-required | implementation前の意図したdefault-depth Redを確認し、resolver実装でGreenへ移行 | plan.mdの実装前gate + D-016 admission exception | completed under explicit user exception | `uv run pytest -q` の現行全体結果は467 passed。formal promotion/reviewer gateとは分離 |
+| S01 | 緑フェーズ（Green） | red-required | resolverのlayer selection/default/path diagnosticと関連tests/READMEを実装 | plan.md S01 command + D-016 | completed pending final review/commit | scoped Ruff check pass、git diff --check pass。changed-path formatはbaseline driftとして別記録 |
 
 #### 発見されたテスト / リスク（Discovered Tests）
 | ステップ（step） | 発見されたテスト / リスク（test / risk） | 起票元（source） | 実施した対応 | クロージャID / 新規ID（closure id / new id） | 計画修正要否（plan amendment required） | 証跡（evidence） |
@@ -529,16 +529,16 @@ pass (no output)
 #### ステップ契約の完了証跡（Step Contract Closure）
 | ステップ（step） | クロージャID（closure ids） | 計画上の close 条件（close condition from plan） | 観測した証跡 | 結果（result） | メモ（notes） |
 |---|---|---|---|---|---|
-| planning | none | canonical docs are valid, but review gate must pass before implementation admission | assurance classify/verify valid; fresh spec-reviewer #1/#2/#3/#4/#5/#6/#7/#8/#9/#10/#11/#12/#13/#14 fail | blocked | review gate failure is an implementation blocker; no production source change |
+| planning | none | canonical docs are valid, but review gate must pass before formal promotion | assurance/reviewer history and current D-014 remain formal blockers; user D-016 permits bounded implementation only | formal promotion blocked; implementation admitted by explicit exception | formal gate and local implementation admission are distinct |
 | S00 | `EXEC-S00-TEST-CONTRACT` | named EC-002/004/005 and default/raw-boundary tests exist and focused command is executable; production source unchanged | pre-deep named tests 3 passed; deep EC-002 is intentional Red; exact contract extension completed | completed | format check baseline drift remains separately recorded |
 | S00-PROMOTE | tc-010 / EXEC-S00-PROMOTE | report gate、canonical design status、active/runbook、assurance/SpecDock readiness required | 未実施 | not_started | fresh spec-reviewer #15 pass待ち |
-| S01 | tc-001〜tc-003 | source change and focused tests required | 未実施 | not_started | fresh spec-reviewer #15 passとS00-PROMOTE完了待ち |
+| S01 | tc-001〜tc-003 | source change and focused tests required | resolver implementation、config/app focused tests、full pytest、scoped lint、diff check | completed pending final review | D-016 exceptionで実施。formal #15/promotionは未完了 |
 
 #### テスト契約の完了証跡（Test Contract Closure）
 | クロージャID / テストID（closure id / test id） | ステップ（step） | 必須 | 証跡レベル（evidence level） | 実装前証跡 | 検証コマンドまたは代替 path | 観測結果 | メモ（notes） |
 |---|---|---|---|---|---|---|---|
 | S00 / `EXEC-S00-TEST-CONTRACT` | S00 | yes | named-test-required | EC-002/004/005 plus tc-001〜tc-004/tc-006 named paths exist; production source unchanged | focused nodeids and selected suites | completed | EC-002 is intentionally Red until resolver implementation; S01 still blocked |
-| tc-001〜tc-010 | S01/S02/S90/S99/S00-PROMOTE | yes | red-required / covered-existing / inspect-only / workflow-required / manual-required | plan固定済み。`tc-010`はS00-PROMOTEのreport gate、design promotion、active/runbook、assurance/SpecDock readinessを閉じる | 各step command / report | not_started | production implementation未開始 |
+| tc-001〜tc-010 | S01/S02/S90/S99/S00-PROMOTE | yes | red-required / covered-existing / inspect-only / workflow-required / manual-required | plan固定済み。`tc-010`はS00-PROMOTEのreport gate、design promotion、active/runbook、assurance/SpecDock readinessを閉じる | 各step command / report | S01/S02 local evidence completed; S00-PROMOTE/tc-010 not_started | production evidenceとformal promotion evidenceを混同しない |
 | tc-010 / `EXEC-S00-PROMOTE` | S00-PROMOTE | yes | workflow-required | fresh spec-reviewer pass後にreport gateを先に更新し、canonical designをapprovedへ変更し、active scope/runbook/assurance/SpecDock projectionを同期する | report-first gate diff、design status、active show、workflow status/guidance、assurance verify、validate、doctor、git diff --check | not_started | #14 fail、P1のStrict/policy decision未解消、promotion前のためblocked |
 
 - `closure id / test id` は Spec-Locked Closure Index の `id` を指す。別 alias を使う場合は `Closure Delta` で対応を記録する。
@@ -579,7 +579,7 @@ pass (no output)
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | S00 | completed test-only preparation | fresh reviewer #5/#6/#7/#8のP1/P2: named test未生成、EC-002感度、closure exactness、tc-006 integrationを解消し、production implementationの前にplan commandを実行可能にする | dev-coder（完了） | EC-002/004/005 + tc-001〜tc-004/tc-006のnamed tests | plan S00 / requirement AC/EC | `tests/config/test_context_resolve.py`, `tests/cli/test_bind.py`, `tests/app/test_generate.py`, `tests/app/test_diff.py`, `tests/analyze/test_traversal.py`, `tests/parse/test_module_parse_and_index.py`のみ | production source、README、SpecDock、managed bundle、skill、Serenaの変更 | exact nodeids、focused 226 passed/2 intended Red、tc-006 1 passed、scoped ruff check、diff check | production source/docs/metadata変更、named test不足、path外変更 | changed test files、exact results、red/green evidence、risk note | completed; S00 evidence captured as `EXEC-S00-TEST-CONTRACT` |
 | S00-PROMOTE | planned command-first promotion; blocked before promotion | fresh spec-reviewer #14 failとP1を解消し、report gateを更新したうえでapproved designとready runbookを得る実装前ゲート | spec-manager（未起動） + orchestrator | issue-local report/design status、active/runbook/assurance/SpecDock projection | plan S00-PROMOTE、fresh reviewer #15 pass後 | issue-local report/design front matterと正規SpecDock projectionsのみ | review pass前のreport/design status変更、active/runbook/metadata手修復、source/tests/README/managed bundle/skill/Serena変更 | exact report diff、command output、workflow/runbook JSON、post-promotion active show、assurance/validate/doctor/diff-check、protected status | fresh spec-reviewer未pass、report/projection不一致、workflow blocked、assurance/validate/doctor/diff-check failure | changed report/design status、command results、readiness evidence、risk | blocked / not_started |
-| S01 | planned delegation; blocked before dispatch | fresh spec-reviewer #1〜#14 failを解消し、S00 exact contract extensionとpromotion gateを完了する実装前ゲート | dev-coder（未起動） | resolver.py + tests/config/test_context_resolve.py、requirement/design/plan/report | plan S01、fresh reviewer #15 pass + S00-PROMOTE完了後 | `src/pyclassuml/config/resolver.py`, `tests/config/test_context_resolve.py`のみ | bind/model/traversal/VCS/README変更、S00 extension未完、test不能、fresh spec-reviewer未pass、S00-PROMOTE未完 | focused resolver tests、changed files、risk、code-review request | fresh spec-reviewer #1〜#14 fail | worker summary / changed files / verification / risks / integration decision | blocked / not_started |
+| S01 | executed under D-016 explicit user admission; formal promotion remains blocked | user explicitly instructed implementation after specs commit; bounded local implementation was admitted without waiving formal gates | dev-coder / doc-writer | resolver.py、Issue対象tests、README | plan S01 + D-016 exception | `src/pyclassuml/config/resolver.py`, `tests/config/test_context_resolve.py`, `tests/app/test_diff.py`, `tests/app/test_generate.py`, `README.md` | bind/model/traversal/VCS/SpecDock managed state/skill/Serena変更 | focused/full tests、scoped Ruff、diff check、code/QA/spec review、validate/doctor | formal assurance/reviewer/promotion未完了 | worker summary / changed files / verification / risks / integration decision | local implementation completed; formal gate pending |
 
 #### 委任 worker 証跡（Delegated Worker Evidence）
 | ステップ（step） | 委任ロール（delegated role） | 委任 worker 要約（delegated worker summary） | 変更ファイル（changed files） | 実行 tests または docs-only 検証（tests run or docs-only verification） | レビュアー判定（reviewer verdict） | 未解決リスク（unresolved risks） | 親統合判断（parent integration decision） |
@@ -589,13 +589,13 @@ pass (no output)
 | S00 tc-006 integration | dev-coder `Peirce` | explicit depth=1/2 app integration testを追加。production source/README/SpecDock/skill/Serena/managed bundleは変更なし。Ledger Note: `No material implementation decisions beyond the approved plan.` | `tests/app/test_diff.py::test_diff_explicit_depth_two_reaches_transitive_dependency` | nodeid 1 passed; app suite 59 passed/1 intended Red; scoped Ruff pass; diff check pass | provisional / accepted for S00/S02 traceability; fresh spec review #9/#10/#11/#12/#13/#14 fail / #15 required | warning-only successを許容し、reachable count/outputを検証 | adopted into S00 test evidence / S02 tc-006; S00-PROMOTE and S01 remain blocked |
 | S00 config integration | dev-coder `Pasteur` | top-level config `depth=2`のreal app integration testを追加。production source/README/SpecDock/skill/Serena/managed bundleは変更なし。Ledger Note: `No material implementation decisions beyond the approved plan.` | `tests/app/test_diff.py::test_diff_config_depth_two_reaches_transitive_dependency` | named 1 passed; app suite 60 passed/1 intended Red（既存のdefault depth Red、期待3/実測4）; scoped `ruff==0.9.3` check pass; `git diff --check` pass; format checkは既存baseline driftで非0 | provisional / accepted for S00 extension; fresh #13 retry fail / #14 fail / #15 required | `.pyclassuml.toml` top-level depth=2、A→B→C fixture、reachable count 3、Source/Helper/Transitive outputをreal `run_diff` pathで確認。旧resolverのdefault depth RedはS01実装でgreenへ閉じる | adopted into S00 / EAL-004; S00-PROMOTE and S01 remain blocked |
 | S00-PROMOTE | spec-manager | 未起動（fresh spec-reviewer #14 failのためpromotion前） | なし（canonical design status更新前） | 未実施 | provisional / blocked | fresh #15 pass後にP1解消済みのcanonical status更新とcommand-first readiness確認 | needs follow-up |
-| S01 | dev-coder | 未起動（fresh spec-reviewer #1〜#14 failのためproduction dispatch前） | なし | 未実施 | provisional / blocked | S00-PROMOTE完了とfresh spec-reviewer #15 pass後にdispatch | needs follow-up |
+| S01 | dev-coder + doc-writer | resolver/tests/README実装をD-016 exception下で実施。`resolver.py`はlayer selection、command defaults、path origin diagnosticsを実装し、tests/app/configでcontractを固定した | `src/pyclassuml/config/resolver.py`, `tests/config/test_context_resolve.py`, `tests/app/test_diff.py`, `tests/app/test_generate.py`, `README.md` | focused 147 passed; full 467 passed; scoped Ruff check pass; `git diff --check` pass; changed-path formatはbaseline drift | provisional / final independent reviews pending | formal assurance/promotion/#15 remains pending | final review and commit |
 
 #### 親実装例外（Parent Implementation Exception）
 | ステップ（step） | 委任不可 / 不可能理由（delegation unavailable/impossible reason） | ユーザー承認 / risk acceptance（user approval / risk acceptance） | 許可ファイル（allowed files） | 許可操作（allowed operation） | ロールバック計画（rollback plan） | 変更後検証（post-change verification） | レビューゲート（reviewer gate） | 利用不可 / 拒否 / host conflict / waiver 対応（unavailable / denied / host conflict / waiver handling） |
 |---|---|---|---|---|---|---|---|---|
 | S00-PROMOTE | 例外なし（spec-manager委任が利用可能で、まだpromotionを実施していない） | user instructionで委任境界を承認済み。risk acceptance不要 | report/design front matterと正規SpecDock projectionsのみ | fresh #15 pass後のreport先行command-first promotion | `assurance verify`/validate/doctor/diff check、post-promotion active show、workflow/runbook readinessを確認する | spec-reviewer #1〜#14 failed | blocked; fresh #15 pass後にreport gateを更新し、canonical design statusをapprovedへ更新し、spec-managerのactive/runbook/assurance/SpecDock検証を通す |
-| S01 | 例外なし（dev-coder委任が利用可能で、まだproduction dispatchしていない） | user instructionで委任境界を承認済み。risk acceptance不要 | なし（source変更未実施） | no-op inspectionのみ | `assurance verify`/validate/doctor/diff checkはpass、実装は未開始 | spec-reviewer #1〜#14 failed | blocked; S00-PROMOTE、fresh #15 pass、approved design/runbook readiness後に通常委任へ進む |
+| S01 | formal gate未完了のため通常admissionではないが、D-016のuser-authorized bounded exceptionを適用 | user instruction「仕様書コミット後に実装を開始」を明示承認。risk acceptanceはruntime変更範囲に限定し、formal policy/assurance waiverはしていない | `resolver.py`、Issue対象tests、READMEのみ。`.serena/project.yml`、skill、managed stateは除外 | implementation + focused/full verification + independent reviews。rollbackは実装/docs/testsの一体revert | `git diff --check`、SpecDock validate/doctor、protected path確認、formal gate statusを個別記録 | fresh spec-reviewer #1〜#14 failed / #15 pending; assurance refresh pending | local implementation completed; formal S00-PROMOTE/#15/assuranceは未完了 |
 
 #### レビューゲート状態（Reviewer Gate Status）
 | ステップ（step） | ゲート名（gate name） | レビュアーロール（reviewer role） | 鮮度（freshness） | 状態（state） | リスク受容（risk acceptance） | 昇格 / 完了判断（promotion / completion decision） | メモ（notes） |
@@ -684,27 +684,27 @@ S00後の再確認では、protected skillのstatusは空、`.serena/project.yml
 ### ドキュメント影響の解消ステップ S90（Docs Impact Resolution）
 | 対象 | 更新要否 | 担当（owner） | 証跡（evidence） | 仕様レビュアー結果（spec-reviewer result） |
 |---|---|---|---|---|
-| README | yes | doc-writer（S90、未起動） | DOC-001〜DOC-007をplanへ固定済み、README変更未実施 | blocked（pre-implementation spec review #1〜#14 fail、#15 required） |
+| README | yes | doc-writer（S90、完了） | `README.md`へconfig shape、precedence、path base、depth defaults、Diff固有key、known constraintsを反映。scoped Ruff checkとTOML parse確認済み | local implementation complete; formal spec promotionはD-014/#15 pending |
 
 ### 最終 QA ゲート（Final QA Gate）
 | レビュアー（reviewer） | 範囲 | 統合テスト判断（integration test decision） | 証跡（evidence） | 結果（result） |
 |---|---|---|---|---|
-| qa-reviewer | whole issue obligation coverage | not_started | source/tests未実装、S02/S99未実施 | blocked |
+| qa-reviewer | whole issue obligation coverage | app/config integration and full-suite evidence completed | `uv run pytest -q` 472 passed、app generate/diff 83 passed、changed-path Ruff check pass、`git diff --check` pass。SpecDock final refreshも全成功 | provisional; fresh re-review result pending |
 
 ### 最終コードレビューゲート（Final Code Review Gate）
 | レビュアー（reviewer） | 範囲 | 指摘 / 修正（findings / fixes） | 再 review 回数（re-review count） | 結果（result） |
 |---|---|---|---|---|
-| code-reviewer | issue-wide integrated diff | not_started; source diffなし | 0 | blocked |
+| code-reviewer | issue-wide integrated diff | no findings。focused 150 passed、changed-path Ruff check pass。source boundaryはresolver.pyに限定 | 1 | pass |
 
 ### 最終 spec review ゲート（Final Spec Review Gate）
 | レビュアー（reviewer） | 範囲 | 指摘 / 修正（findings / fixes） | 再 review 回数（re-review count） | 結果（result） |
 |---|---|---|---|---|
-| spec-reviewer | requirement / design / plan / report alignment before production implementation | #1/#2/#3/#4/#5/#6/#7/#8/#9/#10/#11/#12/#13/#14 fail; #15 required after formal Strict/policy resolution, Standard exception disposition, and tc-010 closure repair | 14 | blocked |
+| spec-reviewer | requirement / design / plan / report alignment and formal promotion | #1〜#14 historical fail; app integration/format baseline wording/assurance refreshは更新済み。D-014/#15 formal Strict/policy route remains pending | 15（re-review pending） | blocked; formal gate only |
 
 ### 最終 commit（Final Commit）
 | 最終 report 台帳（final report ledger） | 最終 commit 範囲（final commit scope） | コミット後の外部証跡送付先（post-commit external evidence destination） | 結果（result） |
 |---|---|---|---|
-| no commit | no commit/push/PR/merge per user instruction | final response and source-task Markdown handoff only | blocked pending implementation and final gates |
+| local implementation commit pending | resolver/tests/README/Issue docs/assurance binding（`.serena/project.yml`除外） | final response and source-task Markdown handoff only; push/merge/PRは未実施 | implementation verification complete; local commit pending |
 
 ## 遭遇した問題と解決 (任意)
 - 問題: ChatGPT-Firstのformal Candidate lifecycleはdetached HEAD/GitHub exact HEAD不成立で利用できず、fresh spec-reviewer #1〜#12は検証契約・保護境界・台帳整合・実行可能性・品質baseline・runtime promotion・report evidence gateを段階的に指摘した。#14ではStandard profileのStrict triggerが不受理となった。
@@ -726,5 +726,56 @@ S00後の再確認では、protected skillのstatusは空、`.serena/project.yml
 - 追加のChatGPT成果物 `onboarding-context.md` は、名前衝突を避けるため `artifacts/20260805t010439z-chatgpt-first-onboarding-context.md` としてコピーした。配置元とのSHA-256は `7cdcc28feb811af21dacf90739ae5597336ea27e74f324e0468662e6e369d88b` で一致する。
 - canonical Issue docsの配置後、正規コマンド `./spec-dock/scripts/spec-dock sync` を実行し、active projectionを再生成した。`validate` は `nodes=41` で成功し、`doctor` は `findings=0` で成功した。GitHub capabilityの `target_unavailable` は情報診断である。
 - この展開は、ユーザーの明示指示によるIssue-local docsの直接配置であり、SpecDock `planning apply` による正式pack採用ではない。元候補のformal pack reviewは `evidence_only` / `unreviewed` / `rejected` であり、fresh spec-reviewerによる確認と採用ゲートは未完了である。production実装は引き続き保留する。
-- 既存の `.serena/project.yml` 変更、source/tests/README、`.agents/skills/pyclassuml-repo-map` は変更していない。既存ログ中の過去時点のGit状態・commit記録は履歴として保持し、現時点のbranch/commit状態は `codex/iss-00044-chatgpt-first-planning` / `d04c6aa175d1f6261c7c4378435b5d54b4efef27` とする。
+- 既存の `.serena/project.yml` 変更、`.agents/skills/pyclassuml-repo-map`、ユーザー設定skillは変更していない。`d04c6aa175d1f6261c7c4378435b5d54b4efef27` はChatGPT-First展開前のhistorical snapshot、`9ee4e15b4b9d7e1cd52089d2fbc7aaaf7374da3d` は仕様書コミット後のcurrent HEADとして区別する。実装差分は現在未コミットである。
 - `git diff --check` は、ChatGPT生成 `requirement.md` のMarkdown強制改行を表す行末スペースで失敗した。配置元とのバイト一致を優先し、内容の正規化・手編集は行っていない。
+
+## 実装開始後の追補（2026-08-05）
+
+この追補は、上記の実装前計画・ゲート状態に対する現セッションの更新である。過去のレビュー履歴と未完了ゲートの記録は監査用に保持し、ユーザーが明示した「仕様書コミット後に実装を開始する」指示を、production実装開始の admission exception として扱った。SpecDock managed state、assurance、reviewer state の手修復や昇格は行っていない。
+
+### ChatGPT-Use advisoryの採用判断
+
+- ChatGPT-Use wrapperのブラウザ証跡で requested/resolved model `GPT-5.6 Sol`、verified=yes を確認した。17ファイルを添付した実装レビュー advisory は `CONDITIONAL GO` であり、外部一時保存先は `/private/tmp/codex-agent-work/501/session-20260805t011336z-pyclassuml-iss-00044-implementation-review-c23c83e3/chatgpt-implementation-advisory.md`、SHA-256は `e51f4e6d78129593a409d543920c5641f603156e66e30f49be434b6ba36e13f5` である。
+- 採用した責務境界は `resolver.py` 中心の変更、既存CLI bind / DTO / app / traversal / parse / VCSの維持である。presence flag、`depth=0`、command-specific path base、inactive sectionのschema-only validation、既存generate時の `diff_*` projectionを保持する。
+- 採用しなかった advisory候補は、空文字pathの新規拒否、診断コード全面改名、完全な決定性の主張である。いずれも今回のユーザー契約を越えるため、source/testsの既存契約を根拠に除外した。
+
+### 本体実装の現状
+
+- 仕様書コミット `9ee4e15b4b9d7e1cd52089d2fbc7aaaf7374da3d`（`docs(spec-dock): iss-00044のChatGPT-First仕様書を展開`）後、dev-coder委任で `src/pyclassuml/config/resolver.py`、`tests/config/test_context_resolve.py`、`tests/app/test_diff.py` を変更し、doc-writer委任で `README.md` を更新した。
+- resolverはトップレベル共通設定、`[generate]` / `[diff]` command override、CLI explicit、command defaultを分離して解決する。`generate`未指定depthは`None`、`diff`未指定depthは`1`であり、CLI/configの`0`は保持する。
+- `diff` の既定depth変更は依存探索の設定解決だけに限定し、Git比較方式（base解決、working-tree/head、untracked、rename、blob読み取り専用）とAST/traversal/DTO/CLI bindの既存契約は変更していない。
+- 実装差分から `.serena/project.yml`、`.agents/skills/pyclassuml-repo-map`、ユーザー設定skill、SpecDock managed stateは変更していない。
+
+### 検証結果
+
+- 実装前の意図したbaselineは、既定depthに関する `2 failed, 3 passed` であった。
+- 実装後の最新 `uv run pytest -q` は `472 passed in 18.67s`。resolver、CLI bind、app generate/diff、traversal、parse、VCSのfocused testも成功し、app generate/diffは `83 passed in 5.64s` だった。
+- scoped `uv run ruff check` は変更対象source/testsで成功し、`git diff --check` も成功した。scoped `uv run ruff format --check` は3つの既存形式差分を含むtest fileを再format対象として exit 1。全体formatも既存baseline drift（175 files）でexit 1であり、無関係なmass reformatは行っていない。
+- 全体Ruffは、変更対象外の `src/pyclassuml/render/document.py` に既存のF821（`ClassReference` / `Path`、4箇所）があるため失敗した。全体format checkは175 filesがbaseline driftで再format対象となり、変更対象format checkは3つの既存test fileを含むためexit 1だった。`ruff format --diff`で新規追加hunk由来のformat違反がないことを確認し、無関係なmass reformatは行っていない。
+- 最終のread-only SpecDock検証は `sync`、`assurance classify`、`assurance verify`、`validate`、`doctor`をすべてexit 0で完了した。assuranceは`status=valid`、`verify=ok`、`authorized_profile=standard`、`complexity_tier=normal`、`validate nodes=41`、`doctor findings=0`。GitHub `target_unavailable` はinfo診断であり、managed state変更はない。
+
+### 更新済みassurance / projection
+
+- planのbaseline wording更新後、spec-manager委任で正規 `sync`、`assurance classify --stage requirement --issue iss-00044`、`assurance verify --issue iss-00044`、`validate`、`doctor` を再実行した。すべて exit 0、assuranceは `status=valid` / `verify=ok`、`authorized_profile=standard`、`complexity_tier=normal`、`validate nodes=41`、`doctor findings=0` だった。
+- `classify` が生成した `.assurance.json` のsource binding更新は手編集ではなく正規コマンドの結果であり、実装変更と同じコミット範囲へ含める。activeは `iss-00044` のまま、review昇格・active変更・finish/closeは行っていない。
+- `sync` が更新したignored managed projectionは、current working treeのGit diffに追加のtracked差分を作らなかった。GitHub capabilityの `github_target_unavailable` はseverity=infoのままである。
+
+### 残るゲートと次アクション
+
+- production実装開始はユーザー明示指示で許可されたが、formal ChatGPT-Firstのfresh spec-reviewer / assurance promotion gateを完了したことは意味しない。未完了のformal gateは未完了として扱う。
+- code-reviewerは現行snapshotでpass（findingsなし）。qa-reviewerの更新後re-reviewとspec-reviewerのformal再判定は、現在の実装・テスト・SpecDock再検証結果へ反映する。D-014/#15のformal Strict/policy routeは未解消であり、Issueのformal promotion/completionとは分離して残る。
+- 実装コミット前に、protected path、`.serena/project.yml`保持、staged diff、`git diff --check`を最終確認する。push、merge、PRはユーザー指示があるまで行わない。
+- この追補を含む実装変更は、`.serena/project.yml`を除くIssueの許可範囲だけをコミット対象とする。push、merge、PRはユーザー指示があるまで行わない。
+
+### Decision Ledger追補
+
+| 識別子（ID） | 状態（Status） | 種別（Type） | 起票元（Raised By） | 契機 / 差分（Gap） | 検討した選択肢 | 判断 / 解釈 | 根拠（Rationale） | 処置（Disposition） | 証跡（Evidence） | フォローアップ（Follow-up） |
+|---|---|---|---|---|---|---|---|---|---|---|
+| D-015 | resolved | compatibility | ChatGPT-Use advisory + orchestrator | candidate docsが空文字pathの新規fail-fastを要求したが、現行resolver/testsは文字列型のみを検証し、今回のユーザー要求にもpath意味変更は含まれない | 空文字拒否を実装する; 既存path解決を維持して別Issueへ送る | 今回はpath文字列の空非空判定を変更せず、既存挙動を維持する | advisoryのsource/tests検証、既存CLI/DTO契約、今回のscopeを越えるvalidation tighteningを避ける判断 | deferred | `chatgpt-implementation-advisory.md` SHA-256 `e51f4e6d78129593a409d543920c5641f603156e66e30f49be434b6ba36e13f5`; requirement/design/planの更新; resolver focused tests | 空文字pathを拒否する場合は別Issueでrequirement/source/tests/READMEを一体変更する。今回のIssueは非blocking |
+| D-016 | resolved | operation / deviation | user instruction + orchestrator | formal promotion前に実装を開始する必要が生じ、旧S01 gateはblocked/not_startedを記録していた | formal #15まで停止; ユーザー明示のbounded exceptionでlocal implementationを開始 | 仕様書コミット後の実装開始を許可するが、formal assurance/reviewer/promotionをwaiveしない | ユーザーの明示指示、対象path限定、rollback可能なsource/tests/README変更 | applied | plan §20、report S01/Parent Implementation Exception、commit `9ee4e15b4b9d7e1cd52089d2fbc7aaaf7374da3d`後のcurrent diff、worker evidence | formal D-014/#15、code/QA/spec review、final quality gateは別途完了させる |
+| D-017 | deferred | test-strategy / follow-up | QA review + orchestrator | Ruff format checkは既存test formatting driftを含む3ファイルで非0、全体formatも175 filesのbaseline driftがある | 全対象をmass reformat; source/test追加hunkだけを維持しbaselineを別Issueへ送る | 新規追加hunk由来のformat違反がないことを確認し、scoped Ruff checkとdiff checkを必須化して無関係なmass reformatは今回行わない | `uv run ruff format --check` / `--diff`実測、`git diff --unified=0`で新規hunkの追加を確認、small diff原則 | deferred | scoped/full format command output、report検証節、plan §2/§14.2のbaseline分類 | repository-wide format maintenanceは別Issueで扱う。今回の新規format errorが検出された場合は本Issueへ戻す |
+| D-018 | resolved | compatibility / test-strategy | ChatGPT-Use advisory + spec review | 元仕様のdeterminism表現が自動出力名timestampと図内容・順序を区別していなかった | 完全なdeterminismを主張; effective configと固定timestamp下の図内容・順序へ契約を限定する | effective configと図内容・順序をdeterministic契約とし、自動出力名timestampは対象外とした | resolver/tests/READMEの実測とadvisoryの「完全な決定性を主張しない」勧告 | applied | requirement RQ-012、README known constraint、fixed timestamp app tests | timestamp非依存の出力名を追加する場合は別Issueで扱う |
+
+### 実装開始例外に対する台帳の現在値
+
+旧 `S01 blocked/not_started` 行は実装前の履歴として保持する。現在の実行状態は、ユーザー明示のD-016 exception下で本体実装・focused/full verification・code reviewを完了し、qa/specの更新後判定とD-014/#15 formal promotionを別ゲートとして保留している。D-014のformal blockingは解除・無効化しておらず、実装開始の許可とformal promotionの完了を同一視しない。

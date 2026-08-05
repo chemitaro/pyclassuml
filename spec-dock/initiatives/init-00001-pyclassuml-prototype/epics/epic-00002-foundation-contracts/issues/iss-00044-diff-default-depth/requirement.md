@@ -84,10 +84,10 @@ TOML の仕様上、トップレベル共通キーは `[generate]` または `[d
 
 | key | config 型 | トップレベル | `[generate]` | `[diff]` | CLI 対応 | command default |
 |---|---|---:|---:|---:|---|---|
-| `project_root` | non-empty string path | 可 | 可 | 可 | `--project-root` | config file がある場合はその parent、なければ `execution_cwd` |
-| `package_root` | non-empty string path | 可 | 可 | 可 | `--package-root` | effective `project_root` |
-| `scope_root` | non-empty string path | 可 | 可 | 可 | `--scope-root` | effective `package_root` |
-| `output` | non-empty string path | 可 | 可 | 可 | `--output` | `None`。downstream が自動命名する |
+| `project_root` | string path | 可 | 可 | 可 | `--project-root` | config file がある場合はその parent、なければ `execution_cwd` |
+| `package_root` | string path | 可 | 可 | 可 | `--package-root` | effective `project_root` |
+| `scope_root` | string path | 可 | 可 | 可 | `--scope-root` | effective `package_root` |
+| `output` | string path | 可 | 可 | 可 | `--output` | `None`。downstream が自動命名する |
 | `ignore` | string list | 可 | 可 | 可 | repeatable `--ignore` | empty tuple |
 | `depth` | non-negative integer | 可 | 可 | 可 | `--depth` | `generate=None`, `diff=1` |
 | `mode` | `"warn"` / `"strict"` | 可 | 可 | 可 | `--strict` は `"strict"` の明示指定 | `"warn"` |
@@ -194,7 +194,7 @@ config 全体に対して unknown key、section type、value type、enum domain 
 
 必須 validation:
 
-- `project_root`, `package_root`, `scope_root`, `output`: non-empty string
+- `project_root`, `package_root`, `scope_root`, `output`: string。今回のIssueでは空文字を新たに拒否するvalidationを追加しない
 - `ignore`: string list。各要素は non-empty。empty list 自体は有効
 - `depth`: bool ではない non-negative integer
 - `mode`: `warn` または `strict`
@@ -237,7 +237,7 @@ config 全体に対して unknown key、section type、value type、enum domain 
 - AST static analysis を維持する。
 - Git metadata、branch、index、working tree を変更しない。
 - `.puml` output 以外の対象 project artifact を生成しない。
-- 同一 input/config/Git state から deterministic な effective config と出力を得る。
+- 同一 input/config/Git state から deterministic な effective config と、固定したtimestamp条件下の図の内容・順序を得る。自動出力名のtimestampはこのdeterminism契約の対象外とする。
 
 ### RQ-013 — documentation / migration / quality
 
@@ -313,7 +313,7 @@ README または同等の利用者向け文書に、config shape、全共通キ�
 
 ### AC-009 — invalid config
 
-unknown key、non-table section、invalid type/domain、empty path string、negative/bool depth、containment violation は downstream VCS/targets/parse を呼ぶ前に fatal config diagnostic となる。
+unknown key、non-table section、invalid type/domain、negative/bool depth、containment violation は downstream VCS/targets/parse を呼ぶ前に fatal config diagnostic となる。path文字列の空非空判定は今回のIssueの変更対象外であり、既存resolverの挙動を維持する。
 
 ### AC-010 — Generate targets boundary
 
@@ -374,7 +374,7 @@ README の設定例と source behavior が一致し、focused test、full test�
 ### 9.3 意図的な挙動変更
 
 - `diff` の depth 全未指定時は `None` から `1` へ変わる。
-- empty path string は fail-fast とする。基準 directory を表す場合は `"."` を明示する。
+- path文字列の空非空判定は変更しない。既存のpath解決契約を変更する場合は別Issueで扱う。
 - command-specific `relative_path_base` は inherited top-level path の解釈も変える。
 
 ### 9.4 既知の互換性制約

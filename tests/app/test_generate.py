@@ -184,6 +184,72 @@ def test_generate_default_depth_remains_unlimited(tmp_path: Path) -> None:
     class_alias(output, "Transitive")
 
 
+def test_generate_command_section_depth_zero_is_seed_only(tmp_path: Path) -> None:
+    write_file(tmp_path / ".pyclassuml.toml", "[generate]\ndepth = 0\n")
+    write_file(
+        tmp_path / "pkg" / "source.py",
+        "from pkg.helper import Helper\n\nclass Source:\n    helper: Helper\n",
+    )
+    write_file(
+        tmp_path / "pkg" / "helper.py",
+        "from pkg.transitive import Transitive\n\nclass Helper:\n    transitive: Transitive\n",
+    )
+    write_file(tmp_path / "pkg" / "transitive.py", "class Transitive:\n    value = 1\n")
+
+    result = run_generate(
+        generate_request(tmp_path, ("pkg/source.py",), output=Path("depth-zero.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    output = (tmp_path / "depth-zero.puml").read_text(encoding="utf-8")
+    assert result.outcome_kind == "warning_only_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.summary.counters["warning_count"] == 1
+    assert result.command_result.summary.counters["reachable_file_count"] == 1
+    class_alias(output, "Source")
+    assert 'class "Helper" as ' not in output
+    assert 'class "Transitive" as ' not in output
+
+
+def test_generate_command_section_output_and_scope_use_config(
+    tmp_path: Path,
+) -> None:
+    execution = tmp_path / "execution"
+    project = tmp_path / "project"
+    source = project / "pkg" / "scope" / "source.py"
+    execution.mkdir()
+    write_file(source, "class Source:\n    value = 1\n")
+    write_file(
+        execution / ".pyclassuml.toml",
+        """
+project_root = "../wrong-project"
+package_root = "../wrong-project/pkg"
+scope_root = "../wrong-project/pkg/scope"
+output = "top-level.puml"
+
+[generate]
+project_root = "../project"
+package_root = "../project/pkg"
+scope_root = "../project/pkg/scope"
+output = "artifacts/generate.puml"
+""",
+    )
+
+    result = run_generate(
+        generate_request(execution, (source,)),
+        timestamp=TIMESTAMP,
+    )
+
+    artifact = execution / "artifacts" / "generate.puml"
+    output = artifact.read_text(encoding="utf-8")
+    assert result.outcome_kind == "clean_success"
+    assert result.command_result.exit_code == 0
+    assert result.command_result.artifact_path == artifact.resolve()
+    assert result.command_result.summary.counters["reachable_file_count"] == 1
+    class_alias(output, "Source")
+    assert not (execution / "top-level.puml").exists()
+
+
 def test_generate_renders_typed_relation_arrows_without_duplicate_pydantic_fallback(
     tmp_path: Path,
 ) -> None:
