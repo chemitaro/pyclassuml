@@ -1,0 +1,4 @@
+interface:
+  display_name: "PyClassUML Repo Map"
+  short_description: "Python依存関係とGit差分をPlantUMLで可視化"
+  default_prompt: "Use $pyclassuml-repo-map to analyze this Python codebase and produce an evidence-backed PlantUML dependency map."
