@@ -2,8 +2,7 @@
 種別: 要件定義書（Issue）
 ID: "iss-00045"
 タイトル: "Diff Implicit Base Safety"
-関連GitHub: ["#45"]
-状態: "draft | approved"
+状態: "draft"
 作成者: "iwasawayuuta"
 最終更新: "2026-08-05"
 親: ["epic-00002", "init-00001"]

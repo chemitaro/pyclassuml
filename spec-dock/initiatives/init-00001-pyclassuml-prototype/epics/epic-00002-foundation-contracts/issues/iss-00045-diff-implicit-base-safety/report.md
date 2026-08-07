@@ -291,3 +291,9 @@ Lite は specialist / fallback evidence を必須化しないが、not applicabl
 
 ## 省略/例外メモ (必須)
 - 該当なし
+
+<!-- spec-dock:managed-section begin id="report.step-evidence" -->
+## Step Evidence
+- Record Red, Green, and refactor evidence for each executed step.
+- Link each closure id to its observed verification result.
+<!-- spec-dock:managed-section end id="report.step-evidence" -->
