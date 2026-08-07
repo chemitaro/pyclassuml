@@ -4,602 +4,989 @@ ID: "iss-00045"
 タイトル: "Diff Implicit Base Safety"
 状態: "draft"
 作成者: "iwasawayuuta"
-最終更新: "2026-08-05"
+最終更新: "2026-08-07"
 依存: ["requirement.md", "design.md"]
 親: ["epic-00002", "init-00001"]
 ---
 
+# iss-00045 Diff Implicit Base Safety — 実装計画（TDD / Verification）
+
+## 0. 実装方針
+
+本 Issue は次の順序で実装する。
+
+1. concrete requirement/design/plan に基づき assurance grade を再分類する。
+2. 現行 baseline を実行し、既存 failure と本 Issue の intentional Red を分離する。
+3. base resolution を fail-closed contractへ変更する。
+4. raw entry collection と hunk enrichmentを分離し、implicit breadth guardを追加する。
+5. targets seamへ scope-only diagnosticを追加する。
+6. app/report/CLI integrationを確認する。
+7. README、help、`iss-00036` supersede、`iss-00044` cross-referenceを更新する。
+8. focused、cross-Issue、full verificationを実行する。
+9. 全 evidenceを Issue #45 `report.md` に記録する。
+
+実装上の固定点は次のとおりとする。
+
+* base resolverは、暗黙解決時の `config.diff_current_state` を唯一の state authorityとし、raw CLI optionを再参照しない。
+* HEADは開始時に `HEAD^{commit}` から一度だけ実体SHAへ解決し、default-branch HEAD基点と feature/detached の merge-base候補の両方で同じSHAを使う。
+* explicit baseは `<ref>^{commit}` が解決できる Git revision expression とし、name-status収集後の implicit breadth guardを迂回する。
+* tracked raw entryのVCS相対pathを保持したまま件数を確定し、guard後にhunkを取得する。nested project、rename、scope boundaryではpublic DTOのproject-relative pathとVCS pathspecを混同しない。
+* Git subprocessは `GIT_NO_LAZY_FETCH=1` と外部diff/textconv無効化を共通で適用し、未対応Gitではfail closedする。
+
+本計画は実行済みを意味しない。本書作成時点では test、benchmark、SpecDock commandを実行していない。
+
+## 1. 実装開始条件
+
+### 1.1 必須条件
+
+* [ ] Issue #45 requirement/design/plan が review可能な concrete stateにある。
+* [ ] placeholder、`...`、未置換 `XXX` が残っていない。
+* [ ] public CLI behavior changeを含むため Strict相当のassurance再分類結果が記録されている。
+* [ ] `iss-00036` supersede範囲が承認されている。
+* [ ] `iss-00044` の depth/config authorityを変更しないことが確認されている。
+* [ ] limit `1000` と explicit bypassが仕様として承認されている。
+* [ ] baseline source commitと対象 branch HEADが記録されている。
+* [ ] `report.md` にTDD・verification evidenceの記録先がある。
+* [ ] baseline test failureがある場合、その原因と本Issueとの関係が分類されている。
+
+### 1.2 Assurance
+
+現行 Issue #45 の provisional metadata は、具体化前の template factsを基に standard分類されている可能性がある。次を実行し、concrete docsに対して再評価する。
+
+* `./spec-dock/scripts/spec-dock assurance classify --stage requirement`
+* repositoryの現行SpecDock workflowが要求する場合は、続けて適切な compose / review command
+* `./spec-dock/scripts/spec-dock validate`
+* `./spec-dock/scripts/spec-dock doctor`
+
+実際の command surface が異なる場合は、`./spec-dock/scripts/spec-dock --help` と repository guideを正本として確認する。CLI-managed projectionを手編集してはならない。
+
+公開 CLI 成功条件の変更、diagnostic code追加、resource guardを concrete factsとして分類入力へ反映する。
+
+## 2. 変更面
+
+### 2.1 許可する production change
+
+| path                                 | 許可内容                                                             |
+| ------------------------------------ | ---------------------------------------------------------------- |
+| `src/pyclassuml/vcs/diff_collect.py` | base resolver、raw collection、guard、hunk ordering、VCS diagnostics |
+| `src/pyclassuml/model/contracts.py`  | `default_branch_head` kind追加                                     |
+| `src/pyclassuml/targets/diff.py`     | scope-only分類、generic message                                     |
+| `src/pyclassuml/cli/bind.py`         | help / descriptionのみ                                             |
+| `README.md`                          | user contract、migration、diagnostics                              |
+
+### 2.2 原則変更不要
+
+| path                                  | 扱い                                            |
+| ------------------------------------- | --------------------------------------------- |
+| `src/pyclassuml/app/diff.py`          | testsで既存transportが不足すると確認されるまで変更しない           |
+| `src/pyclassuml/report/policy.py`     | 既存failure reason projectionが不足すると確認されるまで変更しない |
+| `src/pyclassuml/model/__init__.py`    | 新型を追加しないため変更しない                               |
+| `src/pyclassuml/config/resolver.py`   | 変更禁止                                          |
+| `src/pyclassuml/analyze/traversal.py` | 変更禁止                                          |
+| `src/pyclassuml/parse/*`              | 変更禁止                                          |
+| `src/pyclassuml/render/*`             | 変更禁止                                          |
+
+app/report changeが必要になった場合、先に次を行う。
+
+1. failing focused testを記録する。
+2. 既存 transportで成立しない理由を `report.md` に記録する。
+3. `design.md` の change surface と interface contractを改訂する。
+4. 変更を最小transport差分に限定する。
+
+### 2.3 許可する tests
+
+* `tests/model/test_contracts.py`
+* `tests/vcs/test_diff_file_collect.py`
+* `tests/targets/test_diff_target_normalize.py`
+* `tests/app/test_diff.py`
+* `tests/report/test_policy.py`
+* `tests/cli/test_bind.py`
+* `tests/cli/test_main.py`
+* `tests/config/test_context_resolve.py`
+* `tests/app/test_generate.py`
+* `tests/analyze/test_traversal.py`
+* `tests/parse/test_module_parse_and_index.py`
+
+### 2.4 許可する SpecDock / docs
+
+* Issue #45 canonical docs / report
+* Issue #36 requirement/design/plan の supersede note
+* Issue #44 requirement/design/plan の authority cross-reference
+  -必要な場合の parent Epic plan注記
+* CLI-managed active projectionは正規 commandによる再生成だけを許可
+
+### 2.5 禁止変更
+
+- 新 CLI flag
+- 新 TOML key
+- 環境変数によるlimit設定
+- 自動 fetch / deepen
+
+* target repository sourceの変更
+* Git branch/index/working-tree mutation
+* `FailureReason`追加
+* `TargetObservations` field追加
+* config / traversal algorithm変更
+* full HEAD snapshot rendering
+* unrelated format-only mass change
+* baseline lint driftの一括修正
+* Issue #36の履歴削除または過去契約の無言書換え
+
+## 3. マイルストーン
+
+| Milestone | 成果                                 | 主なBehavior  | Gate                         |
+| --------- | ---------------------------------- | ----------- | ---------------------------- |
+| M0        | baseline・assurance・Red管理           | B-001〜B-003 | baseline / classify          |
+| M1        | implicit base contract             | B-004〜B-009 | model + VCS focused          |
+| M2        | changed-path breadth guard         | B-010〜B-013 | VCS guard focused            |
+| M3        | scope-only diagnosis               | B-014〜B-017 | targets + app focused        |
+| M4        | CLI/docs/compatibility             | B-018〜B-021 | CLI transcript / docs review |
+| M5        | integration・cross-Issue regression | B-022〜B-025 | app/config/traversal         |
+| M99       | final quality gate                 | all         | full suite / SpecDock / diff |
+
+## 4. 振る舞いバックログ
+
+| ID    | Milestone | 振る舞い                                            | 依存           |
+| ----- | --------- | ----------------------------------------------- | ------------ |
+| B-001 | M0        | 現行 suite baselineを記録する                          | none         |
+| B-002 | M0        | 旧 fallback testsをcharacterizationとして確認する        | B-001        |
+| B-003 | M0        | concrete docsでStrict相当を再分類する                    | B-001        |
+| B-004 | M1        | `default_branch_head` kindを受理する                 | B-001        |
+| B-005 | M1        | default branch working-treeがHEAD SHAを使う         | B-004        |
+| B-006 | M1        | stale remote defaultを使わない                       | B-005        |
+| B-007 | M1        | default branch head no-baseが専用failureになる        | B-005        |
+| B-008 | M1        | feature/detached merge-baseを維持する                | B-005        |
+| B-009 | M1        | candidate解決不能でinitial fallbackせず失敗する            | B-008        |
+| B-010 | M2        | raw entry collectionとhunk enrichmentを分離する       | B-005        |
+| B-011 | M2        | implicit 1,000件境界を実装する                          | B-010        |
+| B-012 | M2        | guardがhunk/downstream前に停止する                     | B-011        |
+| B-013 | M2        | explicit baseがguardを迂回する                        | B-011        |
+| B-014 | M3        | Python changed totalとscope-excluded Pythonを区別する | B-001        |
+| B-015 | M3        | scope-only専用codeを返す                             | B-014        |
+| B-016 | M3        | generic zero-target casesを維持する                  | B-014        |
+| B-017 | M3        | counter、diagnostic順序、base summaryを維持する          | B-015        |
+| B-018 | M4        | CLI helpに短い契約を追加する                              | B-007        |
+| B-019 | M4        | READMEをdecision tableへ更新する                      | B-011, B-015 |
+| B-020 | M4        | Issue #36へ部分supersedeを記録する                      | B-009        |
+| B-021 | M4        | Issue #44へauthority cross-referenceを記録する        | B-009        |
+| B-022 | M5        | app / CLI end-to-endで新契約を確認する                   | B-013, B-017 |
+| B-023 | M5        | depth変更でbase/seed不変を確認する                        | B-022        |
+| B-024 | M5        | read-only / clone safetyを確認する                   | B-022        |
+| B-025 | M5        | legacy DTO/report compatibilityを確認する            | B-004        |
+| B-026 | M99       | full suiteとpatch qualityを通す                     | all          |
+| B-027 | M99       | SpecDock validate/doctorとevidence ledgerを閉じる    | B-026        |
 
-# iss-00045 Diff Implicit Base Safety — Issue 実装計画書（Standard / TDD）
+## 5. TDD 実行計画
 
-この文書は、承認済みの `requirement.md` と `design.md` を、TDDに沿って実行可能な **マイルストーン（Milestone）、振る舞いバックログ（Behavior Backlog）、TDD Cycle、Validation Gate、報告証跡（Report Evidence）** へ変換する。
+### 5.1 Cycle M0-C1 — baseline
 
-この文書は planned executable workflow contract である。実行中の観測結果、Red / Green / Refactor の実績、逸脱、追加判断、発見事項は `report.md` に記録する。
+#### Red前確認
 
----
+変更前に次を実行し、現行 baselineを `report.md` に記録する。
 
-## 0. 文書の位置づけ
+* `uv run pytest -q tests/model/test_contracts.py`
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py`
+* `uv run pytest -q tests/targets/test_diff_target_normalize.py`
+* `uv run pytest -q tests/app/test_diff.py`
+* `uv run pytest -q tests/report/test_policy.py`
+* `uv run pytest -q tests/cli/test_bind.py tests/cli/test_main.py`
+* `uv run pytest -q tests/config/test_context_resolve.py`
+  -可能なら `uv run pytest -q`
 
-### この文書が定義すること
+baseline非0の場合は、次へ分類する。
 
-- このIssueをどの順序で実装・検証するか
-- どのマイルストーン（Milestone）で何が成立するか
-- どの振る舞いをTDDの対象にするか
-- どの単位でRed-Green-Refactorを回すか
-- 各振る舞いに必要な検証レベル
-- 実装中に守るべき変更範囲
-- 実装中に停止・再計画すべき条件
-- `report.md` に残すべき証拠の記録先
-- 最終完了条件
+-既存 regression
+-環境・dependency failure
+-今回変更予定の旧契約 test
+-不明 failure
 
-### この文書が定義しないこと
+不明 failureを残したまま production changeへ進まない。
 
-- 新しい要件
-- 新しい設計判断
-- 上位設計の再定義
-- 実装後の観測証拠そのもの
-- TDD中に発見されるprivateな内部構造
+#### Characterization
 
----
+次の旧期待が現行で成立することを確認する。
 
-## 1. 計画開始条件（Plan Readiness）
+* current default branch no-base が `initial_commit_fallback`
+* no-candidate feature branchが fallback warning付き成功
+* targets all-scope-outsideが generic zero-target
+* modelが `initial_commit_fallback` を受理
 
-### 1.1 必須入力（Required Inputs）
+この結果は採用契約ではなく、変更前baselineとして記録する。
 
-| 作業成果物（Artifact） | 状態 | 確認事項 |
-|---|---|---|
-| `requirement.md` | 下書き / 承認済み（draft / approved） | AC、BH、CON、等級（Grade）判定材料がある |
-| `design.md` | 下書き / 承認済み（draft / approved） | 固定設計契約（Fixed Design Contracts）、Behavior Seeds、検証への含意（検証（Verification） Implications）がある |
-| `report.md` | 存在 / 欠落（exists / missing） | 実行証拠の記録先がある |
-| 親Epic design | 確認済み / N/A（reviewed / N/A） | 継承すべき制約が確認済み |
-| 親Initiative design | 確認済み / N/A（reviewed / N/A） | 戦略的制約に矛盾しない |
-| ADR / architecture docs | 確認済み / N/A（reviewed / N/A） | 関連制約が確認済み |
+### 5.2 Cycle M1-C1 — model kind
 
-### 1.2 計画開始条件（Plan）
+#### Red
 
-- [ ] `requirement.md` が承認済み、または実装計画作成に十分な状態である
-- [ ] `design.md` が承認済み、または計画への引き渡し（Plan Handoff）が記載済みである
-- [ ] 未解決のBlocking Open Questionがない
-- [ ] Issue Gradeが `standard` として妥当である
-- [ ] `standard` の前提を破る既知リスクがない
-- [ ] 実装中に変更してよい設計仮説と、変更してはいけない設計契約が区別されている
-- [ ] `report.md` への証拠記録方針がある
+`tests/model/test_contracts.py` に次を追加する。
 
----
+* `DiffBaseResolution(... resolution_kind="default_branch_head")` がvalid
+* unknown kindはinvalid
+* `initial_commit_fallback` はlegacyとしてvalid
 
-## 2. 実装戦略（Implementation Strategy）
+`default_branch_head` が現行許可集合にないことによるRedを確認する。
 
-このIssueでは、原則として **TDDによる段階的な垂直スライス実装** を採用する。
+#### Green
 
-```text
-Issue 受け入れ範囲（Acceptance Envelope）
-└── マイルストーン（Milestone）
-    └── 振る舞いバックログ（Behavior Backlog） Item
-        └── 実行中の TDD サイクル（Active TDD Cycle）
-            ├── Red
-            ├── Confirm Red
-            ├── Minimal Green
-            ├── Local Regression
-            ├── Refactor
-            └── 報告証跡（Report Evidence）
-```
+`_DIFF_BASE_RESOLUTION_KINDS` に `default_branch_head` だけを追加する。
 
-### 2.1 基本方針
+#### Refactor / local gate
 
-- Issue 全体は広く理解する
-- マイルストーン（Milestone）単位で独立検証可能な中間成果を管理する
-- 振る舞いバックログ（Behavior Backlog）で実装対象の振る舞いを列挙する
-- TDD Cycleは実行直前に一つずつ具体化する
-- 一つのTDD Cycleでは、原則として一つの独立した振る舞い仮説だけを扱う
-- Redの失敗理由を確認してからproduction codeを変更する
-- RefactorはGreen状態でのみ行う
-- 観測証拠は `plan.md` ではなく `report.md` に残す
+* public fieldを追加していないことをdiff reviewする。
+* `uv run pytest -q tests/model/test_contracts.py`
 
-### 2.2 TDD の Red 方針（TDD Red Policy）
+### 5.3 Cycle M1-C2 — default branch working-tree
 
-| Red種別 | 許容数 | 扱い |
-|---|---:|---|
-| Intentional outer Red | 最大1 | マイルストーン（Milestone）のguiding testとして許容 |
-| Intentional inner Red | 最大1 | 現在の実行中の TDD サイクル（Active TDD Cycle）のみ |
-| Existing regression Red | 0 | 発生したら即停止 |
-| Unknown Red | 0 | 原因を確認するまで実装へ進まない |
+#### Red
 
-### 2.3 Red代替証跡（Red Alternative）
+`tests/vcs/test_diff_file_collect.py` に、default branch上に複数 historical commitsを持ち、最新HEAD後に一件だけworking-tree変更を加えるcaseを追加する。
 
-TDDのRedが適切でない場合は、理由を明示して代替証拠を固定する。
+期待:
 
-| 対象 | Red分類 | 理由 | 代替証拠 |
-|---|---|---|---|
-| ... | red-required / covered-existing / characterization-first / 点検（inspect）-only / 手動（manual）-required / not-applicable | ... | ... |
+* entriesはworking-tree変更だけ
+* resolved baseは開始時に一度だけ解決した `HEAD^{commit}` のSHA
+* kind=`default_branch_head`
+* candidate=`None`
+* fallback warningなし
+* stale `origin/<default>` の過去changesを含めない
 
----
+main、developの少なくとも一方を実case、他方をparameterizedまたはdefault-detection unit caseで固定する。
 
-## 3. 範囲と変更面（対象範囲（Scope） and Change Surface）
+slashful default branch + `origin/HEAD` caseも旧 fallback expectationからHEAD expectationへ置き換える。
 
-### 3.1 許可変更面（Allowed Change Surface）
+#### Green
 
-| 種別 | パス・対象（Path / Target） | 許可する変更 | 関連設計識別子（Design ID） |
-|---|---|---|---|
-| コード（code） | ... | ... | `DES-...` |
-| テスト（tests） | ... | ... | `DES-...` |
-| 文書（docs） | ... | ... | `DES-...` |
-| テンプレート（templates） | ... | ... | `DES-...` |
-| スキル群（skills） | ... | ... | `DES-...` |
-| scripts | ... | ... | `DES-...` |
-| metadata | ... | ... | `DES-...` |
+`_resolve_base_ref` に解決済みconfigの `current_state` を渡し、default branch working-tree pathを追加する。`request.cli_options.diff.current_state` を再参照しない。
 
-### 3.2 禁止変更（Forbidden Changes）
+開始時 HEAD SHAを一度だけ解決し、resolved baseと merge-base candidateの両方へ使う。merge-base引数に象徴名 `HEAD` を渡さない。
 
-| 対象 | 禁止理由 | 必要になった場合の対応 |
-|---|---|---|
-| ... | ... | 停止して再計画 / escalate / 後続issue（後続（follow-up） issue） |
+#### Refactor / local gate
 
-### 3.3 提供側・利用側反映（Provider / Consumer）
+* explicit pathが先頭であること
+* initial commit helperがこのpathから呼ばれないこと
+* default branch判定と `origin/HEAD` / conventional branchの不一致が仕様どおりに扱われること
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py -k 'default_branch or explicit_base'`
 
-| 対象 | 変更要否 | 対応 |
-|---|---|---|
-| `src/spec_dock/assets/...` | はい / いいえ / 不明（yes / no / unknown） | ... |
-| ワークスペース（root `spec-dock/...`） | はい / いいえ / 不明（yes / no / unknown） | ... |
+### 5.4 Cycle M1-C3 — default branch head failure
 
----
+#### Red
 
-## 4. 実行概要（Execution Overview）
+default branch、no-base、`current_state=head` で次を期待する testを追加する。
 
-### 4.1 マイルストーン要約（マイルストーン（Milestone） Summary）
+* collection `None`
+* code=`diff_default_branch_head_requires_base`
+* severity error
+* failure reason `VCS_READ_FAILURE`
+* `git diff` 未実行
 
-| マイルストーン（Milestone） 識別子（ID） | 成果 | 主なBehavior | 検証（Verification） ゲート（Gate） | 状態 |
-|---|---|---|---|---|
-| M1 | ... | `B-...` | ... | planned |
-| M2 | ... | `B-...` | ... | planned |
-| M3 | ... | `B-...` | ... | planned |
-| M90 | 文書・テンプレート（docs / template） / skill影響解決 | `B-...` | docs / diff / review | planned |
-| M99 | final quality gate | all | full verification | planned |
+`_run_git` spyで `diff` commandが呼ばれないことを確認する。
 
-### 4.2 マイルストーン依存（マイルストーン（Milestone） Dependency）
+app testでは targets、parse、traversal、renderが呼ばれないことを確認する。
 
-```plantuml
-@startuml
-title Implementation マイルストーン依存（マイルストーン（Milestone） Dependency）
-start
-:M1 Minimal behavior path;
-:M2 Edge / failure behavior;
-:M3 Integration / artifact behavior;
-:M90 Docs and template impact;
-:M99 Final quality gate;
-stop
-@enduml
-```
+#### Green
 
-### 4.3 実装順序の理由
-
-- ...
-- ...
-
----
+default branch判定後、stateがHEADなら専用 `VcsDiffError` を返す。
 
-## 5. 受け入れ範囲（Acceptance Envelope）
-
-### 5.1 受け入れ成果（Acceptance Outcomes）
-
-| 成果識別子（Outcome ID） | 内容 | 関連AC | 関連設計識別子（Design ID） | 完了証拠 |
-|---|---|---|---|---|
-| OUT-001 | ... | `AC-...` | `DES-...` | `EVD-...` |
-| OUT-002 | ... | `AC-...` | `DES-...` | `EVD-...` |
-
-### 5.2 起きてはいけないこと（Must Not Happen）
-
-| 識別子（ID） | 内容 | 検証方法 |
-|---|---|---|
-| MNH-001 | ... | ... |
-| MNH-002 | ... | ... |
+#### Local gate
 
----
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py -k 'default_branch and head'`
+* `uv run pytest -q tests/app/test_diff.py -k 'default_branch and head and base'`
 
-## 6. 仕様固定クロージャ一覧（Spec-Locked クロージャ（Closure） Index）
+### 5.5 Cycle M1-C4 — unresolved implicit base
 
-| クロージャ識別子（Closure ID） | 要件識別子（Requirement ID） | 設計識別子（Design ID） | 閉じる内容 | 検証レベル（Verification Level） | 報告証跡（Report Evidence） |
-|---|---|---|---|---|---|
-| CLOS-001 | AC-001 | DES-001 | ... | unit・CLI・テンプレート・文書 | `report.md#...` |
-| CLOS-002 | AC-002 | DES-002 | ... | unit / integration / 手動（manual） | `report.md#...` |
-| CLOS-003 | BH-001 | DES-003 | ... | unit / CLI | `report.md#...` |
-| CLOS-004 | CON-001 | DES-004 | ... | 点検・文書（点検（inspect）ion / docs） | `report.md#...` |
-| CLOS-XXX | 必要に応じて連番で追加する。`XXX` は実IDへ置換するか削除する。 | DES-... | ... | ... | `report.md#...` |
-
----
-
-## 7. 振る舞いバックログ（Behavior Backlog）
-
-Behaviorは、ファイル変更単位ではなく、観測可能な成果または保証として記述する。
-
-| 振る舞い識別子（Behavior ID） | マイルストーン（Milestone） | 振る舞い / 保証 | 関連クロージャ（Closure） | 依存 | 優先度 | 状態 |
-|---|---|---|---|---|---|---|
-| B-001 | M1 | ... | `CLOS-...` | none | high | ready |
-| B-002 | M1 | ... | `CLOS-...` | B-001 | medium | planned |
-| B-003 | M2 | ... | `CLOS-...` | B-001 | high | planned |
-| B-004 | M3 | ... | `CLOS-...` | B-002 | medium | planned |
-| B-XXX | 必要に応じて連番で追加する。`XXX` は実IDへ置換するか削除する。 | ... | `CLOS-...` | ... | ... | planned |
-
-状態: `planned` / `ready` / `active` / `complete` / `split` / `blocked` / `removed`
-
-### 7.1 Behavior選択基準
-
-- 依存する前提がGreenである
-- 一つの振る舞い仮説に分割できる
-- 期待されるRed理由を説明できる
-- focused verificationを短時間で実行できる
-- 既存の設計契約を変更しない
-- Issueの中心リスクを減らす
-
-### 7.2 Behavior分割ルール
-
-- 独立した事前条件が複数ある
-- 独立した事後条件が複数ある
-- 失敗理由が複数ある
-- 異なるverification levelが必要
-- 異なる責任主体を変更する
-- 異なるcontractを変更する
-- 原子性、冪等性、互換性など複数の保証を同時に含む
-
----
-
-## 8. 実行中の振る舞い（Active Behavior）
-
-実行中のBehaviorだけを詳細化する。完了したら、このセクションを次のBehaviorへ更新する。過去の実績は `report.md` に記録する。
-
-- 振る舞い識別子（Behavior ID）:
-  - `B-...`
-- 関連マイルストーン（Milestone）:
-  - M...
-- 関連クロージャ（Closure）:
-  - `CLOS-...`
-- 関連設計識別子（Design ID）:
-  - `DES-...`
-- なぜ次に実行するか:
-  - ...
-- 依存関係:
-  - ...
-- 分割判断:
-  - one-cycle / split-required / unknown
-
-### 振る舞い受け入れ条件（Behavior Acceptance）
-
-- Given:
-  - ...
-- When:
-  - ...
-- Then:
-  - ...
-- And:
-  - ...
-- 観測点:
-  - ...
-
-### 振る舞い範囲（Behavior Scope）
-
-| 項目 | 内容 |
-|---|---|
-| Allowed paths | ... |
-| Forbidden paths | ... |
-| Required tests / checks | ... |
-| Report証跡記録先（Report evidence destination） | ... |
-| Stop conditions | ... |
-
----
-
-## 9. 実行中の TDD サイクル（Active TDD Cycle）
-
-現在のTDD Cycleだけを詳細化する。Standardでは、将来の全Cycleを完全固定しない。
-
-### 9.1 サイクルメタデータ（Cycle Metadata）
-
-- Cycle ID:
-  - TDD-...
-- Parent Behavior:
-  - `B-...`
-- Cycle type:
-  - red-green-refactor / characterization / 点検（inspect）-only / 手動（manual）-required
-- Related クロージャ（Closure）:
-  - `CLOS-...`
-- 関連設計識別子（Design ID）:
-  - `DES-...`
-- Status:
-  - 計画済み / red / green / refactored / 完了 / blocked（planned / red / green / refactored / complete / blocked）
-
-### 9.2 振る舞い仮説（Behavioral Hypothesis）
-
-```text
-...
-```
-
-### 9.3 テスト・証跡計画（Test / Evidence Plan）
-
-- Red分類:
-  - red-required / covered-existing / characterization-first / 点検（inspect）-only / 手動（manual）-required / not-applicable
-- 期待するRed理由:
-  - ...
-- Redが期待どおりでない場合の対応:
-  - stop / repair test / replan / escalate
-- 代替証拠:
-  - ...
-
-Concrete Test Seed:
-
-- `tc-...`:
-  - 前提:
-    - ...
-  - 操作:
-    - ...
-  - 期待結果:
-    - ...
-  - 失敗検出:
-    - ...
-  - 検証方法:
-    - ...
-  - 関連クロージャ（Closure）:
-    - `CLOS-...`
-  - 関連Report destination:
-    - `report.md#...`
-
-### 9.4 最小 Green 境界（Minimal Green Boundary）
-
-- Allowed implementation boundary:
-  - ...
-- Do not implement yet:
-  - ...
-- Do not refactor yet:
-  - ...
-- Must preserve:
-  - ...
-
-### 9.5 集中検証（Focused 検証（Verification））
-
-| 種別 | コマンド（Command） / Evidence | 期待 |
-|---|---|---|
-| Focused test | `...` | ... |
-| Local regression | `...` | ... |
-| Static / lint | `...` | ... |
-| Manual / 点検（inspect） | ... | ... |
-
-### 9.6 リファクタリング確認点（Refactor Checkpoint）
-
-- Refactor必要:
-  - はい / いいえ / 不明（yes / no / unknown）
-- Refactor対象候補:
-  - ...
-- Refactor guardrail:
-  - 振る舞いを変えない
-  - 公開契約（public contract）を変えない
-  - 設計書の正規契約（Normative Contract）を変えない
-  - ローカル回帰（local regression）を再実行する
-
----
-
-## 10. マイルストーン計画（マイルストーン（Milestone） Plans）
-
-### M1: 実装単位1（Implementation Unit 1）
-#### 成果
-
-- ...
-- ...
-
-#### 含まれるBehavior
-
-| 振る舞い識別子（Behavior ID） | 内容 | クロージャ（Closure） | 状態 |
-|---|---|---|---|
-| B-001 | ... | `CLOS-...` | planned |
-| B-002 | ... | `CLOS-...` | planned |
-
-#### マイルストーンゲート（マイルストーン（Milestone） Gate）
-
-| ゲート（Gate） | コマンド（Command） / Evidence | 期待結果 | 報告先（Report Destination） |
-|---|---|---|---|
-| Focused suite | `...` | pass | `report.md#...` |
-| Local regression | `...` | pass | `report.md#...` |
-| Manual review | ... | 承認済み / N/A | `report.md#...` |
-
-- commit:
-  - commit候補: このマイルストーンの成果をレビュー可能な単位としてコミットする
-  - commit前確認:
-    - [ ] このマイルストーンの差分だけで意味が通る
-    - [ ] 必要な検証が完了している
-    - [ ] `report.md` に証跡がある
-    - [ ] 次のマイルストーンの未完了差分が混ざっていない
-
-### M2: 実装単位2（Implementation Unit 2）
-#### 成果
-
-- ...
-- ...
-
-#### 含まれるBehavior
-
-| 振る舞い識別子（Behavior ID） | 内容 | クロージャ（Closure） | 状態 |
-|---|---|---|---|
-| B-003 | ... | `CLOS-...` | planned |
-
-#### マイルストーンゲート（マイルストーン（Milestone） Gate）
-
-| ゲート（Gate） | コマンド（Command） / Evidence | 期待結果 | 報告先（Report Destination） |
-|---|---|---|---|
-| ... | ... | ... | ... |
-
-- commit:
-  - commit候補: このマイルストーンの成果をレビュー可能な単位としてコミットする
-  - commit前確認:
-    - [ ] このマイルストーンの差分だけで意味が通る
-    - [ ] 必要な検証が完了している
-    - [ ] `report.md` に証跡がある
-    - [ ] 次のマイルストーンの未完了差分が混ざっていない
-
----
-
-## 11. 検証段階（検証（Verification） Ladder）
-
-| レベル（Level） | 名称 | 目的 | コマンド（Command） / Evidence |
-|---|---|---|---|
-| L1 | Active Cycle Focused | 現在のCycleだけを確認 | `...` |
-| L2 | Local Module / 作業成果物（Artifact） | 近接範囲の回帰確認 | `...` |
-| L3 | 対象範囲（Scope）回帰（範囲回帰（対象範囲（Scope） Regression）） | Issue 対象scope全体の確認 | `...` |
-| L4 | Contract / Template / CLI | contractやscaffold挙動確認 | `...` |
-| L5 | Static / Lint / Type | 静的検証 | `...` |
-| L6 | Docs / Skill Consistency | docs・template・skill整合性 | `...` |
-| L7 | Final ゲート（Gate） | Issue 最終確認 | `...` |
-
----
-
-## 12. 委任契約（Delegation Contract）
-
-Codexやsubagentへ委任する場合、各作業が判断なしに実行できるようにする。
-
-| ステップ・振る舞い（Step / Behavior） | 委任ロール（Delegated Role） | 許可パス（Allowed Paths） | レビュー観点（Reviewer Focus） | 報告先（Report Destination） |
-|---|---|---|---|---|
-| `B-...` | dev-coder / doc-writer / reviewer / none | ... | code / spec / docs | `report.md#...` |
-
----
-
-## 13. 報告証跡対応（報告証跡（Report Evidence） Mapping）
-
-| 証跡ID（Evidence ID） | 対象 | 報告節（Report Section） | 記録内容 |
-|---|---|---|---|
-| EVD-001 | Red / Alternative Evidence | `report.md#...` | ... |
-| EVD-002 | Green検証（Green Verification） | `report.md#...` | ... |
-| EVD-003 | Refactor証跡（Refactor Evidence） | `report.md#...` | ... |
-| EVD-004 | Regression Result | `report.md#...` | ... |
-| EVD-005 | 設計逸脱・判断（Design Deviation / Decision） | `report.md#...` | ... |
-| EVD-006 | 文書・テンプレート影響（Docs / Template 影響（Impact）） | `report.md#...` | ... |
-| EVD-007 | Final ゲート（Gate） | `report.md#...` | ... |
-
-Report記録ルール:
-
-- Red / Green / Refactorの実績はreport.mdに記録する
-- 期待と異なるRedはreport.mdに記録し、必要に応じてreplanする
-- 実装中に見つかった新しいテスト候補はreport.mdに記録する
-- plan.mdは観測実績の正本にしない
-
----
-
-## 14. 修正・停止ルール（Amendment and Stop Rules）
-
-### 即時停止条件（Immediate Stop Conditions）
-
-- [ ] 新しいテストがproduction change前から成功する
-- [ ] Red理由が想定と異なる
-- [ ] 既存Regressionが失敗した
-- [ ] 承認済みRequirementの期待値を変更したくなる
-- [ ] 承認済みDesignのNormative Contractを変更したくなる
-- [ ] 公開契約（public contract）変更が必要になる
-- [ ] 移行（migration）が必要になる
-- [ ] セキュリティ・プライバシー（security / privacy）影響が判明する
-- [ ] Forbidden changesが必要になる
-- [ ] Issue外の設計判断が必要になる
-- [ ] Standard gradeの前提を満たさなくなった
-
-### 停止後の対応（Stop）
-
-| 状況 | 対応 |
-|---|---|
-| テスト設計ミス | テストを修正し、Redを再確認 |
-| 要件曖昧 | 要件文書（requirement.md）へ戻す |
-| 設計契約変更が必要 | 設計書（design.md）を更新しreview |
-| 対象範囲外変更（対象範囲（Scope））が必要 | 後続issue（後続（follow-up） issue）またはreplan |
-| Grade escalationが必要 | 等級 strict / critical へ変更 |
-| 外部判断が必要 | 上位文書（Epic・Initiative・ADR）へ昇格 |
-
----
-
-## 15. 文書・テンプレート・スキル影響解消（Docs / Template / Skill 影響（Impact） Resolution）
-
-| 対象 | 影響 | 必要な対応 | 報告証跡（Report Evidence） |
-|---|---|---|---|
-| 文書（docs） | はい / いいえ / 不明（yes / no / unknown） | ... | `report.md#...` |
-| テンプレート（templates） | はい / いいえ / 不明（yes / no / unknown） | ... | `report.md#...` |
-| スキル群（skills） | はい / いいえ / 不明（yes / no / unknown） | ... | `report.md#...` |
-| ワークフロー文書（workflow docs） | はい / いいえ / 不明（yes / no / unknown） | ... | `report.md#...` |
-| 提供資産（provider assets） | はい / いいえ / 不明（yes / no / unknown） | ... | `report.md#...` |
-| 検証workspace（dogfooding workspace） | はい / いいえ / 不明（yes / no / unknown） | ... | `report.md#...` |
-
-- commit:
-  - commit候補: このマイルストーンの成果をレビュー可能な単位としてコミットする
-  - commit前確認:
-    - [ ] このマイルストーンの差分だけで意味が通る
-    - [ ] 必要な検証が完了している
-    - [ ] `report.md` に証跡がある
-    - [ ] 次のマイルストーンの未完了差分が混ざっていない
-
----
-
-## 16. 最終品質ゲート（Final Quality Gate）
-
-| Check | コマンド（Command） / Evidence | 期待結果（Expected） | 報告先（Report Destination） |
-|---|---|---|---|
-| Requirement closure | 点検（inspect） closure index | all closed | `report.md#...` |
-| Design contract compliance | 点検（inspect） design IDs | 違反なし | `report.md#...` |
-| Focused tests | `...` | pass | `report.md#...` |
-| Local regression | `...` | pass | `report.md#...` |
-| Static checks | `...` | pass | `report.md#...` |
-| Docs / template checks | `...` | pass / N/A | `report.md#...` |
-| Manual review | ... | 承認済み / N/A | `report.md#...` |
-
-- static analysis / lint:
-  - 実行対象: このリポジトリで設定されている静的解析、lint、format check
-  - pass条件: 既知の許容済み例外を除き成功する
-- tests:
-  - 実行対象: 単体テスト、およびこのIssueの影響範囲に必要な統合テスト / CLIテスト / regression test
-  - pass条件: すべて成功する
-  - 実行できない検証がある場合: 未実施理由と代替確認を `report.md` に記録する
-- report:
-  - [ ] 実行したコマンド、結果、未実施の理由を `report.md` に記録する
-  - [ ] PR 作成後の GitHub Actions を、基礎的な lint / test 失敗の初回検出場所にしていない
-- commit:
-  - commit候補: このマイルストーンの成果をレビュー可能な単位としてコミットする
-  - commit前確認:
-    - [ ] 静的解析 / lint が完了している
-    - [ ] 必要なテストが完了している
-    - [ ] `report.md` に証跡がある
-    - [ ] 未完了差分が混ざっていない
-
-最終終了契約（Final Exit Contract）:
-
-- [ ] すべてのクロージャ識別子（Closure ID）が完了している
-- [ ] すべてのマイルストーン（Milestone）が完了している
-- [ ] 振る舞いバックログ（Behavior Backlog）に未解決の必須項目が残っていない
-- [ ] 実行中の TDD サイクル（Active TDD Cycle）がcompleteである
-- [ ] 検証段階（検証（Verification） Ladder）の必要Levelが成功している
-- [ ] Docs / Template / Skill影響が解決済みである
-- [ ] Report evidenceが記録済みである
-- [ ] Standard gradeの前提を破っていない
-- [ ] 後続（follow-up）が必要な場合、明示されている
-
----
-
-## 17. フォローアップ候補（Follow-up Candidates）
-
-| 識別子（ID） | 内容 | 理由 | 推奨先 |
-|---|---|---|---|
-| FU-001 | ... | ... | Issue / Epic / ADR |
-| FU-002 | ... | ... | Issue / Epic / ADR |
-
----
-
-## 18. 計画承認チェックリスト（Plan Approval Checklist）
-
-- [ ] requirement.mdのAC / BH / CONがクロージャ（Closure） Indexへ対応している
-- [ ] design.mdの固定設計契約（Fixed Design Contracts）がPlanに反映されている
-- [ ] design.mdの検証への含意（検証（Verification） Implications）が検証段階（検証（Verification） Ladder）へ反映されている
-- [ ] マイルストーン（Milestone）が独立検証可能な成果として定義されている
-- [ ] 振る舞いバックログ（Behavior Backlog）が観測可能な振る舞い単位で書かれている
-- [ ] 実行中の TDD サイクル（Active TDD Cycle）が一つの振る舞い仮説に絞られている
-- [ ] Redまたは代替証拠の方針が明示されている
-- [ ] 最小 Green 境界（Minimal Green Boundary）が明示されている
-- [ ] Refactor Guardrailが明示されている
-- [ ] Allowed / Forbidden changesが明確である
-- [ ] Stop Conditionsが具体的である
-- [ ] Report evidence destinationが明示されている
-
----
-
-## 19. 変更履歴
-
-| 日付（Date） | 変更（Change） | 理由（Reason） | 作成者（Author） |
-|---|---|---|---|
-| 2026-08-05 | 初稿（Initial draft） | ... | ... |
+#### Red
+
+次の旧 fallback testを、新しい failure expectationへ置き換える。
+
+* feature branch、candidateなし
+* feature branch、candidateはあるが全merge-base失敗
+* detached HEAD、candidateなし
+* candidateが複数あっても全候補が失敗した場合に `rev-list` を呼ばない
+
+期待:
+
+* code=`diff_base_resolution_unavailable`
+* initial fallback diagnosticなし
+* targets/hunk collectionなし
+* exit 1 at app/CLI
+
+feature/detachedでcandidateありの既存merge-base casesはGreenのまま維持する。
+
+#### Green
+
+candidate loop終了後に initial commit helperを呼ばず、専用 errorを返す。legacy helperやlegacy DTO kindを残す場合も、productionの implicit pathからは呼び出さない。
+
+production pathから `_initial_commit_base_resolution` と `_initial_commit_fallback_diagnostic` を切り離す。historical DTO/report testが必要とする `initial_commit_fallback` の受理は維持する。
+
+#### Local gate
+
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py -k 'no_base or merge_base or candidate or detached'`
+* `uv run pytest -q tests/app/test_diff.py -k 'no_base and unavailable'`
+* `uv run pytest -q tests/cli/test_main.py -k 'no_base and unavailable'`
+
+### 5.6 Cycle M1-C5 — explicit compatibility
+
+#### Red / characterization
+
+次を確認・必要なら補強する。
+
+* valid branch/tag/commit/`HEAD~1`
+* invalid ref
+* tree/blobなど commitへ解決できないobject
+* explicit `HEAD` + head state
+* explicit baseがdefault branch policyを迂回
+* invalid baseがfallbackしない
+
+revision expressionは `<requested>^{commit}` で commitへ解決できるものに限定し、解決できないobjectは明確にinvalidとする。requested文字列は結果・診断に保持する。
+
+#### Green
+
+explicit pathを最小変更で維持する。
+
+#### Local gate
+
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py -k 'explicit or invalid_base'`
+* `uv run pytest -q tests/app/test_diff.py -k 'invalid_base or explicit'`
+* `uv run pytest -q tests/cli/test_main.py -k 'invalid_base'`
+
+## 6. Breadth guard 実装計画
+
+### 6.1 Cycle M2-C1 — raw/hunk分離
+
+#### Red
+
+`_run_git` または hunk helper spyを用いて、raw name-status取得後・hunk取得前に entry countを観測できる seamを要求する testを追加する。
+
+このcycleではobservable outputを変えず、既存casesが同じ entries / rangesを返すことを確認する。
+
+#### Green
+
+tracked collectionを次へ分離する。
+
+* raw name-status parse / project boundary
+* guard後の line-range enrichment
+
+raw carrierにはVCS root相対のcurrent/previous pathとchange kindを保持し、project-relative pathはdedupe/count用のprivate keyとして導出する。public `ChangedFileEntry` はhunk enrichment後にだけ生成する。
+
+rename、deleted-only、type change、UTF-8 failure、parse failureの既存 behaviorを維持する。
+
+#### Refactor gate
+
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py`
+* raw helperがscope、suffix、ignoreを参照していないことをsource review
+* hunk helperがguard前に呼ばれない構造であることをsource review
+* nested projectのmodified/renameでhunk pathspecがVCS-relative、public pathがproject-relativeになること
+
+### 6.2 Cycle M2-C2 — limit
+
+#### Red
+
+production定数を monkeypatch可能なmodule constantとして想定し、limit `1` のtestを追加する。
+
+ケース:
+
+* implicit一件: success
+* implicit二件: `diff_implicit_range_too_broad`
+* messageにresolved base、actual `2`、limit `1`、`--base` hint
+* hunk helper call count `0`
+* nested modified/rename caseでも guardはVCS pathの件数確定後に発火する
+
+別caseでproduction値のboundaryを、synthetic raw entriesまたはprivate helper unitで次のように固定する。
+
+* 1,000: pass
+* 1,001: fail
+
+巨大な1,001-file Git fixtureを常用testにしない。
+
+#### Green
+
+`MAX_IMPLICIT_DIFF_CHANGED_PATHS = 1000` とpredicateを追加する。
+
+#### Local gate
+
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py -k 'implicit_range or changed_path_limit'`
+
+### 6.3 Cycle M2-C3 — count semantics
+
+parameterized testで次を固定する。countはimplicit name-status collectionのraw changed pathsに対して行い、scope filter・ignore filter・hunk enrichmentより前に確定する。
+
+| entry                    |    count |
+| ------------------------ | -------: |
+| tracked added            |        1 |
+| modified                 |        1 |
+| renamed previous→current |        1 |
+| included untracked       |        1 |
+| ignored untracked        |        0 |
+| project root内 / scope root外 |     1 |
+| project root外            |        0 |
+| non-Python                |        1 |
+| ignore予定                |        1 |
+| deletion-only file        |        0 |
+| duplicate current path    | dedupe後1 |
+
+`current_state=head` + `include_untracked=true` は既存 warningを出すが、untrackedをcountしない。ignored untrackedは `git ls-files --others --exclude-standard` の結果に含めず、project root外はscope root判定前に除外する。
+
+### 6.4 Cycle M2-C4 — explicit bypass
+
+#### Red
+
+同じ二件rangeで次を比較する。
+
+* no-base + limit1: failure
+* `--base <same-sha>` + limit1: guardを迂回してcollection続行
+
+invalid explicit baseはguardより先に `invalid_base_ref` となることも確認する。
+
+#### Green
+
+guard predicateを `requested_base_ref is None` に限定する。
+
+#### Local gate
+
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py -k 'implicit_range or explicit'`
+
+### 6.5 App stop test
+
+`tests/app/test_diff.py` で guard failure時に次が呼ばれないことをspyする。
+
+* `normalize_diff_targets`
+* `parse_target_set`
+* `traverse_dependencies`
+* `render_uml_document`
+
+期待:
+
+* hard failure
+* exit 1
+* failure reason `VCS_READ_FAILURE`
+* diagnostic code `diff_implicit_range_too_broad`
+* artifactなし
+
+## 7. Scope-only diagnostic 実装計画
+
+### 7.1 Cycle M3-C1 —専用分類
+
+#### Red
+
+`tests/targets/test_diff_target_normalize.py` に次を追加する。
+
+1. outside `.py` だけ
+
+   * `diff_scope_exclusion`
+   * `diff_zero_target_scope_excluded_only`
+2. outside `.py` + inside non-Python
+
+   * scope-only code
+3. outside `.py` + inside ignored `.py`
+
+   * generic code
+4. non-Python only
+
+   * generic code
+5. ignored `.py` only
+
+   * generic code
+6. no entries
+
+   * generic code
+7. inside `.py` 一件以上
+
+   * success
+8. outside non-Pythonだけ
+
+   * generic code
+
+既存 `assert_zero_target_failure` helperはexpected codeを引数化する。
+
+Python changed totalが1以上で、その全てが project root内かつ scope root外、seedが0の場合だけ `diff_zero_target_scope_excluded_only` を返す。project root外、non-Pythonのみ、ignore後に0件となるケースは専用分類に含めない。
+
+#### Green
+
+seam-local Python countsとcode selectionを追加する。
+
+#### Refactor / local gate
+
+* public `TargetObservations`を変更していないこと
+* `diff_scope_excluded_count` の旧意味を維持すること
+* `uv run pytest -q tests/targets/test_diff_target_normalize.py`
+
+### 7.2 Cycle M3-C2 — app/report projection
+
+app fixtureで、outside Pythonだけのcaseを実行する。
+
+期待:
+
+* hard failure
+* exit 1
+* failure reason `DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER`
+* `diff_scope_excluded_count > 0`
+* `diff_scope_exclusion` warning
+* `diff_zero_target_scope_excluded_only` error
+* successful base resolution metadataがstderr summaryに残る
+* parse/traversal/render未実行
+* artifactなし
+
+generic zero-target app testsは既存 codeのまま維持する。
+
+## 8. CLI / report / model integration
+
+### 8.1 App tests
+
+追加・置換するcase:
+
+* default branch historical commits + working-tree一件
+* stale origin default
+* slashful default
+* default branch head no-base failure
+* default branch head + explicit `HEAD~1` success
+* feature merge-base working-tree
+* feature merge-base head
+* feature no-candidate failure
+* implicit guard failure
+* explicit guard bypass
+* scope-only target failure
+* read-only state
+* nested project / monorepo
+* untracked inclusion
+* rename
+* depth invariance
+* configで解決した `diff_current_state` とraw CLI stateが異なる場合のauthority
+* changed-path count後にhunk/downstreamへ進まないこと
+
+### 8.2 CLI tests
+
+`tests/cli/test_main.py` と console-script boundaryで次を確認する。
+
+| command                                                  | 期待                                 |
+| -------------------------------------------------------- | ---------------------------------- |
+| `pyclassuml diff` on default branch with worktree change | success、`default_branch_head`      |
+| `pyclassuml diff --current-state head` on default branch | exit 1、requires-base code          |
+| `pyclassuml diff --current-state head --base HEAD~1`     | explicit success                   |
+| `pyclassuml diff` on unresolved feature                  | exit 1、resolution-unavailable code |
+| implicit over-limit                                      | exit 1、range-too-broad code        |
+| scope外Pythonのみ                                           | exit 1、scope-only code             |
+| invalid explicit base                                    | 既存 exit 1、invalid-base code        |
+
+CLI parser/bindについては、新surfaceがないため次を維持する。
+
+* base未指定→`None`
+* empty base rejected
+* current-state presence metadata
+* include-untracked presence metadata
+* depth未指定→raw `None`
+
+help testで次の語義を確認する。
+
+* explicit base
+* implicit base
+* default branch working-tree / HEAD
+* default branch head requires explicit base
+
+help全文のgolden化は避け、重要phraseだけをassertする。
+
+### 8.3 Report tests
+
+`tests/report/test_policy.py` では次を確認する。
+
+* `default_branch_head` をgeneric summaryが表示
+* `explicit_base` を維持
+* `default_branch_merge_base` を維持
+* manually constructed legacy `initial_commit_fallback` のsummaryを維持
+  -新VCS errorは `VCS_READ_FAILURE` によりhard failure
+* scope-only errorは既存 target failure reasonによりhard failure
+
+report production codeを変更せずGreenになることを優先する。
+
+## 9. `iss-00044` 回帰計画
+
+### 9.1 Config focused tests
+
+* `uv run pytest -q tests/config/test_context_resolve.py`
+* `uv run pytest -q tests/cli/test_bind.py`
+* `uv run pytest -q tests/app/test_generate.py`
+* `uv run pytest -q tests/analyze/test_traversal.py`
+* `uv run pytest -q tests/parse/test_module_parse_and_index.py`
+
+確認事項:
+
+* diff default depth `1`
+* generate default `None`
+* CLI `depth=0`
+* command section override
+* top-level fallback
+* Diff固有config
+* path semantics
+* config resolver production diffなし
+
+### 9.2 Base / seed / traversal 分離test
+
+同じ feature branch fixtureで depth `0`、`1`、`2` を実行し、次を個別assertする。
+
+* `DiffBaseResolution` は同一
+* changed entry paths は同一
+* seed files は同一
+* reachable filesだけがdepthに応じて変わる
+
+default branch working-tree fixtureでも、depth変更が `default_branch_head` resolutionを変えないことを確認する。
+
+### 9.3 Issue #44 文書
+
+Issue #44 requirement/design/plan のVCS regression記述を、次のauthority noteで補正する。
+
+* Issue #44 は depth/config implementation時点でVCSを変更しなかった。
+  -後続 Issue #45 が implicit-base safetyを変更する。
+* Issue #44 のdepth/config acceptanceは維持する。
+* Issue #44 の regression expectationから「initial fallbackを永久に維持」を読み取らない。
+
+## 10. `iss-00036` migration 計画
+
+### 10.1 文書更新
+
+Issue #36 requirement/design/plan の冒頭付近に次を追加する。既存本文と既存report/evidenceは削除・書換えせず、歴史的契約として保持する。
+
+* superseded-by: `iss-00045-diff-implicit-base-safety`
+* supersede対象:
+
+  * default branch initial fallback
+  * unresolved candidate initial fallback
+  * fallback degraded success
+  * production initial fallback kind
+    -維持対象:
+  * optional base
+  * explicit authority
+  * invalid explicit failure
+  * feature merge-base
+  * resolution transport
+  * read-only/current-state/untracked
+
+requirement、design、planの3文書すべてで同じsupersede境界を示し、Issue #36の旧acceptanceが現行のimplicit-base採用契約であると誤読できないようにする。
+
+既存本文を削除せず、historical decisionとして保持する。
+
+### 10.2 Tests migration
+
+次の旧testsは削除ではなく、新契約へrename・置換する。
+
+* `test_no_base_without_usable_candidate_uses_initial_commit_fallback`
+* `test_no_base_current_slashful_default_branch_uses_initial_commit_fallback`
+* `test_no_base_initial_fallback_is_degraded_success_with_base_metadata`
+
+置換後はそれぞれ次を表す。
+
+* unavailable failure
+* slashful default uses HEAD
+* default branch working-tree clean success with HEAD metadata
+
+legacy model/report construction testは残す。
+
+## 11. README / help 計画
+
+### 11.1 README decision table
+
+README の `diff` 節へ、requirementのbranch/state matrixと同等の表を追加する。
+
+### 11.2 必須説明
+
+* explicit `--base` の authority
+* invalid explicit baseのfailure
+* default branch working-treeのHEAD base
+* default branch headのexplicit-base requirement
+* feature/detached merge-base
+* no initial fallback
+* local candidate/history不足時のfailure
+* no automatic fetch/deepen
+* implicit path limit `1000`
+* count対象
+* exact limitは許可、超過はfailure
+* resolved SHAのexplicit指定でopt-in可能
+* explicit rangeは高負荷になり得る
+* scope-only diagnostic
+* base summary fields
+* legacy `initial_commit_fallback`
+* `current_state=head` のworking-tree rendering caveat
+* depthはbase/seedを減らさない
+* `GIT_NO_LAZY_FETCH=1`、`--no-ext-diff --no-textconv --no-color`、partial cloneでのfail-closed
+
+### 11.3 Examples
+
+少なくとも次を掲載する。
+
+* default branchのworking-tree diff
+  -最後のcommitを明示比較する `--base HEAD~1 --current-state head`
+* remote-tracking defaultとの差を明示する `--base origin/main`
+* range-too-broad diagnosticに示されたSHAを explicit baseとして再実行する方法
+
+### 11.4 CLI help
+
+`pyclassuml diff --help` は詳細仕様の複製ではなく、READMEへ導く短い説明とする。
+
+## 12. Focused verification matrix
+
+### 12.1 Model / VCS / targets
+
+* `uv run pytest -q tests/model/test_contracts.py`
+* `uv run pytest -q tests/vcs/test_diff_file_collect.py`
+* `uv run pytest -q tests/targets/test_diff_target_normalize.py`
+
+### 12.2 App / report / CLI
+
+* `uv run pytest -q tests/app/test_diff.py -k 'no_base or default_branch or implicit_range or scope or current_state or invalid_base'`
+* `uv run pytest -q tests/report/test_policy.py`
+* `uv run pytest -q tests/cli/test_bind.py`
+* `uv run pytest -q tests/cli/test_main.py -k 'diff or help'`
+
+### 12.3 Depth/config
+
+* `uv run pytest -q tests/config/test_context_resolve.py`
+* `uv run pytest -q tests/app/test_diff.py -k 'depth or changed_seed'`
+* `uv run pytest -q tests/app/test_generate.py`
+* `uv run pytest -q tests/analyze/test_traversal.py`
+* `uv run pytest -q tests/parse/test_module_parse_and_index.py`
+
+### 12.4 Full suite
+
+* `uv run pytest -q`
+
+`pyproject.toml` の提示内容ではdev dependencyとして確認できるquality toolはpytestだけである。未宣言のlint commandを無条件の必須gateにしない。
+
+repository環境に `ruff` 等が既に利用可能な場合は、changed-path checkを補助 evidenceとして実行できる。ただし、repository-wide既存format driftを本Issueの新規failureと混同しない。
+
+### 12.5 Patch quality
+
+* `git diff --check`
+  -変更path一覧の確認
+* config/traversal/parse/renderにproduction差分がないことの確認
+* unrelated generated stateやuser-local fileがcommit対象に入っていないことの確認
+
+## 13. Read-only / clone safety verification
+
+### 13.1 状態receipt
+
+manualまたはintegration scenarioの前後で次を記録する。
+
+* `git rev-parse HEAD`
+* `git branch --show-current`
+* `git ls-files -s`
+* `git status --porcelain=v1 --untracked-files=all`
+* `git for-each-ref refs/remotes --format='%(refname) %(objectname)'`
+
+`.puml` outputによるstatus差を避けるread-only verificationでは、outputをfixture repository外へ指定する。
+
+### 13.2 Scenario
+
+次で前後状態が不変であることを確認する。
+
+* default branch working-tree success
+* default branch head failure
+* feature merge-base success
+* feature resolution unavailable
+* implicit range too broad
+* scope-only target failure
+* explicit invalid base
+* explicit large-range bypass
+
+### 13.3 Forbidden Git command test
+
+`_run_git` spyまたはcommand captureで、product executionが次を呼ばないことを確認する。
+
+* fetch
+* pull
+* checkout / switch
+* reset
+* clean
+* stash
+* update-ref
+* remote mutation
+* add / commit
+
+### 13.4 Shallow clone
+
+一時repositoryから shallow clone相当fixtureを作り、少なくとも次を確認する。
+
+* current default branch working-treeはlocal HEADを使って動作可能
+* feature merge-baseに必要なobjectがない場合は explicit failure
+  -実行後もshallow stateとrefsが不変
+* network accessを試みない
+
+partial cloneのpromisor objectが不足するfixtureでは、`GIT_NO_LAZY_FETCH=1` により lazy fetchへ進まず、解決不能を明示的なfailureとして扱う。external diff driver / textconvが設定されたfixtureでも sentinelが実行されないことを確認する。
+
+環境依存で安定した shallow clone fixtureを作れない場合は、`merge-base` failureのunit simulationを必須 evidenceとし、manual shallow cloneを補助 evidenceとして分類する。
+
+## 14. Performance calibration
+
+### 14.1 必須 test
+
+契約boundary `1000 / 1001` と hunk helper未呼び出しを自動testで固定する。
+
+### 14.2 補助測定
+
+可能なら synthetic repositoryまたはmocked raw entriesで次を測定する。
+
+* 100 paths
+* 1,000 paths
+* 5,000 paths
+
+記録候補:
+
+* raw name-status wall time
+* hunk subprocess count
+* wall time
+* peak memory
+* diagnosticまでの時間
+
+測定はlimit採用の事後検証材料であり、測定未実施だけを理由に安全修正を延期しない。
+
+測定結果が `1000` を明らかに不適切と示す場合は、実装定数だけを変更せず requirement/design/README/testを同時に改訂する。
+
+## 15. Full integration gate
+
+M99で次をすべて満たす。
+
+* [ ] Model focused tests pass
+* [ ] VCS focused tests pass
+* [ ] Targets focused tests pass
+* [ ] App focused tests pass
+* [ ] CLI/report focused tests pass
+* [ ] Config/depth cross-Issue tests pass
+* [ ] Full pytest pass、または既存baseline failureが新規failureと分離されている
+* [ ] `git diff --check` pass
+* [ ] forbidden production pathsに差分なし
+* [ ] README/helpとsource behaviorが一致
+* [ ] Issue #36 supersede noteが存在
+* [ ] Issue #44 authority noteが存在
+* [ ] Parent Epicのcorrective-Issue位置づけと矛盾なし
+* [ ] read-only receipt pass
+* [ ] SpecDock validate pass
+* [ ] SpecDock doctor findingsが分類済み
+* [ ] `report.md` にexact commands、結果、commit SHA、未検証事項が記録済み
+
+## 16. Evidence 記録
+
+`report.md` には少なくとも次を記録する。
+
+| Evidence ID | 内容                                    |
+| ----------- | ------------------------------------- |
+| EVD-001     | 開始branch、HEAD、baseline commit         |
+| EVD-002     | baseline focused/full test結果          |
+| EVD-003     | assurance分類とreview結果                  |
+| EVD-004     | model kind Red/Green                  |
+| EVD-005     | default branch HEAD base Red/Green    |
+| EVD-006     | default branch head failure Red/Green |
+| EVD-007     | no-candidate failure Red/Green        |
+| EVD-008     | guard boundary・stop-order             |
+| EVD-009     | explicit bypass                       |
+| EVD-010     | scope-only matrix                     |
+| EVD-011     | app/CLI transcript                    |
+| EVD-012     | depth/config invariance               |
+| EVD-013     | read-only receipt                     |
+| EVD-014     | README/help review                    |
+| EVD-015     | Issue #36/#44 cross-reference         |
+| EVD-016     | full suite / diff check               |
+| EVD-017     | SpecDock validate/doctor              |
+| EVD-018     | 最終commit ledger                       |
+
+pass countやperformance数値は実行結果から転記し、事前推測で埋めない。
+
+## 17. Stop / replan 条件
+
+次のいずれかが発生した場合は、そのcycleを停止して designを再確認する。
+
+* explicit baseの既存意味を変えないと実装できない。
+* config resolverやtraversalへimplicit policyを追加する必要が生じる。
+* VCSでscope / suffix / ignoreを解釈する必要が生じる。
+* guardをper-file hunk取得前に置けない。
+  -新 `FailureReason` やpublic DTO fieldが必要になる。
+* network accessまたはclone mutationが必要になる。
+* current `app.diff` / `report.policy` transportでは診断を保持できない。
+* `initial_commit_fallback` legacy acceptanceの削除が必要になる。
+* baseline test failureの原因が不明。
+* read-only receiptでGit state差分が発生する。
+* `iss-00044` のdepth/config behaviorが意図せず変わる。
+* limit測定により `1000` が明らかに危険または無意味と判明する。
+  -変更がIssue #45のseamを越えて広がる。
+
+## 18. Rollback 計画
+
+### 18.1 実装中
+
+各Milestoneを独立commit可能にするが、最終採用は次を一単位とする。
+
+* model kind
+* VCS resolver
+* guard
+* targets diagnostic
+* tests
+* README/help
+* Issue #36/#44 notes
+
+Redのまま次Milestoneへ進まない。
+
+### 18.2 Release前
+
+Issue #45一式をatomicにrevertできるようにする。partial revertは行わない。
+
+### 18.3 Release後
+
+旧 initial commit fallbackへの単純rollbackは既知の安全性欠陥を再導入する。緊急時も、implicit解決不能pathをfail closedに保つことを優先する。
+
+旧versionへ戻す必要がある場合は、次を明示する。
+
+-既知リスク
+-影響するno-base scenarios
+-explicit `--base` 利用の回避手順
+-再修正版の追跡Issue
+
+永続データmigrationやrepairは不要である。
+
+## 19. 残課題
+
+### FU-001 — limit calibration
+
+`1000` は本Issueで固定する安全上限であり、性能最適値として断定しない。実repository workloadに対する妥当性は継続測定し、将来変更する場合もrequirement/design/plan/README/testを同時に改訂する。
+
+### FU-002 — initial name-status output limit
+
+guard前の単一 `git diff --name-status` 自体に対するtimeout、byte limit、streaming parseは別Issue候補とする。
+
+### FU-003 — complete HEAD snapshot
+
+`current_state=head` でも通常parse/renderがworking-tree sourceの影響を受け得る既存制約は別Issueとする。
+
+### FU-004 — custom default branch discovery
+
+`origin/HEAD` が欠落・誤設定されたcustom default branchのUX改善は、configや新CLI surfaceを含め別Issueで検討する。
+
+### FU-005 — structured guard metadata
+
+guard failure時のresolved base、actual count、limitをmessage以外のstructured fieldで公開する必要が生じた場合、Diagnostic DTOまたはVCS result contractの拡張を別途設計する。
+
+### FU-006 — explicit large range
+
+explicit baseはguard対象外であり、利用者がinitial commitや古いSHAを指定すれば高負荷になり得る。明示range向けの別resource controlは本Issueに含めない。
+
+### FU-007 — concurrent mutation
+
+base sideは開始時SHAで固定するが、working treeの同時更新をtransactionalにsnapshotしない。必要性が確認された場合は別Issueとする。
+
+### FU-008 — shallow / partial clone UX
+
+failure messageだけで不十分な場合、local history不足をより明確に分類するdiagnosticを後続Issueで検討する。自動network accessは導入しない。
+
+## 20. Definition of Done
+
+Issue #45 の実装完了候補は、次をすべて満たした状態とする。
+
+1. requirementの AC-001〜AC-016 にtestまたはinspection evidenceが対応している。
+2. default branch working-tree no-baseがHEAD SHAを使う。
+3. default branch head no-baseが専用failureになる。
+4. feature/detachedのvalid merge-baseが維持される。
+5. implicit resolution failureでinitial commitを使用しない。
+6. implicit 1,000件超guardがhunk extraction前に発火する。
+7. explicit baseがguardを迂回する。
+8. scope-only diagnosticがgeneric zero-targetと区別される。
+9. config/depth、read-only、rename、untracked、nested projectが回帰しない。
+10. README/help/source/testsが一致する。
+11. Issue #36 supersedeとIssue #44 authorityが文書化される。
+12. focused/full verificationとpatch qualityが記録される。
+13. SpecDock validationと必要なreview gateが閉じる。
+14. 未検証事項とfollow-upが `report.md` に残る。
+15. GitHub Issue close、PR merge、release完了は、実際に実行・検証されるまで主張しない。

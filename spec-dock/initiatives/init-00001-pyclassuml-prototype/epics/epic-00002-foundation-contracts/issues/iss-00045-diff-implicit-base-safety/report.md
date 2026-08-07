@@ -5,7 +5,7 @@ ID: "iss-00045"
 関連GitHub: ["#45"]
 状態: "draft | approved"
 作成者: "iwasawayuuta"
-最終更新: "2026-08-05"
+最終更新: "2026-08-07"
 依存: ["requirement.md", "design.md", "plan.md"]
 親: ["epic-00002", "init-00001"]
 ---
@@ -49,7 +49,9 @@ Disposition ごとの必須証跡:
 
 | 識別子（ID） | 状態（Status） | 種別（Type） | 起票元（Raised By） | 契機 / 差分（Gap） | 検討した選択肢 | 判断 / 解釈 | 根拠（Rationale） | 処置（Disposition） | 証跡（Evidence） | フォローアップ（Follow-up） |
 |---|---|---|---|---|---|---|---|---|---|---|
-| D-001 | 未解決 / 解決済み / 置換済み（open / resolved / superseded） | 解釈 / 範囲 / 実装 / 互換性 / テスト戦略 / 運用 / 逸脱 / フォローアップ（interpretation / scope / implementation / compatibility / test-strategy / operation / deviation / follow-up） | 起票元（orchestrator / reviewer / worker source） | 計画の曖昧さ / 実装制約 / レビュー指摘 / 発見リスク（plan ambiguity / implementation constraint / reviewer finding / discovered risk） | 選択肢 A; 選択肢 B; 対応なし（option A; option B; no action） | ... | ... | 採用 / 却下 / design 昇格 / ADR 昇格 / plan 昇格 / follow-up 化 / 延期 / 対応なし / 置換済み（applied / rejected / promoted_to_design / promoted_to_adr / promoted_to_plan / converted_to_followup / deferred / no_action / superseded） | `path` / コマンド / reviewer 指摘 / discussion（path / command / reviewer finding / discussion） | 対象 artifact / issue / discussion / 置換先 entry / 理由付き対応なし（target artifact / issue / discussion / replacement entry / none with reason） |
+| D-001 | resolved | implementation | user report / ChatGPT review | default branch no-baseがinitial commitへ遡る | current HEAD / remote default / merge-base / initial fallback | default branch + working-treeは開始時HEAD SHA、default branch + headは明示base必須、feature/detachedはmerge-base、解決不能はfailure | promoted_to_plan | requirement.md、design.md、plan.md、source/tests、`artifacts/20260807t014601z-chatgpt-output-chatgpt-diff-base-spec-review.md` | なし |
+| D-002 | resolved | compatibility | ChatGPT review | partial clone lazy fetch、external diff/textconv、nested project path境界 | 現行Git既定 / fail-closed subprocess contract | `GIT_NO_LAZY_FETCH=1`、diff安全flags、raw VCS path carrier、project-relative public DTOを採用 | promoted_to_plan | design.md、tests/vcs/test_diff_file_collect.py、artifact EAL-002 | shallow/partial clone UXは別Issue候補 |
+| D-003 | open | operation | fresh ChatGPT implementation review | exact GitHub branchが未commitの実装スナップショットと不一致 | local working tree / pushed exact HEAD | local source/tests/docsを先に完成させ、commit後にpushしてexact branch parityを再確認する | deferred | `artifacts/20260807t023033z-chatgpt-output-chatgpt-diff-base-implementation-review.md` | parity確認後にresolvedへ更新 |
 
 ## 証跡採用台帳（Evidence Adoption Ledger / 必須）
 
@@ -63,7 +65,10 @@ Delegated draft、worker note、research、reviewer finding、discussion、comma
 
 | 識別子（ID） | 採用状態（adoption_status） | 出所（source） | 対象（target） | 判断理由（rationale） | 証跡（evidence） | 次アクション（next_action） |
 |---|---|---|---|---|---|---|
-| EAL-001 | 採用（`adopted`） / 部分採用（`partially_adopted`） / 棄却（`rejected`） / 延期（`deferred`） / stale（`stale`） / blocked（`blocked`） | サブエージェント（`sub-agent`） / レビュアー（`reviewer`） / 議論（`discussion`） / コマンド（`command`） / 調査（`research`） | 成果物（`artifact`） / Issue（`issue`） / フォローアップ（`follow-up`） | ... | `path` / コマンド / レビュアー指摘 | なし / フォローアップ（`follow-up`） / 再レビュー（`re-review`） / 再訪条件（`revisit condition`） |
+| EAL-001 | adopted | ChatGPT authoring artifact | canonical requirement/design/plan | 3文書のformal candidateとして採用し、ローカルsource/testsで検証 | ChatGPT-Use browser evidence; GPT-5.6 Sol verified; imported artifact SHA-256 `e7fc0fdb68bf087c03f1672c442874a010401c5cba7b487e6ec221c53190aa38` | 実装後のfresh spec reviewで再確認 |
+| EAL-002 | partially_adopted | ChatGPT spec review artifact | canonical docs / implementation plan / tests | P1/P2 findingsをsource・tests・docsへ反映。review verdict自体は初回 `FAIL` のため完了ゲートではない | imported artifact SHA-256 `30d88d249701cc454a04cf88eee29c1a345e25415a6d951612217b7c0970fa20` | 実装後にfresh code/QA/spec review |
+| EAL-003 | deferred | SpecDock ChatGPT-first planner | planning workflow | repo-local adapterがoracle 0.16.1 exactを要求し、PATH oracle 0.17.0/0.17.1のためformal sessionを開始できなかった。今回の要件定義・レビューはChatGPT-Use evidence laneで完結させ、formal transportの迂回はしない | command output: `oracle_capability_unsupported`; ChatGPT-Use artifact/reviewを別台帳で検証 | SpecDock provider contractが更新され、formal plannerを再実行できる場合に再訪。今回の実装完了ゲートをブロックしない根拠を記録 |
+| EAL-004 | partially_adopted | fresh ChatGPT implementation review | source/tests/docs/report | P1-2件・P2-4件を現物へ反映。P1-1はcommit/push後のexact branch parity、P1-2は#44 authority noteを追加して継続確認する | imported artifact SHA-256 `f91815181197df66545546bda397e3e5a200e142845639b542dff9ed8509de07`; GPT-5.6 Sol / browser model picker / verified=yes | commit/push後にexact branchを再取得して再レビュー |
 
 ## 目的整合台帳（Objective Alignment Ledger / 必須）
 
@@ -71,7 +76,7 @@ Delegated draft、worker note、research、reviewer finding、discussion、comma
 
 | 対象 | 主要目的の証跡（primary objective evidence） | 副次要件の証跡（secondary requirement evidence） | 逆転リスク（inversion risk） | レビュアー判定（reviewer verdict） |
 |---|---|---|---|---|
-| OAL-001 | ... | ... | なし / 低 / 中 / 高（none / low / medium / high） | 合格 / 不合格 / blocked（pass / fail / blocked） |
+| OAL-001 | default branchでの意図しない全履歴走査を止め、working-treeの日常利用を維持する | explicit base authority、read-only、depth/config regression、scope diagnostic | 低 | provisional / implementation verification pending |
 
 ## 仕様 authoring ゲート（Spec Authoring Gate / 必須）
 
@@ -79,11 +84,11 @@ Requirement / design / plan の phase promotion ごとに、調査、未確定�
 
 | フェーズ（phase） | 調査証跡（investigated facts） | 未確定事項 / 回答（open questions / answers） | 採用判断（adoption decision） | レビュアー判定（reviewer verdict） | ブロック有無（blocking） | 昇格 / 次アクション（promotion / next_action） |
 |---|---|---|---|---|---|---|
-| 要件 / 設計 / 計画（requirement / design / plan） | 文書 / コード / artifacts / legacy discussions / 外部証跡（docs / code / artifacts / legacy discussions / external evidence） | なし / `artifacts/...` / legacy `discussions/...`（none / `artifacts/...` / legacy `discussions/...`） | 採用 / 部分採用 / 棄却 / 延期 / なし（adopted / partially_adopted / rejected / deferred / none） | 合格 / 不合格 / 利用不可 / 拒否 / waiver / provisional（passed / failed / unavailable / denied / waived / provisional） | はい / いいえ（yes / no） | 昇格 / clarification へ戻す / 再レビュー / フォローアップ（promote / return to clarification / re-review / follow-up） |
+| requirement / design / plan | imported ChatGPT formal docs、local source/tests、#36/#44 authority docs、fresh implementation review | initial review findingsは反映済み。fresh reviewは P0=0/P1=2/P2=4、exact branch parityと最終ゲートが未完了 | partially_adopted; local corrections applied | conditional / not a final pass | yes | commit/push、exact HEAD parity、independent code/QA/spec review |
 
 ## 委任ドラフト証跡（Delegated Draft Evidence / 必須）
 - 委任 authoring の使用:
-  - used / not used
+  - used
 - 未使用の場合:
   - manual authoring path / 委任ドラフトを昇格証跡として使っていない理由。
 - lifecycle state（契約値）:
@@ -107,7 +112,7 @@ Requirement / design / plan の phase promotion ごとに、調査、未確定�
 
 | ロール（created_by_role） | 範囲（scope_id） | ドラフトパス（artifact draft path） | 参照元（source_paths） | 予定反映先（intended_targets） | 採用状態（adoption_status） | 反映先（reflected_to） | 差分ガード結果（diff_guard_result） | 統合結果 | 採用しなかった部分 | ブロッカー | レビュー結果（reviewer result） | 昇格判断（promotion decision） |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 該当なし | 該当なし | 該当なし | 該当なし | 該当なし | 未使用（not used） | なし（[]） | 未実行（not_run） | 手動 authoring | 該当なし | なし（none） | 該当なし | 委任ドラフト昇格なし |
+| ChatGPT-Use authoring | iss-00045 | `artifacts/20260807t011027z-chatgpt-output-chatgpt-diff-implicit-base-formal-docs.md` | source/tests、interview context、#36 docs | requirement/design/plan | partially_integrated | canonical requirement/design/plan | imported artifact checksum; source sections extracted and normalized | canonical docsへ反映、レビュー指摘を追加採用 | 初回レビューFAILの未修正部分はなし。fresh reviewは未完了 | fresh code/QA/spec review | initial ChatGPT review: FAIL; findings adopted | implementation後に再レビュー |
 
 ### 委任ドラフトの失敗モード（Delegated Draft Failure Modes）
 | 失敗モード | 期待される判定 | 許可される次アクション | レポート証跡の記録先（report evidence destination） | 昇格可否 |
@@ -124,9 +129,97 @@ Requirement / design / plan の phase promotion ごとに、調査、未確定�
 | reviewer 利用不可 / 拒否 / waiver / provisional（reviewer unavailable/denied/waived/provisional） | blocked / incomplete | fresh な passed reviewer を取得する、または昇格なしの risk acceptance を記録する | レビューゲート証跡（Reviewer Gate Status / Final Spec Review Gate） | ineligible |
 
 ## 実装サマリー (任意)
-- [実装した内容の概要を2-3文で記載]
+- `diff` の no-base resolver を、default branch の working-treeでは開始時 `HEAD` SHA、default branchの `head` では明示base必須、feature/detachedでは local merge-base、解決不能では fail-closed とする契約へ変更した。initial commitへの暗黙fallbackは production pathから廃止し、legacy DTO/report constructionの受理だけを維持した。
+- raw changed pathとhunk enrichmentを分離し、implicit 1,000件上限、Git lazy fetch/external diff/textconv無効化、nested project path carrier、scope-only diagnosticを追加した。`generate`、config/depth resolver、traversal、report DTOの不要な変更は行っていない。
+
+## ChatGPT-First authoring / review evidence
+
+- formal docs candidate: `artifacts/20260807t011027z-chatgpt-output-chatgpt-diff-implicit-base-formal-docs.md`
+- formal spec review: `artifacts/20260807t014601z-chatgpt-output-chatgpt-diff-base-spec-review.md`
+- fresh implementation review: `artifacts/20260807t023033z-chatgpt-output-chatgpt-diff-base-implementation-review.md`
+- ChatGPT-Use model evidence: requested/resolved `GPT-5.6 Sol`、browser model picker、verified=yes。
+- 初回 spec review verdict は `FAIL`（P0なし、P1=7、P2=4）。read-only、config state authority、nested raw path、revision grammar、#36 plan migration、captured HEAD SHA、artifact/assurance鮮度の指摘を requirement/design/plan、source/testsへ反映した。初回FAILは最終review passを意味しない。
+- fresh implementation review は `P0=0 / P1=2 / P2=4`。P1-1（exact branch parity）をcommit/push後の再確認へ保留し、P1-2（#44 authority境界）とP2の診断文言・app guard・detached/matrix/depthテストをローカルへ反映した。ChatGPT自身はテスト未実行のため、実行結果はローカルpytest/Ruff/SpecDockの証跡で別途確認する。
+- SpecDockのformal ChatGPT-first plannerは repo-local adapter の `oracle 0.16.1` exact要件と現行PATH oracle `0.17.0/0.17.1` の不一致で blocked だったため、formal transportの迂回は行わず、ChatGPT-Use evidence laneを advisory として採用した。
 
 ## 実装記録（セッションログ） (必須)
+
+### 実測セッション（2026-08-07）
+
+#### 対象
+- Step: S01〜S08
+- AC/EC: default branch no-base、explicit base、feature/detached candidate、breadth guard、scope-only diagnosis、depth/config non-interference、read-only Git boundary、docs/spec traceability
+- 実装基準: clean clone `codex/iss-00045-diff-implicit-base-safety`。元 worktree の `.serena/project.yml` は変更していない。
+
+#### 実施内容
+- VCS resolver を default branch working-tree の開始時 `HEAD` SHA、default branch `head` の explicit-base requirement、feature/detached の merge-base、候補不足の fail-closed へ変更した。
+- raw VCS path を保持した changed-entry collection と hunk enrichment を分離し、implicit 1,000 path guard、Git offline/read-only flags、nested project boundary を実装した。
+- target seam に scope-only diagnostic と、scope/file-type/ignore filtering を含む generic zero-target message を追加した。
+- `iss-00036` の supersede 境界、`iss-00044` の authority note、README/CLI help、ChatGPT review artifacts/report を更新した。
+
+#### 実行コマンド / 結果
+```bash
+uv run pytest tests/vcs/test_diff_file_collect.py tests/targets/test_diff_target_normalize.py tests/app/test_diff.py tests/config/test_context_resolve.py tests/model/test_contracts.py tests/cli/test_main.py
+# 232 passed
+
+uv run pytest
+# 500 passed in 16.40s
+
+uv run ruff check src/pyclassuml/cli/bind.py src/pyclassuml/model/contracts.py src/pyclassuml/targets/diff.py src/pyclassuml/vcs/diff_collect.py tests/app/test_diff.py tests/cli/test_main.py tests/model/test_contracts.py tests/targets/test_diff_target_normalize.py tests/vcs/test_diff_file_collect.py
+# All checks passed!
+
+python -m compileall -q src tests
+git diff --check
+# pass
+
+./spec-dock/scripts/spec-dock validate
+# spec-dock: ok (validate) nodes=42
+
+./spec-dock/scripts/spec-dock doctor
+# spec-dock: ok (doctor) findings=0
+
+./spec-dock/scripts/spec-dock assurance classify --stage requirement
+# authorized_profile=standard, complexity_tier=normal, reason=ok
+```
+
+全体 `uv run ruff check` は今回変更外の `src/pyclassuml/render/document.py` に既存の F821 4件があり非0だった。対象変更ファイルのRuffは通過しており、既存baselineとして記録する。現行対象 checkout への smoke は current clean-clone executable で実施したが、対象が feature branch かつ scope内変更なしだったため `default_branch_merge_base` / zero-target の結果であり、旧 `8bb20e9` の default-branch initial-fallback挙動や本修正の default-branch fixtureを検証する証拠にはしない。
+
+#### テスト駆動開発証跡（TDD / Red / Green / Refactor Evidence）
+| フェーズ | 観測した証跡 | 結果 | メモ |
+|---|---|---|---|
+| Red / characterization | 旧 initial-fallback期待を新 fail-closed / `default_branch_head` 契約へ置換し、source/test差分を確認 | approved-no-op | 旧契約の baseline は #36 と report artifact に保持 |
+| Green | focused suite、全体500件、depth 0/1/2 invariance、detached、breadth、scope-only、app guard、Git state/sentinelを実行 | pass | ChatGPTレビュー自身はテスト未実行。実行事実は本セッションのコマンド結果 |
+| Refactor / guardrail | targeted Ruff、compileall、diff check、SpecDock validate/doctor | pass | whole Ruffは既存4 F821を別記 |
+
+#### 発見されたテスト / リスク
+| テスト / リスク | 起票元 | 対応 | 状態 |
+|---|---|---|---|
+| exact GitHub branchが未commitの実装と不一致 | fresh ChatGPT implementation review | commit/push後にexact HEAD parityを再確認する | open / blocking completion |
+| `iss-00044` の初期 authority文言 | fresh ChatGPT implementation review | requirement/design/planへ#45 authority noteを追加 | applied / independent spec review pending |
+| diagnostic wordingとdepth/guard/scope matrixの不足 | fresh ChatGPT implementation review | source/tests/README/helpへ反映しfocused/full suiteで検証 | applied |
+
+#### 実測時点の closure
+- local implementation and tests: pass
+- SpecDock structural validation: pass
+- independent code/QA/spec review: pending
+- commit/push/exact remote parity: pending
+- PR/merge/main-side pull: not started
+
+#### Evidence ID 対応表
+| Evidence ID | 観測結果 |
+|---|---|
+| EVD-001 | clean clone branch `codex/iss-00045-diff-implicit-base-safety`、pre-implementation remote HEAD `e5a4cf2`、source changeは未commit時点で確認 |
+| EVD-002 | focused suite pass、full suite 500 passed in 16.40s after added app/read-only/breadth/sentinel tests |
+| EVD-003 | `assurance classify` / `verify` pass、正規 profile は standard、Strict相当はmanual escalationとして記録 |
+| EVD-004〜EVD-009 | model kind、default branch HEAD、default branch head failure、candidate failure、guard boundary/stop-order、explicit bypassのfocused tests pass |
+| EVD-010 | scope-only、mixed、ignored-only、non-Python、empty、project-root外のtarget matrixをfocused testsで確認 |
+| EVD-011 | app default/head、feature failure、breadth guard、help phraseを確認。CLI full smokeは現行対象branchのscope外変更のみで本契約の成功証跡にしない |
+| EVD-012 | VCS/target seamとapp seamでdepth 0/1/2のbase、changed entries、seed不変、reachable graph差を確認し、full suite 500 passed |
+| EVD-013 | Git state（HEAD/branch/status/index/refs）前後不変、forbidden command不使用、external diff/textconv sentinel不実行をfocused testsで確認。partial/promisor clone実fixtureは未実施 |
+| EVD-014 | README/helpにbranch/state、exit 1/artifactなし、安全flags、explicit remediationを反映 |
+| EVD-015 | #36 supersede note、#44 authority noteを3文書へ反映し、SpecDock validate pass |
+| EVD-016〜EVD-017 | latest source/docs反映後のfull suite、diff check、validate/doctorを再実行予定。直近validate/doctorはpass |
+| EVD-018 | commit/push、exact remote SHA、PRは未実施 |
 
 ### セッションログ（2026-08-05 HH:MM - HH:MM）
 
@@ -212,22 +305,24 @@ Authorization source は、ユーザーによる SpecDock workflow 利用依頼�
 #### グレード別専門家証跡ゲート（Grade Specialist Evidence Gate）
 Lite は specialist / fallback evidence を必須化しないが、not applicable / skip reason を記録する。Standard は specialist evidence、skip reason、または manual fallback を記録する。Strict / Critical は specialist evidence または明示的な manual fallback を記録し、skip reason だけでは readiness evidence にしない。
 
+正規 `assurance classify --stage requirement --issue iss-00045` の観測結果は `authorized_profile=standard`、`complexity_tier=normal` である。要件が要求する Strict 相当は profile の手編集ではなく、公開CLI契約・VCS安全性・rollback境界に対する manual escalation として以下の追加 code/QA/spec review、read-only receipt、exact branch parity gateで実施する。
+
 | グレード（Grade） | 必要な専門家 / 代替（required specialist / fallback） | 使用状況（usage） | 証跡（evidence） | 鮮度 spec-reviewer 判定（fresh spec-reviewer verdict） | 実行可否（execution readiness） |
 |---|---|---|---|---|---|
 | `lite` | `not applicable` | `not applicable` | ライト該当なし理由（lite not applicable reason） | `pass / fail / blocked` | `ready / blocked` |
-| `standard` | `system-architect / implementation-planner / manual fallback` | `used / skipped / unavailable / denied` | `artifacts/...` / manual evidence / skip reason: ... | `pass / fail / blocked` | `ready / blocked` |
-| `strict` | `system-architect / implementation-planner / manual fallback` | `used / unavailable / denied` | `artifacts/...` / manual fallback evidence | `pass / fail / blocked` | `ready / blocked` |
+| `standard` | `system-architect / implementation-planner / manual fallback` | manual fallback / ChatGPT-Use advisory | `artifacts/20260807t011027z...`、`artifacts/20260807t014601z...`、`artifacts/20260807t023033z...`、local source/tests | provisional / fresh independent review pending | blocked until final gates |
+| `strict` | manual escalation: code-reviewer / qa-reviewer / spec-reviewer | required as supplemental gate; profile not overwritten | report EVD-003、EVD-012、EVD-013、final review rows | pending | blocked until exact HEAD parity |
 | `critical` | `system-architect / implementation-planner / manual fallback` | `used / unavailable / denied` | `artifacts/...` / explicit approval and risk acceptance | `pass / fail / blocked` | `ready / blocked` |
 
 #### レビューゲート状態（Reviewer Gate Status）
 | ステップ（step） | ゲート名（gate name） | レビュアーロール（reviewer role） | 鮮度（freshness） | 状態（state） | リスク受容（risk acceptance） | 昇格 / 完了判断（promotion / completion decision） | メモ（notes） |
 |---|---|---|---|---|---|---|---|
-| S01 | step reviewer / final reviewer | code-reviewer / spec-reviewer / qa-reviewer | fresh / stale | passed / failed / unavailable / denied / waived / provisional | yes / no / N/A | proceed / blocked / incomplete / follow-up required | ... |
+| S01〜S08 | final reviewer | code-reviewer / spec-reviewer / qa-reviewer | fresh | provisional; independent results pending | no waiver | blocked until exact branch parity, assurance verify, and all reviewer results are recorded | ChatGPT fresh review P0=0/P1=2/P2=4; local tests pass |
 
 #### マイルストーン / commit 候補ゲート（Milestone / Commit Candidate Gate）
 | マイルストーン / step | クロージャ状態（closure state） | コミット候補 / コミット範囲（commit candidate / scope） | コミットハッシュ / 最終台帳（commit hash / final ledger） | コミット後 clean 確認（post-commit clean check） | 差分なし根拠（no-op rationale） | 差分なし確認済み契約 / ファイル（no-op checked contracts / files） | 差分なし diff-clean コマンド（no-op diff-clean command） | 差分なし read-only 確認（no-op read-only confirmation） |
 |---|---|---|---|---|---|---|---|---|
-| S01 | committed / approved-no-op | ... | <hash or final ledger reference> | `git status --short` -> clean | ... | ... | ... | ... |
+| S01〜S08 | implementation pending commit | intended source/tests/docs/artifacts only; root `.workbench/` is intentionally untracked and retained | pending | not yet run | no-op not applicable | pending | pending | target checkout read-only evidence recorded; commit/push not started |
 
 #### 変更したファイル
 - `path/to/file1` - ...
@@ -257,27 +352,27 @@ Lite は specialist / fallback evidence を必須化しないが、not applicabl
 ### ドキュメント影響の解消ステップ S90（Docs Impact Resolution）
 | 対象 | 更新要否 | 担当（owner） | 証跡（evidence） | 仕様レビュアー結果（spec-reviewer result） |
 |---|---|---|---|---|
-| docs / templates / README / workflow / skill / migration notes | yes / no | doc-writer / N/A | ... | pass / fail / blocked |
+| docs / templates / workflow / migration notes | yes | main orchestrator | README/help、#36 supersede note、#44 authority note、Issue #45 requirement/design/plan/report、ChatGPT artifacts | provisional; independent spec review findings still require closure |
 
 ### 最終 QA ゲート（Final QA Gate）
 | レビュアー（reviewer） | 範囲 | 統合テスト判断（integration test decision） | 証跡（evidence） | 結果（result） |
 |---|---|---|---|---|
-| qa-reviewer | whole issue obligation coverage | added / already sufficient / not applicable | ... | pass / fail / blocked |
+| qa-reviewer | whole issue obligation coverage | added focused app/VCS/targets tests; full suite rerun pending after latest tests | focused 232 passed before latest additions; latest 3 app tests passed; full 495 passed before latest additions; EVD-012/EVD-013 to refresh | provisional / blocked until final rerun and independent QA review |
 
 ### 最終コードレビューゲート（Final Code Review Gate）
 | レビュアー（reviewer） | 範囲 | 指摘 / 修正（findings / fixes） | 再 review 回数（re-review count） | 結果（result） |
 |---|---|---|---|---|
-| code-reviewer | issue-wide integrated diff | ... | 0 | pass / fail / blocked |
+| code-reviewer | issue-wide integrated diff | fresh ChatGPT review P0=0/P1/P2 findings applied; independent code review pending | `artifacts/20260807t023033z-chatgpt-output-chatgpt-diff-base-implementation-review.md` | 0 | blocked pending independent review and exact branch parity |
 
 ### 最終 spec review ゲート（Final Spec Review Gate）
 | レビュアー（reviewer） | 範囲 | 指摘 / 修正（findings / fixes） | 再 review 回数（re-review count） | 結果（result） |
 |---|---|---|---|---|
-| spec-reviewer | requirement / design / plan / report / implementation / tests / docs alignment | ... | 0 | pass / fail / blocked |
+| spec-reviewer | requirement / design / plan / report / implementation / tests / docs alignment | independent review found assurance/report closure gaps; profile/manual escalation and report corrections applied; re-review pending | independent spec review notification; `assurance classify` / `verify`; validate/doctor | 1 | blocked pending fresh pass |
 
 ### 最終 commit（Final Commit）
 | 最終 report 台帳（final report ledger） | 最終 commit 範囲（final commit scope） | コミット後の外部証跡送付先（post-commit external evidence destination） | 結果（result） |
 |---|---|---|---|
-| ... | ... | final response / PR / issue comment / other external delivery evidence | ready / blocked |
+| local evidence ledger | source/tests/docs/artifacts; commit not yet created | push→PR→merge→main pullの後に branch parity / SHA / PR evidenceを追記 | blocked until independent gates and commit/push |
 
 ## 遭遇した問題と解決 (任意)
 - 問題: ...

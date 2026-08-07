@@ -63,6 +63,17 @@ def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def git_state(repo: Path) -> tuple[str, ...]:
+    return (
+        git(repo, "rev-parse", "HEAD").stdout,
+        git(repo, "branch", "--show-current").stdout,
+        git(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout,
+        git(repo, "diff", "--cached", "--name-status").stdout,
+        git(repo, "ls-files", "--stage").stdout,
+        git(repo, "for-each-ref", "--format=%(refname) %(objectname)").stdout,
+    )
+
+
 def write_file(path: Path, text: str = "") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -431,33 +442,221 @@ def test_no_base_diff_uses_resolved_base_for_classification_and_report(
     assert all(diagnostic.code != "diff_classification_base_read_unavailable" for diagnostic in result.command_result.diagnostics)
 
 
-def test_no_base_initial_fallback_is_degraded_success_with_base_metadata(tmp_path: Path) -> None:
+def test_no_base_default_branch_working_tree_uses_head_with_base_metadata(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "pkg" / "model.py", "class Base:\n    pass\n")
     commit_all(repo, "base")
     git(repo, "branch", "-M", "main")
-    initial_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
+    head_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
     write_file(repo / "pkg" / "model.py", "class Base:\n    value = 1\n")
 
     result = run_diff(
-        diff_request(repo, base_ref=None, output=Path("fallback.puml")),
+        diff_request(repo, base_ref=None, output=Path("default-branch.puml")),
         timestamp=TIMESTAMP,
     )
 
-    assert result.outcome_kind == "degraded_success"
+    assert result.outcome_kind == "clean_success"
     assert result.command_result.exit_code == 0
-    assert result.command_result.summary.counters["warning_count"] == 1
+    assert result.command_result.summary.counters["warning_count"] == 0
     assert result.command_result.diff_base_resolution == DiffBaseResolution(
         requested_base_ref=None,
-        resolved_base_ref=initial_sha,
-        resolution_kind="initial_commit_fallback",
+        resolved_base_ref=head_sha,
+        resolution_kind="default_branch_head",
         candidate_ref=None,
     )
-    assert "warning:diff_base_initial_commit_fallback:" in result.stdout_text
-    assert "base_resolution: initial_commit_fallback" in result.stdout_text
-    assert f"resolved_base: {initial_sha}" in result.stdout_text
+    assert "warning:diff_base_initial_commit_fallback:" not in result.stdout_text
+    assert "base_resolution: default_branch_head" in result.stdout_text
+    assert f"resolved_base: {head_sha}" in result.stdout_text
     assert "requested_base: none" in result.stdout_text
     assert "base_candidate: none" in result.stdout_text
+
+
+def test_diff_app_keeps_base_entries_and_seeds_invariant_to_depth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "__init__.py")
+    write_file(repo / "pkg" / "source.py", "from pkg.helper import Helper\n\nclass Source:\n    helper: Helper\n")
+    write_file(
+        repo / "pkg" / "helper.py",
+        "from pkg.transitive import Transitive\n\nclass Helper:\n    transitive: Transitive\n",
+    )
+    write_file(repo / "pkg" / "transitive.py", "class Transitive:\n    value = 0\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    head_sha = git(repo, "rev-parse", "HEAD").stdout.strip()
+    write_file(repo / "pkg" / "source.py", "from pkg.helper import Helper\n\nclass Source:\n    helper: Helper\n    value = 1\n")
+
+    original_collect = diff_app.collect_diff_files
+    original_normalize = diff_app.normalize_diff_targets
+    collected_snapshots: list[tuple[tuple[ChangedFileEntry, ...], DiffBaseResolution]] = []
+    seed_snapshots: list[tuple[Path, ...]] = []
+
+    def collect_spy(request: CommandRequest, context: object, config: object) -> object:
+        result = original_collect(request, context, config)
+        assert result.collection is not None
+        collected_snapshots.append((result.collection.entries, result.collection.base_resolution))
+        return result
+
+    def normalize_spy(
+        changed_files: object,
+        context: object,
+        config: object,
+        upstream_diagnostics: tuple[object, ...] = (),
+    ) -> object:
+        result = original_normalize(changed_files, context, config, upstream_diagnostics)
+        assert result.target_set is not None
+        seed_snapshots.append(result.target_set.seed_files)
+        return result
+
+    monkeypatch.setattr(diff_app, "collect_diff_files", collect_spy)
+    monkeypatch.setattr(diff_app, "normalize_diff_targets", normalize_spy)
+
+    results = [
+        run_diff(
+            diff_request(repo, base_ref=None, depth=depth, output=Path(f"depth-{depth}.puml")),
+            timestamp=TIMESTAMP,
+        )
+        for depth in (0, 1, 2)
+    ]
+
+    assert [result.command_result.exit_code for result in results] == [0, 0, 0]
+    assert [result.command_result.summary.counters["seed_file_count"] for result in results] == [1, 1, 1]
+    assert [result.command_result.summary.counters["reachable_file_count"] for result in results] == [1, 2, 3]
+    assert collected_snapshots == [
+        (
+            (ChangedFileEntry("pkg/source.py", "modified"),),
+            DiffBaseResolution(
+                requested_base_ref=None,
+                resolved_base_ref=head_sha,
+                resolution_kind="default_branch_head",
+                candidate_ref=None,
+            ),
+        ),
+    ] * 3
+    assert seed_snapshots == [((repo / "pkg" / "source.py").resolve(),)] * 3
+
+
+def test_no_base_default_branch_head_requires_explicit_base_and_skips_pipeline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class Model:\n    pass\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    monkeypatch.setattr(diff_app, "normalize_diff_targets", fail_if_called("targets"))
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+    monkeypatch.setattr(diff_app, "traverse_dependencies", fail_if_called("traversal"))
+    monkeypatch.setattr(diff_app, "render_uml_document", fail_if_called("render"))
+
+    result = run_diff(
+        diff_request(repo, base_ref=None, current_state=DiffCurrentState.HEAD),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.diff_base_resolution is None
+    assert "error:diff_default_branch_head_requires_base:" in result.stderr_text
+    assert not (repo / "diagram.puml").exists()
+
+
+def test_default_branch_head_failure_preserves_git_state_and_avoids_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class Model:\n    pass\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    write_file(repo / "pkg" / "model.py", "class Model:\n    value = 1\n")
+    write_file(repo / "untracked.txt", "keep\n")
+    before = git_state(repo)
+    observed_commands: list[str] = []
+    original_run_git = diff_app.diff_collect._run_git
+
+    def run_git_spy(project_root: Path, args: tuple[str, ...], *, check: bool = True) -> subprocess.CompletedProcess[bytes]:
+        observed_commands.append(args[0])
+        return original_run_git(project_root, args, check=check)
+
+    monkeypatch.setattr(diff_app.diff_collect, "_run_git", run_git_spy)
+    result = run_diff(
+        diff_request(
+            repo,
+            base_ref=None,
+            current_state=DiffCurrentState.HEAD,
+            include_untracked=True,
+            output=Path("../default-head-failure.puml"),
+        ),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.diagnostics[0].code == "diff_default_branch_head_requires_base"
+    assert git_state(repo) == before
+    assert not (repo.parent / "default-head-failure.puml").exists()
+    assert not set(observed_commands) & {"fetch", "checkout", "reset", "stash", "clean", "update-ref"}
+
+
+def test_feature_base_resolution_failure_preserves_git_state_and_avoids_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class Model:\n    pass\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "feature/no-candidate")
+    write_file(repo / "pkg" / "model.py", "class Model:\n    value = 1\n")
+    before = git_state(repo)
+    observed_commands: list[str] = []
+    original_run_git = diff_app.diff_collect._run_git
+
+    def run_git_spy(project_root: Path, args: tuple[str, ...], *, check: bool = True) -> subprocess.CompletedProcess[bytes]:
+        observed_commands.append(args[0])
+        return original_run_git(project_root, args, check=check)
+
+    monkeypatch.setattr(diff_app.diff_collect, "_run_git", run_git_spy)
+    result = run_diff(
+        diff_request(repo, base_ref=None, output=Path("../feature-failure.puml")),
+        timestamp=TIMESTAMP,
+    )
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.diagnostics[0].code == "diff_base_resolution_unavailable"
+    assert git_state(repo) == before
+    assert not (repo.parent / "feature-failure.puml").exists()
+    assert not set(observed_commands) & {"fetch", "checkout", "reset", "stash", "clean", "update-ref"}
+
+
+def test_implicit_range_guard_is_reported_as_vcs_failure_before_downstream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "one.py", "class One:\n    pass\n")
+    write_file(repo / "pkg" / "two.py", "class Two:\n    pass\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    write_file(repo / "pkg" / "one.py", "class One:\n    value = 1\n")
+    write_file(repo / "pkg" / "two.py", "class Two:\n    value = 2\n")
+    monkeypatch.setattr(diff_app.diff_collect, "MAX_IMPLICIT_DIFF_CHANGED_PATHS", 1)
+    monkeypatch.setattr(diff_app, "normalize_diff_targets", fail_if_called("targets"))
+    monkeypatch.setattr(diff_app, "parse_target_set", fail_if_called("parse"))
+    monkeypatch.setattr(diff_app, "traverse_dependencies", fail_if_called("traversal"))
+    monkeypatch.setattr(diff_app, "render_uml_document", fail_if_called("render"))
+
+    result = run_diff(diff_request(repo, base_ref=None), timestamp=TIMESTAMP)
+
+    assert result.outcome_kind == "hard_failure"
+    assert result.command_result.exit_code == 1
+    assert result.command_result.summary.failure_reason is FailureReason.VCS_READ_FAILURE
+    assert result.command_result.diff_base_resolution is None
+    assert "error:diff_implicit_range_too_broad:" in result.stderr_text
+    assert not (repo / "diagram.puml").exists()
 
 
 def test_no_base_head_semantics_exclude_working_tree_only_and_untracked_files(tmp_path: Path) -> None:
@@ -2112,7 +2311,7 @@ def test_zero_target_all_scope_outside_preserves_diff_scope_excluded_count(
     assert result.command_result.summary.counters["diff_scope_excluded_count"] == 1
     assert "diff_scope_excluded_count: 1" in result.stderr_text
     assert "warning:diff_scope_exclusion:" in result.stderr_text
-    assert "error:diff_zero_target_after_scope_filter:" in result.stderr_text
+    assert "error:diff_zero_target_scope_excluded_only:" in result.stderr_text
     assert captured.out == ""
     assert captured.err == ""
 

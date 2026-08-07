@@ -11,6 +11,8 @@ ID: "iss-00044"
 
 # iss-00044 Diff Default Traversal Depth — 実装計画（canonical 候補）
 
+> **後続Issueとのauthority境界:** `iss-00045-diff-implicit-base-safety` が Git implicit-base resolver の現行 authority である。以下に残る `initial_commit_fallback` や VCS regression の記述は Issue #44 実装時点の historical characterization として保持し、#45 適用後の production contractとして解釈しない。#44 が現行として維持するのは generate/diff の設定レイヤー、CLI/config precedence、`generate=None`、`diff=1`、depthがVCS/seed/traversal以外へ波及しない境界である。
+
 > 本書は implementation candidate である。branch `codex/iss-00044-chatgpt-first-planning` / commit `d04c6aa175d1f6261c7c4378435b5d54b4efef27` に対する変更を実行したものではなく、commit、push、PR、canonical promotion、review pass を主張しない。
 
 ## 1. 計画の目的

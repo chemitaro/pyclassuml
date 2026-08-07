@@ -48,11 +48,15 @@ def assert_success(result: DiffTargetNormalization) -> tuple[Path, ...]:
     return result.target_set.seed_files
 
 
-def assert_zero_target_failure(result: DiffTargetNormalization) -> None:
+def assert_zero_target_failure(
+    result: DiffTargetNormalization,
+    *,
+    code: str = "diff_zero_target_after_scope_filter",
+) -> None:
     assert result.target_set is None
     assert result.diagnostics
     diagnostic = result.diagnostics[-1]
-    assert diagnostic.code == "diff_zero_target_after_scope_filter"
+    assert diagnostic.code == code
     assert diagnostic.severity is DiagnosticSeverity.ERROR
     assert diagnostic.origin_seam is OriginSeam.TARGETS
     assert diagnostic.recoverability is Recoverability.FATAL
@@ -112,6 +116,23 @@ def test_scope_inside_python_seed_and_scope_outside_exclusion_are_carried(tmp_pa
     assert diagnostic.origin_seam is OriginSeam.TARGETS
     assert diagnostic.recoverability is Recoverability.RECOVERABLE
     assert diagnostic.failure_reason is None
+
+
+def test_diff_seed_files_are_invariant_to_analysis_depth(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    first = write_file(project / "pkg" / "first.py")
+    second = write_file(project / "pkg" / "second.py")
+    changed = collection("pkg/second.py", "pkg/first.py")
+
+    results = [
+        normalize_diff_targets(changed, context(project), AnalysisConfig(depth=depth))
+        for depth in (0, 1, 2)
+    ]
+
+    assert [assert_success(result) for result in results] == [
+        (first.resolve(), second.resolve()),
+    ] * 3
+    assert [result.observations for result in results] == [TargetObservations()] * 3
 
 
 def test_project_root_relative_ignore_non_python_and_dedupe_are_deterministic(tmp_path: Path) -> None:
@@ -183,6 +204,7 @@ def test_zero_target_after_scope_filter_returns_failure_without_empty_target_set
     assert result.observations.ignored_seed_candidate_count == 1
     assert result.observations.diff_scope_excluded_count == 0
     assert len(result.diagnostics) == 1
+    assert all(term in result.diagnostics[-1].message for term in ("scope", "file-type", "ignore"))
 
 
 def test_all_scope_outside_records_exclusion_then_zero_target_failure(tmp_path: Path) -> None:
@@ -196,10 +218,77 @@ def test_all_scope_outside_records_exclusion_then_zero_target_failure(tmp_path: 
         AnalysisConfig(),
     )
 
-    assert_zero_target_failure(result)
+    assert_zero_target_failure(result, code="diff_zero_target_scope_excluded_only")
     assert result.observations.ignored_seed_candidate_count == 0
     assert result.observations.diff_scope_excluded_count == 1
     assert [diagnostic.code for diagnostic in result.diagnostics] == [
         "diff_scope_exclusion",
+        "diff_zero_target_scope_excluded_only",
+    ]
+
+
+def test_mixed_scope_excluded_and_ignored_python_keeps_generic_zero_target_code(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    scope = project / "pkg"
+    write_file(project / "outside.py")
+    write_file(scope / "ignored.py")
+
+    result = normalize_diff_targets(
+        collection("outside.py", "pkg/ignored.py"),
+        context(project, scope_root=scope),
+        AnalysisConfig(ignore=("pkg/ignored.py",)),
+    )
+
+    assert_zero_target_failure(result)
+
+
+def test_project_root_outside_path_is_not_counted_as_scope_exclusion(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    scope = project / "pkg"
+    write_file(tmp_path / "outside.py")
+
+    result = normalize_diff_targets(
+        collection("../outside.py"),
+        context(project, scope_root=scope),
+        AnalysisConfig(),
+    )
+
+    assert_zero_target_failure(result)
+    assert result.observations.diff_scope_excluded_count == 0
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
         "diff_zero_target_after_scope_filter",
     ]
+
+
+def test_scope_only_code_allows_in_scope_non_python_entry(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    scope = project / "pkg"
+    write_file(project / "outside.py")
+    write_file(scope / "notes.txt")
+
+    result = normalize_diff_targets(
+        collection("outside.py", "pkg/notes.txt"),
+        context(project, scope_root=scope),
+        AnalysisConfig(),
+    )
+
+    assert_zero_target_failure(result, code="diff_zero_target_scope_excluded_only")
+
+
+def test_ignored_python_only_keeps_generic_zero_target_code(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    write_file(project / "pkg" / "ignored.py")
+
+    result = normalize_diff_targets(
+        collection("pkg/ignored.py"),
+        context(project),
+        AnalysisConfig(ignore=("pkg/ignored.py",)),
+    )
+
+    assert_zero_target_failure(result)
+
+
+def test_empty_changed_entries_keep_generic_zero_target_code(tmp_path: Path) -> None:
+    result = normalize_diff_targets(collection(), context(tmp_path / "project"), AnalysisConfig())
+
+    assert_zero_target_failure(result)

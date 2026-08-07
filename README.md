@@ -102,9 +102,19 @@ pyclassuml generate [options] [targets ...]
 pyclassuml diff [options] [--base <ref>]
 ```
 
-`diff` は Git 差分から対象ファイルを集めてクラス図を作ります。`--base <ref>` を省略すると、現在の branch で積み上げた変更を扱うために、default branch 候補との merge-base を best effort で resolved base として使います。default branch 自身で実行している場合、または使える候補がない場合は、empty tree ではなく repository の initial commit object を fallback base として使います。
+`diff` は Git 差分から対象ファイルを集めてクラス図を作ります。`--base <ref>` を省略した場合の解決は、現在の branch と `--current-state` によって次のように決まります。
 
-明示的に `--base <ref>` を指定した場合は、従来どおり `<ref>` 自体を比較基点として使います。明示した base が無効な場合は failure になり、no-base 用の default branch 推定や initial commit fallback には切り替わりません。
+| branch / state | no-base の比較基点 |
+| --- | --- |
+| default branch / `working-tree` | 実行開始時に解決した local `HEAD` commit |
+| default branch / `head` | 明示的な `--base` が必要。暗黙の履歴走査は行わず failure |
+| feature branch または detached HEAD | default branch 候補との valid な merge-base |
+
+feature branch または detached HEAD で候補を解決できない場合も failure になります。initial commit への暗黙 fallback、自動 fetch、shallow/partial clone の deepen は行いません。意図する比較基点がある場合は `--base` で明示してください。
+
+base 解決不能、implicit range breadth 超過、invalid explicit base などの fatal VCS failure は exit code `1` となり、PlantUML artifact を生成せず、target normalization 以降の downstream stage を実行しません。
+
+明示的に `--base <ref>` を指定した場合は、`<ref>^{commit}` が解決できる Git revision expression（branch、tag、commit hash、`HEAD~1` など）を比較基点として使います。requested stringは summary に保持されます。明示した base が無効な場合は failure になり、no-base 用の default branch 推定には切り替わりません。明示 base は implicit changed-path breadth guardの対象外です。
 
 `--current-state` は比較対象を選びます。
 
@@ -115,14 +125,18 @@ pyclassuml diff [options] [--base <ref>]
 
 `--include-untracked` / `--no-include-untracked` は、未追跡ファイルを差分対象に含めるかを指定します。デフォルトは include です。`--current-state head` の場合、未追跡ファイルは Git の `HEAD` 差分に含まれないため、この指定は実質的に効きません。
 
-名前変更として検出されたファイルは、比較前後のパスを保持して扱います。履歴側の source は読み取り専用の Git blob として収集し、Git metadata、branch、index、working tree は変更しません。
+名前変更として検出されたファイルは、比較前後のパスを保持して扱います。履歴側の source は読み取り専用の Git blob として収集し、Git metadata、branch、index、working tree は変更しません。Git subprocessでは lazy fetch、external diff、textconv、colorized diffを無効化し、対象 repositoryへの fetch / checkout / reset / stash は行いません。
+
+実装上は各 Git subprocess に `GIT_NO_LAZY_FETCH=1` を渡し、diff invocation に `--no-ext-diff --no-textconv --no-color` を指定します。partial clone や不足 object では自動取得せず、解決不能として扱います。
+
+implicit no-base collectionには、変更パス1,000件の固定安全上限があります。1,000件までは処理し、1,001件以上では hunk取得や解析を始めず failure とします。診断に表示された resolved `HEAD` SHAまたは別の commitを `--base` に渡すことで、明示的な大きい範囲として再実行できます。scope rootの外側にある変更だけの場合は、`diff_zero_target_scope_excluded_only` として「変更がない」と区別して報告します。
 
 `diff` の summary には、実際に使った base を確認するための情報が表示されます。
 
-- `base_resolution`: `explicit_base`、`default_branch_merge_base`、`initial_commit_fallback` のいずれかです。
+- `base_resolution`: `explicit_base`、`default_branch_head`、`default_branch_merge_base` のいずれかです。`initial_commit_fallback` は過去のDTO/report互換用で、現行のimplicit resolverは生成しません。
 - `resolved_base`: Git 差分の比較基点として使った ref または commit です。
 - `requested_base`: 利用者が `--base <ref>` で指定した値です。no-base の場合は `none` です。
-- `base_candidate`: no-base 解決で merge-base を取れた default branch 候補です。explicit base や initial commit fallback の場合は `none` です。
+- `base_candidate`: no-base 解決で merge-base を取れた default branch 候補です。explicit base や `default_branch_head` の場合は `none` です。
 
 ### 共通オプション
 

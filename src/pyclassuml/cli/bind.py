@@ -114,13 +114,26 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_common_options(generate_parser)
     generate_parser.add_argument("targets", nargs="*")
 
-    diff_parser = subparsers.add_parser(CommandName.DIFF.value)
+    diff_parser = subparsers.add_parser(
+        CommandName.DIFF.value,
+        help="Git差分からクラス図を生成します。暗黙baseはbranch/stateに応じて解決されます。",
+        description=(
+            "Git差分からクラス図を生成します。--baseを省略した場合、default branchのworking-treeはlocal HEAD、"
+            "default branchのheadは明示base必須、その他はdefault branch候補とのmerge-baseを使います。"
+        ),
+    )
     _add_common_options(diff_parser)
-    diff_parser.add_argument("--base", dest="base_ref", type=_non_empty_string)
+    diff_parser.add_argument(
+        "--base",
+        dest="base_ref",
+        type=_non_empty_string,
+        help="比較基点。branch/tag/commit/HEAD~1などcommitへ解決できるGit revision expression。",
+    )
     diff_parser.add_argument(
         "--current-state",
         choices=[state.value for state in DiffCurrentState],
         default=None,
+        help="比較対象。working-tree（既定）またはhead。default branchのheadでは--baseが必要です。",
     )
     diff_parser.add_argument(
         "--include-untracked",

@@ -4,636 +4,795 @@ ID: "iss-00045"
 タイトル: "Diff Implicit Base Safety"
 状態: "draft"
 作成者: "iwasawayuuta"
-最終更新: "2026-08-05"
+最終更新: "2026-08-07"
 依存: ["requirement.md"]
 親: ["epic-00002", "init-00001"]
 ---
 
-
-# iss-00045 Diff Implicit Base Safety — Issue 設計書（Standard）
-
-この文書は、Issue要件を実装計画へ落とす前に、この Issue 固有の **設計差分、責任配置、境界、契約、失敗時の扱い、検証上の含意** を定義する。
-
-この文書は実装手順書ではない。実装順序、TDDサイクル、具体的なテストケース一覧、変更ファイルの詳細な作業順は `plan.md` で扱う。
-
----
-
-## 0. 文書の位置づけ
-
-### この文書が定義すること
-
-- この Issue 固有の設計差分
-- 要件をどの責任・境界・契約で成立させるか
-- 上位設計から継承する制約
-- 変更しない既存設計
-- 主要な振る舞いの意味論
-- 主要な失敗・例外・互換性の扱い
-- 実装計画で検証すべき設計保証
-- TDDや実装中に判断してよい内部設計の自由度
-- 人間が設計構造を理解するための任意のPlantUML図
-
-### この文書が定義しないこと
-
-- Red-Green-Refactorの具体的な順序
-- 各TDDサイクルの期待結果（Expected） Red
-- 具体的なテスト関数名
-- ファイルごとの編集順序
-- privateメソッド、ヘルパー、内部リファクタリングの詳細
-- 実装後の最終的なクラス構造の完全固定
-
-### 設計コミットメント
-
-| タグ | 意味 | 変更条件 |
-|---|---|---|
-| `[N]` | 実装が必ず従う設計契約 | 設計書の更新が必要 |
-| `[P]` | 現時点の有力な設計仮説 | 意味論を維持すればTDD中に変更可能 |
-| `[I]` | 理解のための例示 | 実装を拘束しない |
-| `[O]` | 未解決事項 | 指定された段階までに解決する |
-| `[E]` | この Issue の判断範囲外 | 上位文書（Epic・Initiative・ADR）へ昇格する |
-
----
-
-## 1. 等級 Standard（Standard Grade）確認
-
-### 1.1 Standardとして扱う理由
-
-- 理由:
-  - ...
-- 主な変更対象:
-  - ...
-- 主なリスク:
-  - ...
-- 想定される検証:
-  - ...
-
-### 1.2 Standardの前提
-
-- [ ] 公開API、公開CLI contract、外部Event Schemaを変更しない
-- [ ] 既存workspace layoutの破壊的変更を行わない
-- [ ] migrationまたは永続データ変換を伴わない
-- [ ] セキュリティ・プライバシー（security / privacy） / secret / credential の高リスク領域を扱わない
-- [ ] 切り戻し（rollback）困難な変更を行わない
-- [ ] 複数EpicまたはInitiativeにまたがる設計判断を含まない
-- [ ] この Issue 固有の局所的な振る舞い・template・docs・内部実装差分である
-
-### 1.3 引き上げガード（Escalation Guard）
-
-`strict` へ引き上げる条件:
-
-- [ ] 公開CLI挙動を変更する
-- [ ] 公開API / Event / Schema / generated metadata を変更する
-- [ ] ワークスペース scaffold結果の互換性に影響する
-- [ ] テンプレート契約（template contract） を変更する
-- [ ] sync / validate / active / lifecycle 挙動を変更する
-- [ ] migrationまたは既存ファイル変換が必要になる
-- [ ] 複数Issueが依存する設計判断を含む
-
-`critical` へ引き上げる条件:
-
-- [ ] セキュリティ・プライバシー（security / privacy） / secret / credential に関係する
-- [ ] データ損失または破壊的変更のリスクがある
-- [ ] GitHub上の状態変更を伴う
-- [ ] 既存workspace layoutの移行を伴う
-- [ ] rollback不能またはforward-only migrationになる
-
----
-
-## 2. 設計意図
-
-### 2.1 解決したい設計問題
-
-- 問題:
-  - ...
-- 現状の制約:
-  - ...
-- 要件上必要な変化:
-  - ...
-
-### 2.2 採用する設計方針
-
-- `[N]` ...
-- `[N]` ...
-- `[P]` ...
-
-### 2.3 採用しない方針
-
-| 方針 | 採用しない理由 | 備考 |
-|---|---|---|
-| ... | ... | ... |
-
----
-
-## 3. 正本・根拠（Normative Sources）
-
-| 種別 | パス・識別子（Path / ID） | 関連箇所 | このIssueへの意味 |
-|---|---|---|---|
-| 課題要件（Issue Requirement） | `requirement.md` | `AC-...` / `BH-...` / `CON-...` | ... |
-| エピック設計（Epic Design） | ... | ... | ... |
-| イニシアチブ設計（Initiative Design） | ... | ... | ... |
-| ADR（意思決定記録） | ... | ... | ... |
-| 現行文書（Current docs） | ... | ... | ... |
-| 既存コードパターン（Existing code pattern） | ... | ... | ... |
-| 既存テスト（Existing tests） | ... | ... | ... |
-| 作業成果物・調査（Artifact / research） | ... | ... | ... |
-
-正本の優先順位: ADR / architecture rule → Initiative design → Epic design → Issue requirement → Issue design → Issue plan → artifacts / draft。
-
----
-
-## 4. 要件から設計への追跡（Requirement-to-Design Traceability）
-
-| 要件識別子（Requirement ID） | 内容の要約 | 設計識別子（Design ID） | 設計上の扱い | 備考 |
-|---|---|---|---|---|
-| AC-001 | ... | DES-001 | ... | ... |
-| AC-002 | ... | DES-002 | ... | ... |
-| BH-001 | ... | DES-003 | ... | ... |
-| CON-001 | ... | DES-004 | ... | ... |
-| REQ-XXX | 必要に応じて要件・振る舞い・制約を連番で追加する。`XXX` は実IDへ置換するか削除する。 | DES-... | ... | ... |
-
----
-
-## 5. 継承制約と変更禁止領域
-
-### 5.1 上位から継承する制約
-
-- `[N]` ...
-- `[N]` ...
-
-### 5.2 このIssueで変更しないもの
-
-| 対象 | 変更しない理由 | 備考 |
-|---|---|---|
-| ... | ... | ... |
-
-### 5.3 このIssueで判断してはいけないもの
-
-| 判断 | 昇格先 | 理由 |
-|---|---|---|
-| ... | 上位文書（Epic・Initiative・ADR） | ... |
-
----
-
-## 6. 現状（Current State）
-
-### 6.1 現在の振る舞い
-
-- 現在成立していること:
-  - ...
-- 現在成立していないこと:
-  - ...
-- 現在曖昧なこと:
-  - ...
-
-### 6.2 現在の構造
-
-| 種別 | パス・対象（Path / Target） | 現在の責務 | 備考 |
-|---|---|---|---|
-| 文書（docs） | ... | ... | ... |
-| テンプレート（template） | ... | ... | ... |
-| script / CLI | ... | ... | ... |
-| スキル（skill） | ... | ... | ... |
-| metadata | ... | ... | ... |
-| テスト（test） | ... | ... | ... |
-| コード（code） | ... | ... | ... |
-
-### 6.3 既存パターン
-
-| パターン | 参照先 | 今回の適用方針 |
-|---|---|---|
-| ... | ... | ... |
-
----
-
-## 7. 目標設計差分（Target Design Delta）
-
-### 7.1 設計差分一覧（Design Delta）
-
-| 設計識別子（Design ID） | 種別 | 現在（Current） | 目標（Target） | 固定度 |
-|---|---|---|---|---|
-| DES-001 | 振る舞い（behavior） | ... | ... | `[N]` |
-| DES-002 | 責任（responsibility） | ... | ... | `[N]` |
-| DES-003 | インターフェース（interface） | ... | ... | `[P]` |
-| DES-004 | 文書・テンプレート（docs / template） | ... | ... | `[N]` |
-| DES-005 | 検証（verification） | ... | ... | `[N]` |
-
-### 7.2 目標の要約（Target）
-
-- ...
-- ...
-
-### 7.3 非目標（Non-Target）
-
-- ...
-- ...
-
----
-
-## 8. 視覚的な設計概要（Visual Design Overview）
-
-PlantUML図は必須ではない。ただし、構造・依存・状態・メッセージ処理・分岐ロジックが人間レビューで誤解されやすい場合は図示する。
-
-### 8.1 図表一覧（Diagram Index）
-
-| 図識別子（Diagram ID） | 種類 | 固定度 | 目的 | 関連設計識別子（Design ID） | 状態 |
-|---|---|---|---|---|---|
-| VIS-001 | component / package | `[P]` | 変更対象と依存関係を示す | `DES-...` | draft |
-| VIS-002 | class | `[P]` | 主要な構造関係を示す | `DES-...` | draft |
-| VIS-003 | sequence | `[P]` | 実行時の協調を示す | `DES-...` | draft |
-| VIS-004 | state / activity | `[P]` | 状態遷移または分岐を示す | `DES-...` | draft |
-
-### 8.2 VIS-001: 範囲・影響マップ（Scope / Impact Map）
-
-```plantuml
-@startuml
-title VIS-001 範囲・影響マップ（Scope / Impact Map）
-
-skinparam componentStyle rectangle
-
-package "Issue 対象範囲（Scope）" {
-  [Target Artifact / Module A] as A
-  [Target Artifact / Module B] as B
-}
-
-package "Existing System" {
-  [Existing Module / Template] as C
-  [Existing Skill / Workflow] as D
-}
-
-package "対象外（Out of 対象範囲（Scope））" {
-  [Out-of-scope Component] as X
-}
-
-A --> B : uses / updates
-A --> C : follows existing pattern
-B --> D : must remain compatible
-A -[#red,dashed]-> X : must not change
-@enduml
+# iss-00045 Diff Implicit Base Safety — 設計（HOW）
+
+## 0. 設計要約
+
+本設計は、既存の `cli -> config -> vcs -> targets -> parse -> analyze -> render -> report` pipeline を維持し、VCS と targets の前段 seam だけで implicit-base safety を確定する。
+
+主要な設計判断は次のとおりである。
+
+1. explicit base path は既存どおり authoritative とする。
+2. default branch working-tree no-base は開始時 `HEAD` SHA を使う。
+3. default branch head no-base は専用 VCS failure とする。
+4. feature branch / detached HEAD の candidate merge-base は維持する。
+5. candidate 解決不能時の initial commit fallback を廃止する。
+6. `DiffBaseResolution` に `default_branch_head` を追加し、legacy `initial_commit_fallback` acceptance は残す。
+7. raw changed-entry collection と per-file hunk enrichment を分離する。
+8. implicit changed-path count `>1000` を hunk enrichment 前に拒否する。
+9. scope-only zero-target は targets seam の専用 diagnostic とする。
+10. config resolver、depth、traversal、parse、render の production implementation は変更しない。
+11. app/report の既存 transport と generic exit policyを再利用する。
+12. Git と target source に対する read-only、offline、deterministic boundaryを維持する。
+
+## 1. 設計目標
+
+* implicit base を安全かつ決定的に解決する。
+* 安全な implicit base がない場合に fail closed する。
+  -巨大な implicit range の downstream fan-out を制限する。
+* explicit base の既存意味論を変えない。
+* feature branch の branch-start 推定を維持する。
+* diagnostics から利用者が次の操作を判断できるようにする。
+* source/tests の seam ownership を維持する。
+* `iss-00036` と `iss-00044` の authority を明示的に分離する。
+  -小さい変更面で rollback 可能にする。
+
+## 2. 非目標
+
+* default branch discovery の全面再設計
+* remote hosting service API の利用
+  -自動 network access
+* reflog / fork-point を使う分岐元推定
+  -完全な repository snapshot isolation
+* hunk parser の意味論変更
+* deletion-only file の seed 化
+* scope / ignore policy の VCS への移動
+* changed-path limit の公開設定化
+* explicit range の安全上限
+* `FailureReason`、`TargetObservations`、`CommandOptions` の field 追加
+* config / traversal / render の再設計
+* full HEAD snapshot rendering
+
+## 3. 現行構造
+
+| seam                           | 現行責務                                          | Issue #45 での扱い                    |
+| ------------------------------ | --------------------------------------------- | --------------------------------- |
+| `cli.bind`                     | raw argv を DTO に bind                         | grammar と raw value は維持。help だけ補強 |
+| `model.contracts`              | immutable shared DTO と enum 相当 validation     | resolution kind を一値追加             |
+| `config.resolver`              | roots、config layering、depth defaults          | 変更しない                             |
+| `vcs.diff_collect`             | base resolution、Git diff、untracked、hunk range | implicit policy と guard を変更       |
+| `targets.diff`                 | scope、`.py`、ignore、zero-target                | scope-only diagnosis を追加          |
+| `app.diff`                     | stage orchestration、base classification       | 原則変更不要                            |
+| `report.policy`                | summary、stream、exit                           | 原則変更不要                            |
+| `parse` / `analyze` / `render` | AST・traversal・diagram                         | 変更しない                             |
+
+現行 `vcs.diff_collect` は base resolution と、name-status 取得から per-entry hunk extraction までを一つの `_tracked_entries` path で行う。そのため changed path count を確認する時点では、すでに per-entry Git command が実行済みである。
+
+現行 `targets.diff` は scope 外件数を保持するが、zero-target code は一種類である。
+
+## 4. 要件から設計への追跡
+
+| Requirement    | Design  | 内容                                       |
+| -------------- | ------- | ---------------------------------------- |
+| RQ-001         | DES-001 | explicit base path を resolver の先頭で分離     |
+| RQ-002         | DES-002 | no-base の開始時 HEAD SHA snapshot           |
+| RQ-003         | DES-003 | default branch identity 判定               |
+| RQ-004         | DES-004 | `default_branch_head` resolution         |
+| RQ-005         | DES-005 | default branch head no-base failure      |
+| RQ-006         | DES-006 | candidate merge-base                     |
+| RQ-007         | DES-007 | implicit resolution unavailable failure  |
+| RQ-008         | DES-008 | model kind compatibility                 |
+| RQ-009, RQ-010 | DES-009 | raw collection と breadth guard           |
+| RQ-011, RQ-012 | DES-010 | scope-only zero-target classification    |
+| RQ-013         | DES-011 | read-only / clone safety                 |
+| RQ-014         | DES-012 | seam ownership と depth separation        |
+| RQ-015         | DES-013 | CLI help / README                        |
+| RQ-016         | DES-014 | deterministic diagnostics / report reuse |
+
+## 5. 責務境界
+
+### 5.1 CLI
+
+`src/pyclassuml/cli/bind.py` は次だけを担う。
+
+* `--base` の optional non-empty string bind
+* `base_ref=None` の保持
+* `--current-state` の raw presence
+* `--include-untracked` の raw presence
+* short help / subcommand description
+
+CLI は次を行わない。
+
+* current branch の照会
+* default branch 判定
+* ref validation
+* HEAD SHA 解決
+* candidate enumeration
+* breadth guard
+* exit policy の独自実装
+
+### 5.2 Config
+
+`src/pyclassuml/config/resolver.py` は `iss-00044` の authority を維持する。
+
+* command-specific common config
+* Diff 固有 config
+* roots / containment
+* `diff depth=1`
+* `generate depth=None`
+* CLI presence precedence
+
+Config は `base_ref`、Git state、guard limit を解釈しない。
+
+### 5.3 Model
+
+`src/pyclassuml/model/contracts.py` は最小 DTO validation だけを担う。
+
+* `DiffOptions.base_ref: str | None`
+* `DiffBaseResolution`
+* `CommandResult.diff_base_resolution`
+
+Model は branch/state policy や candidate order を持たない。
+
+### 5.4 VCS
+
+`src/pyclassuml/vcs/diff_collect.py` は次の owner とする。
+
+* explicit ref validation
+  -開始時 HEAD SHA 解決
+* current branch / default branch 判定
+* candidate merge-base
+* implicit resolution failure
+* raw tracked / untracked entries
+* project-root boundary
+* deterministic dedupe / sort
+* implicit changed-path guard
+* current-side hunk enrichment
+* VCS-origin diagnostics
+
+`collect_diff_files` は、resolverへ raw CLI optionではなく、config precedence解決後の `config.diff_current_state` を渡す。規範的な呼び出しは次である。
+
+```python
+base_resolution = _resolve_base_ref(
+    vcs_root,
+    requested_base_ref,
+    config.diff_current_state,
+)
 ```
 
-### 8.3 VIS-002: 静的構造・クラス図（Static Structure / Class Diagram）
-
-継承・実装関係を表す場合は、親クラス・抽象クラス・インターフェースを上側、子クラス・実装クラスを下側に置く。PlantUMLでは原則 `Child --|> Parent` または `Implementation ..|> Interface` の形で記述し、見た目として矢印が下から上へ向くようにする。
-
-```plantuml
-@startuml
-title VIS-002 Static Structure
-
-abstract class "Base Renderer" as BaseRenderer
-class "Primary Model / Aggregate" as Aggregate <<Aggregate Root>> {
-  +operation()
-}
-class "Child Entity" as Entity <<Entity>>
-class "Value Object" as ValueObject <<Value Object>>
-class "Domain Event" as DomainEvent <<Domain Event>>
-interface "Repository Port" as Repository <<Port>>
-class "Application Service" as AppService <<Application Service>>
-class "Markdown Renderer" as MarkdownRenderer
-
-MarkdownRenderer --|> BaseRenderer
-Aggregate *-- Entity : owns
-Aggregate --> ValueObject : uses
-Aggregate ..> DomainEvent : emits
-AppService --> Aggregate : delegates decision
-AppService --> Repository : loads / saves
-@enduml
-```
-
-### 8.4 VIS-003: 実行時シーケンス図（Runtime Sequence Diagram）
-
-```plantuml
-@startuml
-title VIS-003 実行時シーケンス（Runtime Sequence）
-
-actor "User / Agent" as User
-participant "コマンド（Command） / Entry Point" as Entry
-participant "Application Service" as App
-participant "Domain Logic" as Domain
-database "Workspace Files" as Files
-participant "Report / Evidence" as Report
-
-User -> Entry : trigger operation
-Entry -> App : parse and dispatch
-App -> Domain : apply rule / decision
-Domain --> App : result / decision
-App -> Files : write or update artifacts
-App -> Report : record evidence destination
-Entry --> User : success / failure result
-@enduml
-```
-
-### 8.5 VIS-004: 状態・アクティビティ図（State / Activity Diagram）
-
-```plantuml
-@startuml
-title VIS-004 State / Activity Model
-
-[*] --> Draft
-Draft --> Approved : approve requirement/design
-Approved --> InProgress : start implementation
-InProgress --> Verified : pass verification
-Verified --> Completed : finish issue
-InProgress --> Draft : replan required
-Approved --> Draft : design change required
-Completed --> [*]
-@enduml
-```
-
----
-
-## 9. 振る舞い設計（Behavioral Design）
-
-### 振る舞い設計 DES-BEH-001:
-
-- 固定度:
-  - `[N]`
-- 関連Requirement:
-  - `AC-...`
-  - `BH-...`
-- 関連Diagram:
-  - `VIS-...`
-- 開始条件（Trigger）:
-  - ...
-- Actor / Caller:
-  - ...
-- Inputs and meaning:
-  - ...
-- Preconditions:
-  - ...
-- Decision rules:
-  - ...
-- Postconditions:
-  - ...
-- Observable result:
-  - ...
-- Failures:
-  - ...
-- Must not happen:
-  - ...
-
----
+VCS は scope、`.py`、ignore を解釈しない。
 
-## 10. 責任モデル（Responsibility Model）
+### 5.5 Targets
 
-| 構成要素・作業成果物（Building Block / Artifact） | 責任 | 禁止事項（Must Not Do） | 関連設計識別子（Design ID） | 関連図（Diagram） |
-|---|---|---|---|---|
-| ... | ... | ... | `DES-...` | `VIS-...` |
-| ... | ... | ... | `DES-...` | `VIS-...` |
+`src/pyclassuml/targets/diff.py` は次を担う。
 
-### 10.1 判断の所有者
+* project-relative path の current filesystem path 化
+* scope filtering
+* `.py` filtering
+* ignore filtering
+* scope exclusion observation / warning
+* scope-only と generic zero-target の区別
 
-| 判断 | 所有者 | 理由 |
-|---|---|---|
-| ... | ... | ... |
+Targets は Git を再読み取りせず、base resolution や path limit を解釈しない。
 
-### 10.2 境界
+### 5.6 App / Report
 
-| 境界 | 内側 | 外側 | このIssueでの扱い |
-|---|---|---|---|
-| ... | ... | ... | ... |
+`app.diff` は既存どおり、成功した `ChangedFileCollection.base_resolution` を base blob classification と report input の両方へ渡す。
 
----
+VCS fatal 時は collection が `None` となり、既存 path で targets 以降を呼ばず report へ渡す。
 
-## 11. インターフェース・契約差分（Interface / Contract Delta）
+`report.policy` は既存 `VCS_READ_FAILURE` と `DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER` の hard-failure projection を再利用する。新 code ごとの分岐を追加しない。
 
-Standard gradeでは、原則として公開contractの破壊的変更を扱わない。公開contract変更が判明した場合は `strict` 以上へ引き上げる。
+## 6. DES-001 — explicit base path
 
-### 11.1 契約影響要約（Contract 影響（Impact） Summary）
+base resolver の最初の branch は `requested_base_ref is not None` とする。
 
-| Contract種別 | 影響 | 備考 |
-|---|---|---|
-| 公開CLI契約（Public CLI contract） | none / local / unknown | ... |
-| 公開API契約（Public API contract） | none / local / unknown | ... |
-| イベント・メッセージ契約（Event / message contract） | none / local / unknown | ... |
-| テンプレート契約（Template contract） | none / local / unknown | ... |
-| メタデータ・生成インデックス（Metadata / generated index） | none / local / unknown | ... |
-| 内部interface（Internal interface） | なし / 変更あり / 不明（なし / 変更あり / 不明（none / changed / unknown）） | ... |
-| 文書・workflow契約（Docs / workflow contract） | なし / 変更あり / 不明（なし / 変更あり / 不明（none / changed / unknown）） | ... |
+処理は次の順序とする。
 
-### 11.2 局所インターフェース差分（Local Interface Delta）
+1. requested ref が commit-ish として解決可能か確認する。
+2. invalid なら `VcsDiffError("invalid_base_ref", ...)` を送出する。
+3. valid なら次を返す。
 
-| 設計識別子（Design ID） | 対象 | 変更内容 | 互換性 | 固定度 | 関連Diagram |
-|---|---|---|---|---|---|
-| DES-INT-001 | ... | ... | 互換 / N/A（compatible / N/A） / unknown | `[N]` | `VIS-...` |
-| DES-INT-002 | ... | ... | 互換 / N/A（compatible / N/A） / unknown | `[P]` | `VIS-...` |
+   * `requested_base_ref=<requested>`
+   * `resolved_base_ref=<requested>`
+   * `resolution_kind="explicit_base"`
+   * `candidate_ref=None`
+4. current branch、default branch、initial commit、candidate、guard policyを base 解決には混ぜない。
 
----
+ref validation は `<ref>^{commit}` 相当の確認を用い、branch、tag、commit、`HEAD~1` 等の revision expressionを許可し、commit として扱えない object を明確に拒否する。ただし downstream Git command と report に渡す resolved string は、既存互換のため requested ref 自体を維持する。
 
-## 12. データ・状態・メタデータ差分（Data / State / Metadata Delta）
+## 7. DES-002 — 開始時 HEAD snapshot
 
-Standard gradeでは、原則としてmigrationや破壊的な既存データ変換を扱わない。
+no-base path では、branch/state 判定前に `HEAD^{commit}` を SHA として解決する。
 
-### 12.1 状態差分要約（State Delta Summary）
+この SHA を次に共通利用する。
 
-| 対象 | 現在（Current） | 目標（Target） | 互換性 | 関連図（Diagram） |
-|---|---|---|---|---|
-| ... | ... | ... | ... | `VIS-...` |
+* default branch working-tree の resolved base
+* candidate との merge-base の current side
+* guard diagnostic の remediation ref
 
-### 12.2 生成物・管理対象作業成果物（Generated / Managed Artifacts）への影響
+symbolic `"HEAD"` を `resolved_base_ref` として保持しない。これにより、少なくとも base side はコマンド途中の branch movement から分離される。
 
-| 作業成果物（Artifact） | 影響 | 備考 |
-|---|---|---|
-| `.meta.json` | なし / 変更あり / 不明（なし / 変更あり / 不明（none / changed / unknown）） | ... |
-| `.assurance.json` | なし / 変更あり / 不明（なし / 変更あり / 不明（none / changed / unknown）） | ... |
-| `.agent/index*.json` | なし / 変更あり / 不明（なし / 変更あり / 不明（none / changed / unknown）） | ... |
-| `.agent/tree*.json` | なし / 変更あり / 不明（なし / 変更あり / 不明（none / changed / unknown）） | ... |
-| テンプレート（templates） | なし / 変更あり / 不明（なし / 変更あり / 不明（none / changed / unknown）） | ... |
-| 文書（docs） | なし / 変更あり / 不明（なし / 変更あり / 不明（none / changed / unknown）） | ... |
+repository に HEAD commit がない場合は既存 `git_diff_read_failure` とする。
 
----
+## 8. DES-003 — default branch 判定
 
-## 13. 失敗・境界・互換性設計（Failure / Edge / Compatibility Design）
+current branch name は read-only `git symbolic-ref --quiet --short HEAD` 相当で得る。
 
-### 13.1 失敗時の意味論（Failure Semantics）
+### 8.1 `origin/HEAD` がある場合
 
-| Failure 識別子（ID） | 条件 | 期待される扱い | 状態変更 | 観測点 | 関連Diagram |
-|---|---|---|---|---|---|
-| FAIL-001 | ... | ... | なし / 部分的 / rollback / N/A（none / partial / rollback / N/A） | ... | `VIS-...` |
+`refs/remotes/origin/HEAD` の symbolic target を得て、`refs/remotes/origin/` または `origin/` prefix だけを取り除いた full branch name と current branch name を比較する。
 
-### 13.2 互換性メモ（Compatibility Notes）
+例:
 
-- 既存利用者への影響:
-  - ...
-- 既存workspaceへの影響:
-  - ...
-- 既存テンプレート利用者への影響:
-  - ...
-- rollback方法:
-  - ...
+* `origin/HEAD -> origin/main`、current=`main`: default branch
+* `origin/HEAD -> origin/release/main`、current=`release/main`: default branch
+* `origin/HEAD -> origin/main`、current=`develop`: default branch ではない
 
----
+`release/main` を `main` に短縮してはならない。
 
-## 14. セキュリティ・プライバシー確認（Security / Privacy Check）
+### 8.2 `origin/HEAD` がない場合
 
-| 項目 | 影響 | 備考 |
-|---|---|---|
-| 認証 | なし / 不明（none / unknown） | ... |
-| 認可 | なし / 不明（none / unknown） | ... |
-| 機密情報（secret / token / credential） | なし / 不明（none / unknown） | ... |
-| 個人情報 / 機微情報 | なし / 不明（none / unknown） | ... |
-| ログ出力 | なし / 不明（none / unknown） | ... |
-| 外部API権限（GitHub API） | なし / 不明（none / unknown） | ... |
+current branch が `main`、`develop`、`master` のいずれかなら default branch とみなす。
 
-影響がある、または不明な場合は `critical` への引き上げを検討する。
+### 8.3 detached HEAD
 
----
+current branch name が得られない場合、default branch 自身とはみなさず candidate merge-base path へ進む。
 
-## 15. 観測性・証跡設計（Observability / Evidence Design）
+## 9. DES-004 / DES-005 — current default branch
 
-| 証跡ID（Evidence ID） | 観測対象 | 証拠の種類 | 関連設計識別子（Design ID） | 関連Diagram |
-|---|---|---|---|---|
-| EVD-001 | ... | test / CLI output / file diff / docs diff / 手動（manual） review | `DES-...` | `VIS-...` |
-| EVD-002 | ... | test / CLI output / file diff / docs diff / 手動（manual） review | `DES-...` | `VIS-...` |
+### 9.1 `working-tree`
 
-Reportに残すべき証拠:
+current default branch、no-base、`DiffCurrentState.WORKING_TREE` では次を返す。
 
-- ...
-- ...
+| field                | value                 |
+| -------------------- | --------------------- |
+| `requested_base_ref` | `None`                |
+| `resolved_base_ref`  | 開始時 HEAD commit SHA   |
+| `resolution_kind`    | `default_branch_head` |
+| `candidate_ref`      | `None`                |
 
----
+tracked comparison は既存の `git diff <resolved-base> -- <project-pathspec>` 形式を使う。これにより index と working tree の変更が対象になる。
 
-## 16. 文書・テンプレート・スキル影響（Docs / Template / Skill 影響（Impact））
+untracked は既存どおり別 collection として追加する。
 
-| パス（Path） | 更新理由 | 必須 |
-|---|---|---|
-| ... | ... | はい / いいえ（yes / no） |
+### 9.2 `head`
 
-提供側・利用側反映（Provider / Consumer）:
+current default branch、no-base、`DiffCurrentState.HEAD` では `DiffBaseResolution` を生成せず、次の VCS error を返す。
 
-| 対象 | 影響 | 対応 |
-|---|---|---|
-| `src/spec_dock/assets/...` | はい / いいえ / 不明（yes / no / unknown） | ... |
-| ワークスペース（root `spec-dock/...`） | はい / いいえ / 不明（yes / no / unknown） | ... |
+* code: `diff_default_branch_head_requires_base`
+* message:
 
----
+  * current default branch 上の no-base `head` には非退化な implicit base がないこと
+  * `--base <ref>` が必要であること
+  * `HEAD~1` や `origin/<branch>` は利用者が意図に応じて明示できること
 
-## 17. 検討した代替案（Alternatives Considered）
+この failure は raw diff collection 前に発生させる。
 
-| Alternative 識別子（ID） | 代替案 | 利点 | 欠点 | 採否 |
-|---|---|---|---|---|
-| ALT-001 | ... | ... | ... | adopted / rejected |
+## 10. DES-006 / DES-007 — feature / detached resolution
 
----
+default branch 自身でない no-base invocation は、開始時 HEAD SHA に対して candidate を試す。
 
-## 18. 実装へ委譲する設計仮説（Design Hypotheses Left to Implementation）
+candidate source と順序は次のとおりである。
 
-| Hypothesis 識別子（ID） | 内容 | 制約 | 判断タイミング |
-|---|---|---|---|
-| HYP-001 | ... | ... | during implementation / during refactor |
+1. `refs/remotes/origin/HEAD` の targetを display ref へ正規化した値
+2. `origin/main`
+3. `origin/develop`
+4. `origin/master`
+5. `main`
+6. `develop`
+7. `master`
 
-実装中に変更してはいけないもの:
+処理規則:
 
-- `[N]` ...
-- `[N]` ...
+* duplicate は最初だけ保持する。
+* local に存在しない ref は skip する。
+* `git merge-base <candidate> <head-sha>` が成功し、non-empty single lineを返した最初の candidateを採用する。
+* merge-base outputを resolved SHA とする。
+  -全 candidate が失敗した場合は `diff_base_resolution_unavailable` とする。
+* initial commit探索を呼ばない。
 
----
+failure message は少なくとも次を含む。
 
-## 19. 検証への含意（検証（Verification） Implications）
+-利用可能な default branch candidate から implicit baseを解決できなかったこと
 
-| 設計識別子（Design ID） | 検証すべき内容 | 推奨検証レベル（Verification Level） | 報告証跡（Report Evidence） | 関連図（Diagram） |
-|---|---|---|---|---|
-| DES-001 | ... | unit / integration / CLI / docs / テンプレート / 手動 | `EVD-...` | `VIS-...` |
-| DES-002 | ... | unit / integration / CLI / docs / テンプレート / 手動 | `EVD-...` | `VIS-...` |
+* explicit `--base <ref>` が必要であること
+* shallow history 等が原因の場合も PyClassUML は自動 fetch/deepen しないこと
 
-検証レベル（Verification Level）:
+試行 candidate 一覧を message に含める場合は、決定的順序で表示する。
 
-- `unit`: 小さな純粋ロジックまたは関数単位
-- `integration`: 複数コンポーネントの連携
-- `CLI`: CLIコマンド実行
-- `docs`: 文書整合性
-- `template`: scaffold / template生成確認
-- `contract`: 契約互換性確認
-- `手動（manual）`: 人間による確認
-- `none`: 変更性質上不要。ただし理由を記述する
+## 11. DES-008 — model delta
 
----
+`_DIFF_BASE_RESOLUTION_KINDS` を次へ変更する。
 
-## 20. 計画への引き渡し（Plan Handoff）
+* `explicit_base`
+* `default_branch_head`
+* `default_branch_merge_base`
+* `initial_commit_fallback`
 
-### 20.1 固定設計契約（Fixed Design Contracts）
+`initial_commit_fallback` は legacy acceptance であり、producer contract には含めない。
 
-`plan.md` と実装が必ず守る設計契約。
+`_ensure_diff_base_resolution_kind` のvalidation error messageも許容集合と同じ順序で `explicit_base, default_branch_head, default_branch_merge_base, initial_commit_fallback` を列挙する。
 
-- `DES-...`
-- `DES-...`
+新しい public field、enum class、failure reason は追加しない。
 
-### 20.2 振る舞いバックログ種（Behavior Backlog Seeds）
+producer-level field contract は次とする。
 
-| 種識別子（Seed ID） | 振る舞い / 成果 | 関連設計識別子（Design ID） | 関連Requirement | 関連Diagram |
-|---|---|---|---|---|
-| B-SEED-001 | ... | `DES-...` | `AC-...` | `VIS-...` |
-| B-SEED-002 | ... | `DES-...` | `AC-...` | `VIS-...` |
+| kind                        | requested | resolved        | candidate     |
+| --------------------------- | --------- | --------------- | ------------- |
+| `explicit_base`             | non-empty | requested ref   | `None`        |
+| `default_branch_head`       | `None`    | HEAD SHA        | `None`        |
+| `default_branch_merge_base` | `None`    | merge-base SHA  | candidate ref |
+| `initial_commit_fallback`   | `None`    | historical base | `None`        |
 
-### 20.3 推奨検証ゲート（推奨検証（Suggested 検証（Verification）） Gates）
+既存外部 construction への影響を抑えるため、dataclass constructor へ新たな cross-field exhaustive validation は追加しない。production producer tests で正しい組合せを固定する。
 
-- ...
-- ...
+## 12. DES-009 — raw collection と breadth guard
 
-### 20.4 停止・再計画条件（Stop / Replan Triggers）
+### 12.1 collection phase の分離
 
-- [ ] Redの理由が設計上の想定と異なる
-- [ ] 要件の期待値を変更したくなる
-- [ ] 公開contract変更が必要になる
-- [ ] 移行（migration）が必要になる
-- [ ] セキュリティ・プライバシー（security / privacy）影響が見つかる
-- [ ] 上位Epic / Initiativeの設計を変更する必要がある
-- [ ] rollbackが難しい変更になった
-- [ ] 複数Issueへ影響する設計判断が必要になった
-- [ ] Standard gradeの前提を満たさなくなった
+現行の tracked entry path を、意味上次の二段階へ分ける。raw phaseではVCS-root-relative pathを失わず、public DTOへのproject-relative変換はhunk enrichment後またはuntrackedの確定時に行う。
 
----
+1. **raw entry collection**
 
-## 21. 未確定事項（Open Questions）
+   * name-status を一回取得
+   * added / modified / renamed を parse
+   * project-root 内だけを選別
+   * VCS-root-relative current/previous path、current project-relative count key、change kindをprivate raw carrierに保持
+   * line range はまだ取得しない
+2. **hunk enrichment**
 
-### 未解決事項 OQ-001:
+   * guard 通過後、各 tracked entry の current changed line ranges を取得
+   * rename はprivate raw carrierのVCS-root-relative previous/current pathを使う
+   * untracked は line rangeなしのまま維持
 
-- 質問:
-  - ...
-- 影響:
-  - requirement / design / plan / implementation / test / release
-- 解決期限:
-  - before plan / before implementation / can defer
-- 推奨:
-  - ...
-- 解決状態:
-  - open / resolved / escalated
+private helper の名称は実装中に選べるが、この phase order は変更してはならない。
 
----
+### 12.2 guard 前の entry set
 
-## 22. 図表レビューチェックリスト（Diagram Review Checklist）
+guard対象 entry set は次の順序で作る。
 
-- [ ] 各図にDiagram IDがある
-- [ ] 各図に固定度 `[N] / [P] / [I]` が明示されている
-- [ ] 各図が設計識別子（Design ID）と対応している
-- [ ] 図だけにしか存在しない設計契約がない
-- [ ] 図で表現した制約が本文または表にも記載されている
-- [ ] 図が実装詳細を過剰に固定していない
-- [ ] UMLが不要なIssueでは、図を省略した理由が明確である
+1. raw tracked entries
+2. `working-tree` かつ `include_untracked=true` なら untracked entries
+3. current project-relative path をdedupe keyにしてdedupe（hunk pathspecはVCS-relative pathのまま保持）
+4. path の昇順で deterministic sort
+5. count
 
----
+rename は current pathを dedupe key とし、previous path は metadata として保持する。
 
-## 23. 設計承認チェックリスト（Design Approval Checklist）
+同じ current path に複数 entry がある場合の precedence は既存 `_dedupe_and_sort` の最終 entry semantics を維持するか、明示的で決定的な precedence に固定する。変更する場合は既存 rename/dedupe testを更新する。
 
-- [ ] すべての関連ACが設計識別子（Design ID）へ対応している
-- [ ] すべての関連BHが振る舞い設計（Behavioral Design）へ反映されている
-- [ ] 関連するCONが設計制約として扱われている
-- [ ] `standard` gradeに留まる理由が明記されている
-- [ ] `strict` / `critical` escalation triggerを確認した
-- [ ] public contract変更がない、またはescalation済み
-- [ ] migrationがない、またはescalation済み
-- [ ] セキュリティ・プライバシー（security / privacy） sensitiveな影響がない、またはescalation済み
-- [ ] 設計意図が明確である
-- [ ] Current Stateと目標設計差分（Target Design Delta）が区別されている
-- [ ] 責任所有者が曖昧でない
-- [ ] 実装詳細を過剰に固定していない
-- [ ] TDDへ委ねる内部設計が明示されている
-- [ ] 固定設計契約（Fixed Design Contracts）が列挙されている
-- [ ] 振る舞いバックログ種（Behavior Backlog Seeds）がある
-- [ ] 検証への含意（検証（Verification） Implications）がある
+### 12.3 guard 条件
 
----
+private module constant を次とする。
 
-## 24. 変更履歴
+* `MAX_IMPLICIT_DIFF_CHANGED_PATHS = 1000`
 
-| 日付（Date） | 変更（Change） | 理由（Reason） | 作成者（Author） |
-|---|---|---|---|
-| 2026-08-05 | 初稿（Initial draft） | ... | ... |
+guard predicate は次である。
+
+* `base_resolution.requested_base_ref is None`
+* `len(deduped_entries) > MAX_IMPLICIT_DIFF_CHANGED_PATHS`
+
+`len == 1000` は通過する。
+
+### 12.4 guard failure
+
+guard failure は `VcsDiffError` を使用する。
+
+* code: `diff_implicit_range_too_broad`
+* message fields:
+
+  * implicit resolved base
+  * actual count
+  * limit
+  * `--base <resolved-sha>` remediation
+* failure reason: app の既存 projectionにより `VCS_READ_FAILURE`
+* artifact: none
+
+guard failure時は次を呼ばない。
+
+* per-entry hunk diff
+* `normalize_diff_targets`
+* `parse_target_set`
+* dependency traversal
+* class selection
+* base class inventory
+* render
+* output write
+
+### 12.5 explicit bypass
+
+explicit base の場合も raw entries は通常どおり収集するが、countにかかわらず implicit guard predicateは false とする。
+
+これは処理成功の保証ではない。Git/OS failure、parse failure、traversal limit 等の既存 failure は引き続き発生し得る。
+
+### 12.6 性能上の限界
+
+本 guard は次を防ぐ。
+
+* changed path数に比例した per-file hunk subprocess
+* target normalizationへの巨大 collection
+* seed/parse/traversalへの巨大 fan-out
+
+最初の name-status command の出力生成とmemoryは guard前に必要であり、完全には制限しない。これを追加で制限するには streaming parser、Git output byte limit、timeout等の別設計が必要であり、本 Issue の対象外とする。
+
+## 13. DES-010 — scope-only diagnostic
+
+`normalize_diff_targets` 内で public DTO を増やさず、次の seam-local countを保持する。
+
+* `python_changed_count`
+* `scope_excluded_python_count`
+  -既存 `excluded_count`
+  -既存 `ignored_count`
+
+entry processing orderは次とする。
+
+1. current project-relative pathを解決する。
+2. project root外なら対象から除外し、count・scope exclusionへ加えない。
+3. path suffix が `.py` なら `python_changed_count` を増やす。
+4. scope 外なら既存 `excluded_count` を増やす。
+5. scope 外かつ `.py` なら `scope_excluded_python_count` を増やす。
+6. scope 内 `.py` だけを ignore candidateへ渡す。
+7. ignore を適用する。
+8. seedを dedupe / sortする。
+
+seed 0 件時の code selection は次とする。
+
+| 条件                                                                                  | code                                   |
+| ----------------------------------------------------------------------------------- | -------------------------------------- |
+| `python_changed_count > 0` かつ `scope_excluded_python_count == python_changed_count` | `diff_zero_target_scope_excluded_only` |
+| その他                                                                                 | `diff_zero_target_after_scope_filter`  |
+
+diagnostic order は次とする。
+
+1. upstream VCS diagnostics
+2. `diff_scope_exclusion` warning
+3. zero-target error
+
+`TargetObservations.diff_scope_excluded_count` は既存どおり全 changed entry の scope exclusion countを保持し、Pythonだけへ意味を変更しない。
+
+generic zero-target message は「scope、file type、ignore filtering 後に seed Python files がない」ことを表す。
+
+## 14. DES-011 — read-only / clone safety
+
+### 14.1 許可する Git 操作
+
+VCS adapter は次の read operation 相当だけを使用する。
+
+* `rev-parse`
+* `symbolic-ref` の read
+* `merge-base`
+* `diff`
+* `ls-files`
+* `show`
+* `ls-tree`
+
+すべての Git subprocess は `GIT_NO_LAZY_FETCH=1` を設定した環境で起動し、partial cloneの欠落objectを自動取得しない。`diff` commandには `--no-ext-diff --no-textconv --no-color` を指定し、repository設定による外部diff・textconv・色付き出力を無効化する。最低Git versionでこれらの安全契約を保証できない場合は、対象操作をfail closedにする。
+
+`symbolic-ref` は current branch / origin HEAD の照会だけに使い、refを書き換える引数を使わない。
+
+### 14.2 禁止する操作
+
+* `fetch`
+* `pull`
+* `push`
+* `checkout`
+* `switch`
+* `reset`
+* `clean`
+* `stash`
+* `add`
+* `commit`
+* `update-ref`
+* branch/tag作成・削除
+* remote設定変更
+* auto-deepen / unshallow
+
+### 14.3 shallow / partial clone
+
+* default branch working-tree は local HEADだけで解決可能とする。
+* feature merge-baseに必要な objectがない場合、候補失敗として扱う。
+  -全候補失敗後は `diff_base_resolution_unavailable` とする。
+* network accessやclone mutationで補正しない。
+  -利用者は必要に応じて repository管理手順として historyを取得するか、localに存在する explicit refを指定する。
+* read-only receiptではHEAD、branch、index、status、remote refsに加え、必要に応じてobject databaseの一覧・件数とexternal diff/textconv sentinelの不実行を確認する。
+
+## 15. DES-012 — `iss-00044` 分離
+
+production change は次を禁止する。
+
+* `src/pyclassuml/config/resolver.py`
+* `src/pyclassuml/analyze/traversal.py`
+* `src/pyclassuml/parse/*`
+* `AnalysisConfig.depth`
+* `CommandOptions.depth`
+* command-specific config schema
+
+cross-Issue regression testでは次を別々に観測する。
+
+| 観測値                        | depth変更で変わるか             |
+| -------------------------- | ------------------------ |
+| `DiffBaseResolution`       | 変わらない                    |
+| changed entry paths        | 変わらない                    |
+| seed files                 | 変わらない                    |
+| reachable dependency files | depthに応じて変わる             |
+| diagram selection          | reachable graphに応じて変わり得る |
+
+## 16. DES-013 — CLI / docs
+
+### 16.1 CLI grammar
+
+変更しない。
+
+* `pyclassuml diff [options] [--base <ref>]`
+* `--current-state working-tree|head`
+* `--include-untracked|--no-include-untracked`
+
+### 16.2 help
+
+`diff` subparser description または option help に次を簡潔に記載する。
+
+* explicit `--base` は authoritative
+* no-base は安全な implicit baseを解決する
+* current default branch + working-tree は HEAD base
+* current default branch + head は explicit base必須
+  -詳細は README
+
+長い candidate order、diagnostic table、migration note は helpへ複製しない。
+
+### 16.3 README
+
+README の `diff` 節を decision table中心に更新し、次を記載する。
+
+* branch/state matrix
+* default branch working-tree の HEAD SHA
+* default branch head の failure
+* feature merge-base
+* no initial fallback
+* shallow clone / offline behavior
+* 1,000 path limit
+* explicit baseによる同一 rangeの opt-in
+* scope-only code
+* base summary fields
+* `initial_commit_fallback` の legacy status
+* `head` の最終描画 sourceに関する既存 caveat
+* depthは Git base/seedを制限しないこと
+
+## 17. DES-014 — app / report integration
+
+### 17.1 successful collection
+
+successful `ChangedFileCollection` は既存どおり必ず `base_resolution` を持つ。
+
+`app.diff` は次のすべてに同じ `resolved_base_ref` を使う。
+
+* tracked changed-file comparison
+* changed-line ranges
+* base class inventory
+* base blob reading
+* report metadata
+
+### 17.2 VCS failure
+
+`VcsDiffCollection.collection is None` の既存 contractを維持する。
+
+app は次を呼ばず reportへ進む。
+
+* targets
+* parse
+* traversal
+* render
+
+新 VCS diagnostics は既存 `FailureReason.VCS_READ_FAILURE` により hard failure、stderr、exit 1となる。
+
+guard failureは base resolution後に起きるが、成功 collectionではないため `CommandResult.diff_base_resolution=None` を許容する。resolved baseは diagnostic messageに含める。VCS resultへの重複 metadata field追加は行わない。
+
+### 17.3 target failure
+
+scope-only failure時、app は既存 zero-target pathを使い、次を reportへ渡す。
+
+* empty `TargetSet`
+* `TargetObservations`
+* successful `DiffBaseResolution`
+* diagnostics
+
+これにより base summaryと `diff_scope_excluded_count` を failure outputに保持できる。
+
+## 18. Failure design
+
+| failure point                    | code                                     | downstream stop point |
+| -------------------------------- | ---------------------------------------- | --------------------- |
+| explicit ref validation          | `invalid_base_ref`                       | base collection前      |
+| default branch + head + no-base  | `diff_default_branch_head_requires_base` | raw Git diff前         |
+| candidate resolution exhausted   | `diff_base_resolution_unavailable`       | raw Git diff前         |
+| implicit path limit exceeded     | `diff_implicit_range_too_broad`          | hunk extraction前      |
+| all Python changes outside scope | `diff_zero_target_scope_excluded_only`   | parse前                |
+| generic no seed                  | `diff_zero_target_after_scope_filter`    | parse前                |
+
+全 error は既存 report policyの hard failure pathを使う。
+
+## 19. Production change surface
+
+### 19.1 必須変更
+
+| path                                 | 変更                                                                   |
+| ------------------------------------ | -------------------------------------------------------------------- |
+| `src/pyclassuml/vcs/diff_collect.py` | state-aware base resolver、no fallback、raw/hunk分離、guard、新 diagnostics |
+| `src/pyclassuml/model/contracts.py`  | `default_branch_head` kind追加、legacy kind保持                           |
+| `src/pyclassuml/targets/diff.py`     | Python/scope local counts、scope-only code、generic message            |
+| `src/pyclassuml/cli/bind.py`         | `diff` / `--base` / `--current-state` help補強                         |
+| `README.md`                          | 新契約、migration、guard、diagnostics                                      |
+
+### 19.2 原則変更不要
+
+| path                                  | 理由                                             |
+| ------------------------------------- | ---------------------------------------------- |
+| `src/pyclassuml/config/resolver.py`   | `iss-00044` authority                          |
+| `src/pyclassuml/app/diff.py`          | 既存 fatal/metadata transportで成立                 |
+| `src/pyclassuml/report/policy.py`     | 既存 failure reason projectionとgeneric kind表示で成立 |
+| `src/pyclassuml/model/__init__.py`    | 既存 `DiffBaseResolution` exportを再利用             |
+| `src/pyclassuml/analyze/traversal.py` | depth/traversal責務を変更しない                        |
+| `src/pyclassuml/parse/*`              | AST parse責務を変更しない                              |
+| `src/pyclassuml/render/*`             | output semanticsを変更しない                         |
+
+app/report production変更が必要と判明した場合は、既存 transportで成立しない具体的理由を `report.md` に記録し、本 designを先に改訂する。
+
+### 19.3 文書変更
+
+* Issue #45 `requirement.md`
+* Issue #45 `design.md`
+* Issue #45 `plan.md`
+* Issue #45 `report.md`
+* Issue #36 requirement/design/plan の supersede note
+* Issue #44 requirement/design/plan の authority cross-reference
+  -必要なら parent Epic plan の確認日・依存注記
+* README
+
+## 20. Test design
+
+### 20.1 Model
+
+* `default_branch_head` を受理する。
+* unknown kindを拒否する。
+* `initial_commit_fallback` を legacyとして引き続き受理する。
+* `CommandResult.diff_base_resolution` shapeを維持する。
+
+### 20.2 VCS resolver
+
+* explicit valid / invalid
+* default main/develop/master working-tree
+* slashful default branch
+* stale origin default
+* default branch head failure
+* feature merge-base
+* detached merge-base
+* candidateなし
+* merge-baseなし
+* no commit
+* candidate order / dedupe
+* shallow-history相当 failure
+* initial fallback helperがproduction pathから呼ばれないこと
+* `HEAD^{commit}` の結果がmerge-baseのcurrent引数に一回だけ使われること
+* `origin/HEAD` と conventional branch名が矛盾する場合のdefault branch identity
+* candidate exhaustion時に `rev-list --max-parents=0` を呼ばないこと
+* configで解決された `current_state=head` がdefault-branch no-base failureになること
+* nested projectのmodified/renameでhunk pathspecはVCS-relative、公開entryはproject-relativeであること
+* partial clone lazy-fetchとexternal diff/textconv sentinelが発火しないこと
+
+### 20.3 Guard
+
+* limit 1,000通過
+* 1,001拒否
+* testでは定数を `1` に monkeypatchし、二件で発火させる focused caseも許可
+* explicit bypass
+* untracked count
+* rename一件count
+* scope外 / non-Python / ignored予定pathもcount
+* project root外pathをcountしないこと
+* guard時 hunk helper未呼び出し
+* guard時 targets/app downstream未呼び出し
+
+### 20.4 Targets
+
+* all Python scope-outside専用 code
+* scope-outside Python + in-scope non-Pythonも専用 code
+* scope-outside Python + in-scope ignored Pythonはgeneric
+* non-Python onlyはgeneric
+* ignored Python onlyはgeneric
+* no-changeはgeneric
+* in-scope Pythonありはsuccess
+* diagnostic orderとcounter維持
+
+### 20.5 App / CLI / Report
+
+* default branch working-tree success + `default_branch_head` summary
+* default branch head failure + no downstream
+* explicit head success
+* unresolved feature failure
+* guard hard failure
+* scope-only failure + base summary + counter
+* feature head classification regression
+* `head_untracked_noop`
+* rename、nested project、monorepo
+* legacy fallback report projection
+* help text
+
+### 20.6 `iss-00044` regression
+
+* config default depth
+* command override
+* depth 0 presence
+* A→B→C traversal
+* same Git stateで depth 0/1/2 の base/seed不変
+* `generate` default unlimited
+* config resolver source無変更
+
+## 21. Compatibility / migration
+
+### 21.1 維持
+
+* CLI option names
+* `DiffOptions` field shape
+* `DiffBaseResolution` field shape
+* `CommandResult` field shape
+* `FailureReason`
+* explicit base meaning
+* feature merge-base
+* current-state / untracked / rename
+* summary fields
+* read-only / AST-only
+* config/depth contract
+
+### 21.2 意図的変更
+
+| 旧挙動                                                  | 新挙動                       |
+| ---------------------------------------------------- | ------------------------- |
+| default branch working-tree no-base → initial commit | 開始時 HEAD SHA              |
+| default branch head no-base → initial commitからHEAD   | explicit base requirement |
+| candidate解決不能 → initial fallback degraded success    | hard failure              |
+| implicit changed path無制限                             | 1,000件超でhard failure      |
+| scope-onlyもgeneric zero-target                       | 専用 diagnostic code        |
+| productionが`initial_commit_fallback`を生成              | productionでは生成しない         |
+
+### 21.3 rollback
+
+source、tests、README、Issue cross-referenceを一単位で rollbackする。
+
+部分 rollbackは禁止する。
+
+* guardだけ戻して no-fallbackを残す
+* no-fallbackだけ戻して guardを残す
+* model kindだけ戻す
+* docsだけ旧契約へ戻す
+
+これらは source/docs/testの不整合を生む。
+
+release後の緊急対応で旧 initial fallbackへ戻す場合は、既知の安全性欠陥を再導入するため通常 rollbackとして扱わず、別の明示判断と利用者告知を必要とする。安全側の暫定措置は、解決不能な no-base pathを fail closedのまま維持することである。
+
+## 22. リスクと緩和
+
+| risk                            | 緩和                                                |
+| ------------------------------- | ------------------------------------------------- |
+| no-candidate cloneが成功から失敗へ変わる   | 専用 codeとexplicit base remediation                 |
+| default branch判定誤り              | 既存決定順維持、silent fallback廃止                         |
+| 1,000件が正当なfeature branchを拒否     | resolved SHAをexplicit baseとして再実行可能                |
+| explicit baseで高負荷               | explicit intentとして許容しREADMEで説明                    |
+| raw name-status自体が巨大            | 本Issueの限界として明記し後続候補化                              |
+| model kind exhaustive matchへの影響 | field shape維持、migration note                      |
+| scope-only判定の誤分類                | Python total / excluded countを別保持しmatrix test     |
+| `iss-00044` regression          | config/traversal production pathを禁止しfocused tests |
+| test fixtureが巨大                 | limit monkeypatchでfocused verification            |
+| concurrent mutation             | HEAD SHA固定、完全snapshotは別Issue                      |
+
+## 23. 仮定・不確実性
+
+* private helper名と分割方法は、phase orderとobservable behaviorを維持する限り実装中に変更できる。
+* limit `1000` は初期 policy値でありbenchmark最適値ではない。
+* Git stderrの全文はversion・platformで変わり得るため、testsは専用 codeと必要なmessage要素を検証し、Git固有全文へ過度に依存しない。
+  -本設計作成時に tests、benchmark、lint、SpecDock validationは実行していない。
+* current branchのsource/test baselineはGitHub compare上 `ce7917c` と同一だが、ローカル未提示worktreeの状態は根拠にしていない。

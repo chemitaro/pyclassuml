@@ -220,6 +220,17 @@ def test_main_help_projects_argparse_stdout(
     assert captured.err == ""
 
 
+def test_diff_help_documents_implicit_base_policy(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(("diff", "--help"))
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "default branch" in captured.out
+    assert "default branchのheadでは" in captured.out
+    assert "HEAD~1" in captured.out
+    assert captured.err == ""
+
+
 def test_main_generate_writes_summary_stdout_and_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

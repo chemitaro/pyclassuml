@@ -11,6 +11,8 @@ ID: "iss-00036"
 
 # iss-00036 Diff Default Branch Base — 要件定義（WHAT / WHY）
 
+> **後続Issueによる部分置換:** `iss-00045-diff-implicit-base-safety` は、本書のうち default branch の initial commit fallback、候補解決不能時の initial commit fallback、fallback を degraded success として返す契約、および production の `initial_commit_fallback` resolution kind を置き換える。explicit base の権威性、invalid explicit base の失敗、feature/detached の merge-base、resolution transport、read-only/current-state/untracked の境界は本書から引き継ぐ。以下の本文は当時の判断を復元する historical record として保持する。
+
 ## 目的
 - `pyclassuml diff` を `--base` なしで実行できるようにし、利用者が「現在の作業ブランチで積み上げた変更範囲」をすぐに UML クラス図として確認できるようにする。
 - 明示的な `--base <ref>` は既存互換のまま維持し、branch / tag / commit hash を指定した比較は従来どおり `<ref>` 自体を比較基点として扱う。
