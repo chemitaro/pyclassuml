@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _active_entry_id(entry: Any) -> str | None:

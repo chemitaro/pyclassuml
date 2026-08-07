@@ -1,26 +1,20 @@
 from __future__ import annotations
 
-import shlex
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
-from typing import Literal
-from typing import cast
+import shlex
+from typing import TYPE_CHECKING, Literal, cast
 
-from ..domain.ids import resolve_id_input, resolve_input_title_and_slug
-from ..domain.models import ActiveSelection, SpecGraph, SpecNode, SpecNodeKind
-from ..domain.tree import resolve_parent_from_active
-from ..domain.validation import validate_graph_and_deps
-from ..infra.contracts import ActiveManifest, StoredMetaRecord
-from .artifact_preflight import validate_required_artifacts_for_graph
-from .contracts import CreateNodeRequest, ImportNodeRequest, ImportNodeResult
-from .create_node import (
+from spec_dock_runtime.application.artifact_preflight import validate_required_artifacts_for_graph
+from spec_dock_runtime.application.contracts import CreateNodeRequest, ImportNodeRequest, ImportNodeResult
+from spec_dock_runtime.application.create_node import (
     CreateWritePhase,
     _acquire_create_lock,
     _doctor_guidance_message,
-    _runtime_entrypoint_path,
     _post_write_duplicate_guard,
     _release_create_lock,
+    _runtime_entrypoint_path,
     create_write_phase_has_local_writes,
     execute_create_plan,
     guard_github_issue_uniqueness,
@@ -28,9 +22,16 @@ from .create_node import (
     plan_node_creation,
     resolve_create_write_phase,
 )
-from .ports import Ports
-from .repo_context import resolve_current_repo_slug, split_repo_slug
-from .sync_state import sync_after_import
+from spec_dock_runtime.application.repo_context import resolve_current_repo_slug, split_repo_slug
+from spec_dock_runtime.application.sync_state import sync_after_import
+from spec_dock_runtime.domain.ids import resolve_id_input, resolve_input_title_and_slug
+from spec_dock_runtime.domain.models import ActiveSelection, SpecGraph, SpecNode, SpecNodeKind
+from spec_dock_runtime.domain.tree import resolve_parent_from_active
+from spec_dock_runtime.domain.validation import validate_graph_and_deps
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
+    from spec_dock_runtime.infra.contracts import ActiveManifest, StoredMetaRecord
 
 
 def _resolve_specdock_dir(ports: Ports) -> Path:
@@ -65,7 +66,7 @@ def _active_selection_from_manifest(manifest: ActiveManifest | None) -> ActiveSe
 
 def _to_spec_node(record: StoredMetaRecord) -> SpecNode:
     return SpecNode(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -132,7 +133,6 @@ def build_linked_create_request(
         title=req.title,
         slug=req.slug,
         parent_id=parent_id,
-        requested_node_id=None,
         github_mode="link_existing",
         github_issue_number=int(req.issue_number),
         github_repo_owner=github_repo_owner,
@@ -252,9 +252,7 @@ def _post_import_doctor_first_guidance(
     local_node_id: str | None,
 ) -> str:
     node_hint = (
-        f"local node `{local_node_id}`"
-        if local_node_id is not None
-        else "the local node targeted by this import"
+        f"local node `{local_node_id}`" if local_node_id is not None else "the local node targeted by this import"
     )
     return (
         "Import may have partially written local files. Do not rerun blindly. "
@@ -293,16 +291,10 @@ def _build_post_import_failure(
             f"{guidance}"
         )
     if local_error is not None:
-        return RuntimeError(
-            "Outcome: import_local_write_fail. "
-            f"{local_error} "
-            f"{guidance}"
-        )
+        return RuntimeError(f"Outcome: import_local_write_fail. {local_error} {guidance}")
     if release_error is not None:
         return RuntimeError(
-            "Outcome: import_local_write_success_cleanup_fail. "
-            f"Cleanup failure: {release_error}. "
-            f"{doctor_guidance}"
+            f"Outcome: import_local_write_success_cleanup_fail. Cleanup failure: {release_error}. {doctor_guidance}"
         )
     return None
 

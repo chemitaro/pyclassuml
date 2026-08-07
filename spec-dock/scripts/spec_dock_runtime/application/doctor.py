@@ -1,22 +1,31 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from ..domain.models import SpecGraph, SpecNodeKind, SpecNodeSeed
-from ..domain.tree import build_graph
-from ..domain.validation import validate_graph_and_deps
-from ..infra.contracts import ActiveManifestEntry, StoredMetaRecord
-from . import create_node as app_create_node
-from .artifact_preflight import validate_required_artifacts_for_graph
-from .contracts import DoctorFinding, DoctorRequest, DoctorResult
-from .ports import Ports
-from .repo_context import resolve_current_repo_slug
+from spec_dock_runtime.application import create_node as app_create_node
+from spec_dock_runtime.application.artifact_preflight import validate_required_artifacts_for_graph
+from spec_dock_runtime.application.contracts import (
+    DoctorFinding,
+    DoctorRequest,
+    DoctorResult,
+    GitHubCapabilityDiagnostic,
+    GitHubCapabilityProbeRequest,
+)
+from spec_dock_runtime.application.repo_context import resolve_current_repo_slug
+from spec_dock_runtime.domain.deps import validate_raw_node_dependency_graph
+from spec_dock_runtime.domain.models import SpecGraph, SpecNodeKind, SpecNodeSeed
+from spec_dock_runtime.domain.tree import build_graph
+from spec_dock_runtime.domain.validation import validate_graph_and_deps
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
+    from spec_dock_runtime.infra.contracts import ActiveManifestEntry, DirectDependencyResolution, StoredMetaRecord
 
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
     return SpecNodeSeed(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -44,13 +53,19 @@ def _append_unique(values: list[str], value: str) -> None:
         values.append(value)
 
 
+def _raw_node_depends_on_map(
+    resolutions_by_node: dict[str, list[DirectDependencyResolution]],
+) -> dict[str, list[str]]:
+    return {
+        node_id: [resolution.resolved_node_id for resolution in resolutions]
+        for node_id, resolutions in resolutions_by_node.items()
+    }
+
+
 def _legacy_only_workspace_finding(*, legacy_dir: Path) -> DoctorFinding:
     return DoctorFinding(
         code="legacy_only_workspace",
-        message=(
-            "legacy workspace is present but current workspace is missing: "
-            f"path={legacy_dir}"
-        ),
+        message=(f"legacy workspace is present but current workspace is missing: path={legacy_dir}"),
         guidance=[
             "Do not rename '.spec-dock' to 'spec-dock' (formats are incompatible).",
             "Run `spec-dock init` to install a new `spec-dock/` workspace.",
@@ -119,10 +134,7 @@ def _finding_from_error(error_message: str) -> DoctorFinding:
                 "復元後に `spec-dock/scripts/spec-dock validate` を再実行してください。",
             ],
         )
-    if (
-        "Unsupported legacy meta.json detected" in error_message
-        or ".meta.json" in error_message
-    ):
+    if "Unsupported legacy meta.json detected" in error_message or ".meta.json" in error_message:
         return DoctorFinding(
             code="broken_meta",
             message=error_message,
@@ -205,8 +217,7 @@ def _stale_active_pointer_finding(
     invalid_manifest_warnings = [
         warning
         for warning in load_result.warnings
-        if warning.startswith("active_manifest_invalid_json:")
-        or warning.startswith("active_manifest_invalid_shape:")
+        if warning.startswith("active_manifest_invalid_json:") or warning.startswith("active_manifest_invalid_shape:")
     ]
     if manifest is None:
         if invalid_manifest_warnings:
@@ -322,8 +333,53 @@ def _stale_create_lock_finding(specdock_dir: Path) -> DoctorFinding | None:
     )
 
 
+def _github_target_unavailable_diagnostic() -> GitHubCapabilityDiagnostic:
+    return GitHubCapabilityDiagnostic(
+        code="github_target_unavailable",
+        capability="actions_read",
+        status="target_unavailable",
+        token_source="unknown",
+        api="github_pr_observation_probe",
+        severity="info",
+        message="GitHub PR capability probe skipped because repo, PR, or head SHA was not provided.",
+        recommended_next_action="provide_github_repo_pr_and_head_sha_for_capability_probe",
+        secret_redacted=True,
+        stderr_sha256=None,
+        group="core",
+    )
+
+
+def _github_gateway_unavailable_diagnostic() -> GitHubCapabilityDiagnostic:
+    return GitHubCapabilityDiagnostic(
+        code="github_capability_skipped",
+        capability="actions_read",
+        status="skipped",
+        token_source="unknown",
+        api="github_pr_observation_probe",
+        severity="info",
+        message="GitHub capability gateway is unavailable.",
+        recommended_next_action="run_in_installed_runtime_with_github_capability_gateway",
+        secret_redacted=True,
+        stderr_sha256=None,
+        group="core",
+    )
+
+
+def _github_capability_diagnostics(req: DoctorRequest, ports: Ports) -> list[GitHubCapabilityDiagnostic]:
+    if not (req.github_repo and req.github_pr is not None and req.github_head_sha):
+        return [_github_target_unavailable_diagnostic()]
+    if ports.github_capability_gateway is None:
+        return [_github_gateway_unavailable_diagnostic()]
+    probe_request = GitHubCapabilityProbeRequest(
+        github_repo=req.github_repo,
+        github_pr=req.github_pr,
+        github_head_sha=req.github_head_sha,
+        include_extended=req.github_extended,
+    )
+    return ports.github_capability_gateway.probe(probe_request)
+
+
 def doctor(req: DoctorRequest, ports: Ports) -> DoctorResult:
-    del req
     warnings: list[str] = []
     findings: list[DoctorFinding] = []
     graph: SpecGraph | None = None
@@ -335,7 +391,12 @@ def doctor(req: DoctorRequest, ports: Ports) -> DoctorResult:
 
     if has_legacy_workspace and not has_current_workspace:
         findings.append(_legacy_only_workspace_finding(legacy_dir=legacy_dir))
-        return DoctorResult(ok=False, findings=findings, warnings=warnings)
+        return DoctorResult(
+            ok=False,
+            findings=findings,
+            warnings=warnings,
+            github_capability_diagnostics=_github_capability_diagnostics(req, ports),
+        )
 
     try:
         records = ports.node_reader.load_node_records()
@@ -356,6 +417,20 @@ def doctor(req: DoctorRequest, ports: Ports) -> DoctorResult:
             if report.errors:
                 findings.append(_finding_from_error(str(report.errors[0])))
             else:
+                if ports.deps_topology_reader is not None:
+                    load_node_dependency_resolutions = getattr(
+                        ports.deps_topology_reader,
+                        "load_node_dependency_resolutions",
+                        None,
+                    )
+                    if callable(load_node_dependency_resolutions):
+                        try:
+                            raw_node_depends_on_map = _raw_node_depends_on_map(
+                                load_node_dependency_resolutions(specdock_dir, graph)
+                            )
+                            validate_raw_node_dependency_graph(graph, raw_node_depends_on_map)
+                        except RuntimeError as error:
+                            findings.append(_finding_from_error(str(error)))
                 try:
                     validate_required_artifacts_for_graph(graph, repo_root=ports.repo_root)
                 except RuntimeError as error:
@@ -380,4 +455,9 @@ def doctor(req: DoctorRequest, ports: Ports) -> DoctorResult:
     if has_current_workspace and has_legacy_workspace and not findings:
         _append_unique(warnings, "legacy_cleanup_pending")
 
-    return DoctorResult(ok=(len(findings) == 0), findings=findings, warnings=warnings)
+    return DoctorResult(
+        ok=(len(findings) == 0),
+        findings=findings,
+        warnings=warnings,
+        github_capability_diagnostics=_github_capability_diagnostics(req, ports),
+    )

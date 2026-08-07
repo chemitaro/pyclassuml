@@ -5,7 +5,7 @@ ID: "epic-00002"
 関連GitHub: ["#2"]
 状態: "draft"
 作成者: "iwasawayuuta"
-最終更新: "2026-04-17"
+最終更新: "2026-08-05"
 依存: ["requirement.md", "design.md"]
 親: ["init-00001"]
 ---
@@ -24,6 +24,13 @@ ID: "epic-00002"
   - `generate` / `diff` の共通部分は `model` / `config` に寄せ、差分は `targets.explicit` と `vcs + targets.diff` に閉じる。
 - exceptions:
   - `vcs.diff-file-collect` と `targets.diff-target-normalize` は同じ `diff` front-stage だが、Git 読み取りと scope filtering を分けるため別 issue にする。
+
+## 承認済みの範囲外補正 Issue
+- `iss-00044-diff-default-depth` は、`diff` のdefault depthをCLI/configのresolverで補正するための、M1計画外のcorrective issueとする。
+- `iss-00045-diff-implicit-base-safety` は、`iss-00036-diff-default-branch-base` で導入したimplicit base解決を、実運用で確認された巨大履歴走査から保護するための、M1計画外のcorrective issueとする。
+- 承認根拠はsource task delegation `019fcba8-ca5e-71d2-a6a7-ddec18085eff` と最新のユーザー指示である。
+- 各corrective issueのclosure ownerは、それぞれのcanonical `requirement.md` / `design.md` / `plan.md` / `report.md` とする。
+- これらのIssueは既存M1の6 Issue closureに含めず、E-RQおよびM1 closureの定義を変更しない。
 
 ## Issue 一覧（順序 / tranche 付き）
 1. `iss-00007-model-execution-contracts`

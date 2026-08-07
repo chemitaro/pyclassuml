@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "artifact_kinds": ["design", "plan", "report"],
+  "sections": {
+    "report.lite-evidence": {
+      "artifact": "report",
+      "heading": "## Lite Evidence",
+      "body": "- Record explicit Lite authorization and the evidence gate used to justify it."
+    },
+    "report.step-evidence": {
+      "artifact": "report",
+      "heading": "## Step Evidence",
+      "body": "- Record Red, Green, and refactor evidence for each executed step.\n- Link each closure id to its observed verification result."
+    },
+    "report.strict-evidence": {
+      "artifact": "report",
+      "heading": "## Strict Evidence",
+      "body": "- Record reviewer gate status, discovered tests, and unresolved risks.\n- Preserve stale authority or marker conflict observations."
+    },
+    "report.critical-evidence": {
+      "artifact": "report",
+      "heading": "## Critical Evidence",
+      "body": "- Record critical controls, rollback/revisit notes, and final quality gate disposition."
+    }
+  },
+  "profiles": {
+    "lite": {
+      "design": [],
+      "plan": [],
+      "report": ["report.lite-evidence"]
+    },
+    "standard": {
+      "design": [],
+      "plan": [],
+      "report": ["report.step-evidence"]
+    },
+    "strict": {
+      "design": [],
+      "plan": [],
+      "report": ["report.step-evidence", "report.strict-evidence"]
+    },
+    "critical": {
+      "design": [],
+      "plan": [],
+      "report": ["report.step-evidence", "report.strict-evidence", "report.critical-evidence"]
+    }
+  }
+}

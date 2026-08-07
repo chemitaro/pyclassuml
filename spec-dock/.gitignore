@@ -3,9 +3,14 @@
 .agent/
 # legacy v2 name (kept ignored for safe upgrades)
 .work/
+# local disposable work areas (README is the only tracking-eligible path)
+**/.workbench/*
+!**/.workbench/README.md
+**/.workbench/README.md/**
 active/
 /adrs/
 tree-all.puml
 tree.puml
 deps-issues.puml
+deps-raw.puml
 dashboard.md

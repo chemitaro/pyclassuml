@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import os
 import subprocess
 
 from pyclassuml.model import (
@@ -71,6 +72,37 @@ class ChangedFileEntry:
 
 
 @dataclass(frozen=True)
+class _RawChangedFileEntry:
+    """VCS-root-relative entry retained until the breadth guard has run."""
+
+    current_vcs_relative_path: str
+    change_kind: str
+    previous_vcs_relative_path: str | None = None
+    current_changed_line_ranges: tuple[ChangedLineRange, ...] = field(default=(), compare=False)
+    is_untracked: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.current_vcs_relative_path, str) or self.current_vcs_relative_path == "":
+            raise ValueError("current_vcs_relative_path must be a non-empty str")
+        if self.change_kind not in {"added", "modified", "renamed"}:
+            raise ValueError("change_kind must be added, modified, or renamed")
+        if self.previous_vcs_relative_path is not None and (
+            not isinstance(self.previous_vcs_relative_path, str) or self.previous_vcs_relative_path == ""
+        ):
+            raise ValueError("previous_vcs_relative_path must be a non-empty str or None")
+        ranges = tuple(self.current_changed_line_ranges)
+        for line_range in ranges:
+            if not isinstance(line_range, ChangedLineRange):
+                raise ValueError("current_changed_line_ranges must contain ChangedLineRange values")
+        if not isinstance(self.is_untracked, bool):
+            raise ValueError("is_untracked must be bool")
+        object.__setattr__(self, "current_changed_line_ranges", ranges)
+
+
+MAX_IMPLICIT_DIFF_CHANGED_PATHS = 1000
+
+
+@dataclass(frozen=True)
 class ChangedFileCollection:
     entries: tuple[ChangedFileEntry, ...]
     base_resolution: DiffBaseResolution
@@ -120,11 +152,8 @@ def collect_diff_files(
 
     try:
         _ensure_git_repository(vcs_root)
-        base_resolution = _resolve_base_ref(vcs_root, base_ref)
-        if base_resolution.resolution_kind == "initial_commit_fallback":
-            diagnostics.append(_initial_commit_fallback_diagnostic(base_resolution.resolved_base_ref))
-
-        entries = _tracked_entries(
+        base_resolution = _resolve_base_ref(vcs_root, base_ref, config.diff_current_state)
+        raw_entries = _tracked_entries(
             vcs_root,
             context.project_root,
             base_resolution.resolved_base_ref,
@@ -132,7 +161,7 @@ def collect_diff_files(
         )
 
         if config.diff_current_state is DiffCurrentState.WORKING_TREE and config.diff_include_untracked:
-            entries.extend(_untracked_entries(vcs_root, context.project_root))
+            raw_entries.extend(_untracked_entries(vcs_root, context.project_root))
         elif config.diff_current_state is DiffCurrentState.HEAD and config.diff_include_untracked:
             diagnostics.append(
                 Diagnostic(
@@ -145,9 +174,24 @@ def collect_diff_files(
                 )
             )
 
+        raw_entries = list(_dedupe_raw_and_sort(raw_entries, vcs_root, context.project_root))
+        _ensure_implicit_changed_path_limit(base_resolution, raw_entries)
+
+        entries = []
+        for raw_entry in raw_entries:
+            enriched_entry = raw_entry
+            if not raw_entry.is_untracked:
+                enriched_entry = _entry_with_current_changed_line_ranges(
+                    vcs_root,
+                    base_resolution.resolved_base_ref,
+                    config.diff_current_state,
+                    raw_entry,
+                )
+            entries.append(_project_relative_entry(enriched_entry, vcs_root, context.project_root))
+
         return VcsDiffCollection(
             collection=ChangedFileCollection(
-                entries=_dedupe_and_sort(entries),
+                entries=tuple(entries),
                 base_resolution=base_resolution,
             ),
             diagnostics=tuple(diagnostics),
@@ -216,12 +260,19 @@ def _ensure_git_repository(project_root: Path) -> None:
 
 
 def _verify_base_ref(project_root: Path, base_ref: str) -> None:
-    result = _run_git(project_root, ("rev-parse", "--verify", base_ref), check=False)
+    result = _run_git(project_root, ("rev-parse", "--verify", f"{base_ref}^{{commit}}"), check=False)
     if result.returncode != 0:
-        raise VcsDiffError("invalid_base_ref", f"base ref is not a valid Git revision: {base_ref}")
+        raise VcsDiffError(
+            "invalid_base_ref",
+            f"base ref is not a commit-resolvable Git revision expression: {base_ref}",
+        )
 
 
-def _resolve_base_ref(vcs_root: Path, requested_base_ref: str | None) -> DiffBaseResolution:
+def _resolve_base_ref(
+    vcs_root: Path,
+    requested_base_ref: str | None,
+    current_state: DiffCurrentState,
+) -> DiffBaseResolution:
     if requested_base_ref is not None:
         _verify_base_ref(vcs_root, requested_base_ref)
         return DiffBaseResolution(
@@ -231,12 +282,23 @@ def _resolve_base_ref(vcs_root: Path, requested_base_ref: str | None) -> DiffBas
             candidate_ref=None,
         )
 
-    _verify_head_commit(vcs_root)
+    head_sha = _resolve_head_commit(vcs_root)
     if _current_branch_is_default_branch(vcs_root):
-        return _initial_commit_base_resolution(vcs_root)
+        if current_state is DiffCurrentState.HEAD:
+            raise VcsDiffError(
+                "diff_default_branch_head_requires_base",
+                "No-base diff on the default branch with current_state=head requires an explicit --base <ref>; "
+                "for example, use --base HEAD~1 or --base origin/<default-branch>.",
+            )
+        return DiffBaseResolution(
+            requested_base_ref=None,
+            resolved_base_ref=head_sha,
+            resolution_kind="default_branch_head",
+            candidate_ref=None,
+        )
 
     for candidate_ref in _default_branch_candidates(vcs_root):
-        result = _run_git(vcs_root, ("merge-base", candidate_ref, "HEAD"), check=False)
+        result = _run_git(vcs_root, ("merge-base", candidate_ref, head_sha), check=False)
         if result.returncode == 0:
             resolved_base = _decode_single_git_line(result.stdout, "merge-base")
             return DiffBaseResolution(
@@ -245,14 +307,19 @@ def _resolve_base_ref(vcs_root: Path, requested_base_ref: str | None) -> DiffBas
                 resolution_kind="default_branch_merge_base",
                 candidate_ref=candidate_ref,
             )
-    return _initial_commit_base_resolution(vcs_root)
+    raise VcsDiffError(
+        "diff_base_resolution_unavailable",
+        "No usable default branch merge-base candidate was found for no-base diff "
+        f"at HEAD {head_sha}; specify --base <commit> explicitly.",
+    )
 
 
-def _verify_head_commit(vcs_root: Path) -> None:
+def _resolve_head_commit(vcs_root: Path) -> str:
     result = _run_git(vcs_root, ("rev-parse", "--verify", "HEAD^{commit}"), check=False)
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
         raise VcsDiffError("git_diff_read_failure", f"Git repository has no HEAD commit: {stderr}")
+    return _decode_single_git_line(result.stdout, "HEAD commit")
 
 
 def _current_branch_is_default_branch(vcs_root: Path) -> bool:
@@ -313,7 +380,7 @@ def _remote_default_branch_name(origin_head_target: str) -> str:
 
 
 def _ref_exists(vcs_root: Path, ref: str) -> bool:
-    result = _run_git(vcs_root, ("rev-parse", "--verify", ref), check=False)
+    result = _run_git(vcs_root, ("rev-parse", "--verify", f"{ref}^{{commit}}"), check=False)
     return result.returncode == 0
 
 
@@ -358,35 +425,43 @@ def _tracked_entries(
     project_root: Path,
     base_ref: str,
     current_state: DiffCurrentState,
-) -> list[ChangedFileEntry]:
-    args = ["diff", "--relative", "--name-status", "-z", "--find-renames", base_ref]
+) -> list[_RawChangedFileEntry]:
+    args = [
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--relative",
+        "--name-status",
+        "-z",
+        "--find-renames",
+        base_ref,
+    ]
     if current_state is DiffCurrentState.HEAD:
         args.append("HEAD")
     args.extend(("--", _git_pathspec(vcs_root, project_root)))
     result = _run_git(vcs_root, tuple(args))
     entries = _parse_name_status(result.stdout)
     return [
-        _project_relative_entry(
-            _entry_with_current_changed_line_ranges(vcs_root, base_ref, current_state, entry),
-            vcs_root,
-            project_root,
-        )
+        entry
         for entry in entries
         if _entry_is_under_project(entry, vcs_root, project_root)
     ]
 
 
-def _untracked_entries(vcs_root: Path, project_root: Path) -> list[ChangedFileEntry]:
+def _untracked_entries(vcs_root: Path, project_root: Path) -> list[_RawChangedFileEntry]:
     result = _run_git(
         vcs_root,
         ("ls-files", "-z", "--others", "--exclude-standard", "--", _git_pathspec(vcs_root, project_root)),
     )
     return [
-        ChangedFileEntry(
-            current_project_relative_path=_project_relative_vcs_path(path, vcs_root, project_root),
+        _RawChangedFileEntry(
+            current_vcs_relative_path=path,
             change_kind="added",
+            is_untracked=True,
         )
         for path in _decode_nul_paths(result.stdout)
+        if _vcs_relative_path_is_under_project(path, vcs_root, project_root)
     ]
 
 
@@ -398,8 +473,8 @@ def _git_pathspec(vcs_root: Path, project_root: Path) -> str:
     return "." if relative == Path(".") else relative.as_posix()
 
 
-def _entry_is_under_project(entry: ChangedFileEntry, vcs_root: Path, project_root: Path) -> bool:
-    return _vcs_relative_path_is_under_project(entry.current_project_relative_path, vcs_root, project_root)
+def _entry_is_under_project(entry: _RawChangedFileEntry, vcs_root: Path, project_root: Path) -> bool:
+    return _vcs_relative_path_is_under_project(entry.current_vcs_relative_path, vcs_root, project_root)
 
 
 def _vcs_relative_path_is_under_project(relative_path: str, vcs_root: Path, project_root: Path) -> bool:
@@ -414,21 +489,53 @@ def _project_relative_vcs_path(relative_path: str, vcs_root: Path, project_root:
     return (vcs_root / relative_path).resolve().relative_to(project_root.resolve()).as_posix()
 
 
-def _project_relative_entry(entry: ChangedFileEntry, vcs_root: Path, project_root: Path) -> ChangedFileEntry:
+def _project_relative_entry(
+    entry: _RawChangedFileEntry,
+    vcs_root: Path,
+    project_root: Path,
+) -> ChangedFileEntry:
     previous_path = (
-        _project_relative_vcs_path(entry.previous_project_relative_path, vcs_root, project_root)
-        if entry.previous_project_relative_path is not None
+        _project_relative_vcs_path(entry.previous_vcs_relative_path, vcs_root, project_root)
+        if entry.previous_vcs_relative_path is not None
+        and _vcs_relative_path_is_under_project(entry.previous_vcs_relative_path, vcs_root, project_root)
         else None
     )
     return ChangedFileEntry(
         current_project_relative_path=_project_relative_vcs_path(
-            entry.current_project_relative_path,
+            entry.current_vcs_relative_path,
             vcs_root,
             project_root,
         ),
         change_kind=entry.change_kind,
         previous_project_relative_path=previous_path,
         current_changed_line_ranges=entry.current_changed_line_ranges,
+    )
+
+
+def _dedupe_raw_and_sort(
+    entries: list[_RawChangedFileEntry],
+    vcs_root: Path,
+    project_root: Path,
+) -> tuple[_RawChangedFileEntry, ...]:
+    unique = {
+        _project_relative_vcs_path(entry.current_vcs_relative_path, vcs_root, project_root): entry
+        for entry in entries
+    }
+    return tuple(unique[path] for path in sorted(unique))
+
+
+def _ensure_implicit_changed_path_limit(
+    base_resolution: DiffBaseResolution,
+    entries: list[_RawChangedFileEntry],
+) -> None:
+    if base_resolution.requested_base_ref is not None or len(entries) <= MAX_IMPLICIT_DIFF_CHANGED_PATHS:
+        return
+    raise VcsDiffError(
+        "diff_implicit_range_too_broad",
+        "Implicit diff range resolved to "
+        f"{len(entries)} changed paths, exceeding fixed limit "
+        f"{MAX_IMPLICIT_DIFF_CHANGED_PATHS} from base {base_resolution.resolved_base_ref}. "
+        f"Specify --base {base_resolution.resolved_base_ref} to opt in to this explicit range.",
     )
 
 
@@ -445,6 +552,7 @@ def _run_git(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            env={**os.environ, "GIT_NO_LAZY_FETCH": "1"},
         )
     except OSError as exc:
         command = " ".join(command_parts)
@@ -456,9 +564,9 @@ def _run_git(
     return result
 
 
-def _parse_name_status(output: bytes) -> list[ChangedFileEntry]:
+def _parse_name_status(output: bytes) -> list[_RawChangedFileEntry]:
     tokens = _decode_nul_paths(output)
-    entries: list[ChangedFileEntry] = []
+    entries: list[_RawChangedFileEntry] = []
     index = 0
 
     while index < len(tokens):
@@ -468,8 +576,8 @@ def _parse_name_status(output: bytes) -> list[ChangedFileEntry]:
         if status in {"A", "M", "T"}:
             path, index = _next_token(tokens, index, status)
             entries.append(
-                ChangedFileEntry(
-                    current_project_relative_path=path,
+                _RawChangedFileEntry(
+                    current_vcs_relative_path=path,
                     change_kind="added" if status == "A" else "modified",
                 )
             )
@@ -479,10 +587,10 @@ def _parse_name_status(output: bytes) -> list[ChangedFileEntry]:
             previous_path, index = _next_token(tokens, index, status)
             current_path, index = _next_token(tokens, index, status)
             entries.append(
-                ChangedFileEntry(
-                    current_project_relative_path=current_path,
+                _RawChangedFileEntry(
+                    current_vcs_relative_path=current_path,
                     change_kind="renamed",
-                    previous_project_relative_path=previous_path,
+                    previous_vcs_relative_path=previous_path,
                 )
             )
         else:
@@ -495,21 +603,31 @@ def _entry_with_current_changed_line_ranges(
     project_root: Path,
     base_ref: str,
     current_state: DiffCurrentState,
-    entry: ChangedFileEntry,
-) -> ChangedFileEntry:
-    args = ["diff", "--relative", "--unified=0", "--find-renames", base_ref]
+    entry: _RawChangedFileEntry,
+) -> _RawChangedFileEntry:
+    args = [
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--relative",
+        "--unified=0",
+        "--find-renames",
+        base_ref,
+    ]
     if current_state is DiffCurrentState.HEAD:
         args.append("HEAD")
-    pathspecs = [entry.current_project_relative_path]
-    if entry.previous_project_relative_path is not None:
-        pathspecs.insert(0, entry.previous_project_relative_path)
+    pathspecs = [entry.current_vcs_relative_path]
+    if entry.previous_vcs_relative_path is not None:
+        pathspecs.insert(0, entry.previous_vcs_relative_path)
     args.extend(("--", *pathspecs))
     result = _run_git(project_root, tuple(args))
-    return ChangedFileEntry(
-        current_project_relative_path=entry.current_project_relative_path,
+    return _RawChangedFileEntry(
+        current_vcs_relative_path=entry.current_vcs_relative_path,
         change_kind=entry.change_kind,
-        previous_project_relative_path=entry.previous_project_relative_path,
+        previous_vcs_relative_path=entry.previous_vcs_relative_path,
         current_changed_line_ranges=_parse_current_changed_line_ranges(result.stdout),
+        is_untracked=entry.is_untracked,
     )
 
 

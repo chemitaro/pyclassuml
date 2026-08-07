@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .presentation import markdown as _presentation_markdown
+from spec_dock_runtime.presentation import markdown as _presentation_markdown
 
 _DASHBOARD_TOP_LIMIT = _presentation_markdown._DASHBOARD_TOP_LIMIT
 _TREE_BOARD_BLOCKERS_LABEL_LIMIT = _presentation_markdown._TREE_BOARD_BLOCKERS_LABEL_LIMIT

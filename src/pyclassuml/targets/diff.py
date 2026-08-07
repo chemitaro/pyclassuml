@@ -40,13 +40,22 @@ def normalize_diff_targets(
     diagnostics = list(upstream_diagnostics)
     candidates: list[Path] = []
     excluded_count = 0
+    python_changed_count = 0
+    scope_excluded_python_count = 0
 
     for entry in changed_files.entries:
         current_path = _resolve_project_relative(context.project_root, entry.current_project_relative_path)
+        if not _is_under_project(current_path, context.project_root):
+            continue
+        is_python = current_path.suffix == ".py"
+        if is_python:
+            python_changed_count += 1
         if not _is_in_scope(current_path, context.scope_root):
             excluded_count += 1
+            if is_python:
+                scope_excluded_python_count += 1
             continue
-        if current_path.suffix == ".py":
+        if is_python:
             candidates.append(current_path)
 
     seed_files, ignored_count = apply_ignore(candidates, context.project_root, config.ignore)
@@ -60,7 +69,10 @@ def normalize_diff_targets(
         diagnostics.append(_scope_exclusion_warning(excluded_count))
 
     if not seed_files:
-        diagnostics.append(_zero_target_error())
+        if python_changed_count > 0 and scope_excluded_python_count == python_changed_count:
+            diagnostics.append(_scope_only_zero_target_error())
+        else:
+            diagnostics.append(_zero_target_error())
         return DiffTargetNormalization(
             target_set=None,
             observations=observations,
@@ -89,6 +101,14 @@ def _is_in_scope(path: Path, scope_root: Path) -> bool:
     return True
 
 
+def _is_under_project(path: Path, project_root: Path) -> bool:
+    try:
+        path.relative_to(project_root)
+    except ValueError:
+        return False
+    return True
+
+
 def _scope_exclusion_warning(excluded_count: int) -> Diagnostic:
     return Diagnostic(
         severity=DiagnosticSeverity.WARNING,
@@ -104,7 +124,20 @@ def _zero_target_error() -> Diagnostic:
     return Diagnostic(
         severity=DiagnosticSeverity.ERROR,
         code="diff_zero_target_after_scope_filter",
-        message="diff changed files produced no seed Python files after scope filtering",
+        message=(
+            "diff changed files produced no seed Python files after scope, file-type, and ignore filtering"
+        ),
+        origin_seam=OriginSeam.TARGETS,
+        recoverability=Recoverability.FATAL,
+        failure_reason=FailureReason.DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER,
+    )
+
+
+def _scope_only_zero_target_error() -> Diagnostic:
+    return Diagnostic(
+        severity=DiagnosticSeverity.ERROR,
+        code="diff_zero_target_scope_excluded_only",
+        message="diff changed Python files were found, but all were outside scope_root",
         origin_seam=OriginSeam.TARGETS,
         recoverability=Recoverability.FATAL,
         failure_reason=FailureReason.DIFF_ZERO_TARGET_AFTER_SCOPE_FILTER,

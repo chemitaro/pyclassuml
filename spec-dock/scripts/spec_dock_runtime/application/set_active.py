@@ -1,10 +1,30 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from ..domain.active import resolve_branch_decision
-from ..domain.authority import (
+from spec_dock_runtime.application.check_deps import (
+    load_cached_high_level_github_state_by_id,
+    resolve_high_level_status_context,
+)
+from spec_dock_runtime.application.contracts import (
+    ActiveClearResult,
+    ActiveSetResult,
+    ActiveViewEntry,
+    ActiveViewResult,
+    ClearActiveRequest,
+    SetActiveRequest,
+    ShowActiveRequest,
+    TargetRef,
+)
+from spec_dock_runtime.application.github_issue_targets import (
+    collect_repo_scoped_issue_view_targets,
+    normalize_repo_slug,
+)
+from spec_dock_runtime.application.repo_context import resolve_current_repo_slug
+from spec_dock_runtime.application.status_context import resolve_issue_status_context
+from spec_dock_runtime.domain.active import resolve_branch_decision
+from spec_dock_runtime.domain.authority import (
     AUTHORITY_APPROVED,
     GRANT_IMPLEMENTATION_START,
     GRANT_ISSUE_FINISH,
@@ -15,30 +35,26 @@ from ..domain.authority import (
     load_evidence_adoption_ledger_entries,
     validate_delegated_authority_artifact,
 )
-from ..domain.deps import evaluate_readiness, validate_deps_cycles
-from ..domain.ids import format_id, parse_id
-from ..domain.models import ActiveSelection, BranchDecision, NodeId, SpecGraph, SpecNodeKind, SpecNodeSeed
-from ..domain.tree import build_graph, select_active_chain
-from ..infra.contracts import ActiveManifest, ActiveManifestEntry, StoredMetaRecord
-from .contracts import (
-    ActiveClearResult,
-    ActiveSetResult,
-    ActiveViewEntry,
-    ActiveViewResult,
-    ClearActiveRequest,
-    SetActiveRequest,
-    ShowActiveRequest,
-    TargetRef,
+from spec_dock_runtime.domain.deps import evaluate_readiness, validate_deps_cycles, validate_raw_node_dependency_graph
+from spec_dock_runtime.domain.ids import format_id, parse_id
+from spec_dock_runtime.domain.models import (
+    ActiveSelection,
+    BranchDecision,
+    NodeId,
+    SpecGraph,
+    SpecNodeKind,
+    SpecNodeSeed,
 )
-from .github_issue_targets import collect_repo_scoped_issue_view_targets, normalize_repo_slug
-from .ports import Ports
-from .repo_context import resolve_current_repo_slug
-from .status_context import resolve_issue_status_context
+from spec_dock_runtime.domain.tree import build_graph, select_active_chain
+from spec_dock_runtime.infra.contracts import ActiveManifest, ActiveManifestEntry, StoredMetaRecord
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
 
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
     return SpecNodeSeed(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -73,17 +89,17 @@ def _to_repo_relative_specdock_path(path: Path, *, repo_root: Path) -> str:
     except ValueError:
         parts = path.parts
         if not parts:
-            raise RuntimeError(f"Cannot canonicalize empty node path: {path}")
+            raise RuntimeError(f"Cannot canonicalize empty node path: {path}") from None
         if parts[0] == "spec-dock":
             return path.as_posix()
         if "spec-dock" in parts:
             index = parts.index("spec-dock")
             return Path(*parts[index:]).as_posix()
-        raise RuntimeError(f"Node path is not under repo root and missing 'spec-dock' segment: {path}")
+        raise RuntimeError(f"Node path is not under repo root and missing 'spec-dock' segment: {path}") from None
 
 
 def _find_existing_id_by_num(graph: SpecGraph, *, prefix: str, num: int, local: bool) -> str | None:
-    for node_id in graph.nodes_by_id.keys():
+    for node_id in graph.nodes_by_id:
         try:
             parsed_prefix, is_local, parsed_num = parse_id(str(node_id))
         except RuntimeError:
@@ -100,7 +116,8 @@ def _resolve_target_node_id(graph: SpecGraph, target: TargetRef, *, current_repo
         matches = [
             node
             for node in graph.nodes_by_id.values()
-            if node.github_issue_number == int(target.github_issue_number) and node.kind in ("initiative", "epic", "issue")
+            if node.github_issue_number == int(target.github_issue_number)
+            and node.kind in ("initiative", "epic", "issue")
         ]
         target_repo_slug = normalize_repo_slug(target.github_repo_owner, target.github_repo_name)
         if target_repo_slug is not None:
@@ -197,6 +214,18 @@ def _load_cached_issue_last_sync_at_by_id(ports: Ports, specdock_dir: Path) -> d
     return out
 
 
+def _validate_raw_node_dependency_preflight(ports: Ports, specdock_dir: Path, graph: SpecGraph) -> None:
+    load_node_resolutions = getattr(ports.deps_topology_reader, "load_node_dependency_resolutions", None)
+    if not callable(load_node_resolutions):
+        return
+
+    raw_node_depends_on_map = {
+        src_id: [resolution.resolved_node_id for resolution in resolutions]
+        for src_id, resolutions in load_node_resolutions(specdock_dir, graph).items()
+    }
+    validate_raw_node_dependency_graph(graph, raw_node_depends_on_map)
+
+
 def build_context_pack_text(manifest: ActiveManifest, *, repo_root: Path | None = None) -> str:
     has_init = manifest.initiative is not None
     has_epic = manifest.epic is not None
@@ -215,7 +244,9 @@ def build_context_pack_text(manifest: ActiveManifest, *, repo_root: Path | None 
     lines.append("")
     lines.append("## Authority")
     lines.append("- source: `spec-dock/.agent/active.json`")
-    lines.append("- rule: proposed or missing authority cannot authorize implementation, issue ready, issue finish, or phase completion.")
+    lines.append(
+        "- rule: proposed or missing authority cannot authorize implementation, issue ready, issue finish, or phase completion."
+    )
     for label, entry in (
         ("initiative", manifest.initiative if has_init else None),
         ("epic", manifest.epic if has_epic else None),
@@ -451,6 +482,7 @@ def set_active(req: SetActiveRequest, ports: Ports) -> ActiveSetResult:
     target_node = graph.nodes_by_id.get(target_id)
     if target_node is None:
         raise RuntimeError(f"Node not found: {target_id}")
+    _validate_raw_node_dependency_preflight(ports, specdock_dir, graph)
     topology = ports.deps_topology_reader.load_issue_depends_on_map(specdock_dir, graph)
     issue_depends_on_map = dict(topology.issue_depends_on_map)
     for warning in topology.warnings:
@@ -491,9 +523,12 @@ def set_active(req: SetActiveRequest, ports: Ports) -> ActiveSetResult:
 
     cached_issue_status_by_id: dict[str, str] = {}
     cached_issue_last_sync_at_by_id: dict[str, str | None] = {}
+    cached_high_level_github_state_by_id: dict[str, str] = {}
     if ports.derived_state_reader is not None:
         cached_issue_status_by_id = ports.derived_state_reader.load_cached_issue_status_by_id(specdock_dir)
         cached_issue_last_sync_at_by_id = _load_cached_issue_last_sync_at_by_id(ports, specdock_dir)
+        if not req.use_github:
+            cached_high_level_github_state_by_id = load_cached_high_level_github_state_by_id(specdock_dir)
 
     status_context = resolve_issue_status_context(
         graph,
@@ -511,11 +546,17 @@ def set_active(req: SetActiveRequest, ports: Ports) -> ActiveSetResult:
         issue_depends_on_map=issue_depends_on_map,
         target_id=NodeId(target_id),
         issue_statuses=status_context.issue_statuses,
+        dependency_contexts_by_issue_id=topology.dependency_contexts_by_issue_id,
+        high_level_statuses_by_node_id=resolve_high_level_status_context(
+            graph,
+            issue_statuses=status_context.issue_statuses,
+            cached_high_level_github_state_by_id=cached_high_level_github_state_by_id,
+        ),
     )
     blockers = list(deps.blockers)
     guard_ready = deps.ready
     if not guard_ready:
-        if not req.force:
+        if deps.node_blockers or not req.force:
             lines = [
                 (
                     "active set blocked: "
@@ -524,6 +565,14 @@ def set_active(req: SetActiveRequest, ports: Ports) -> ActiveSetResult:
             ]
             for blocker in blockers:
                 lines.append(f"- {blocker}")
+            for blocker in deps.node_blockers:
+                lines.append(
+                    "- node_blocker: "
+                    f"{blocker.node_id} reason={blocker.reason} "
+                    f"state={blocker.state} source={blocker.state_source} "
+                    f"dependency_disposition={blocker.dependency_disposition or '-'} "
+                    f"disposition_basis={blocker.disposition_basis or '-'}"
+                )
             raise RuntimeError("\n".join(lines))
         _append_unique(
             warnings,

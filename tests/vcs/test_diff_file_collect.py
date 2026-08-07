@@ -92,10 +92,15 @@ def context(
 
 def config(
     *,
+    depth: int | None = None,
     current_state: DiffCurrentState = DiffCurrentState.WORKING_TREE,
     include_untracked: bool = False,
 ) -> AnalysisConfig:
-    return AnalysisConfig(diff_current_state=current_state, diff_include_untracked=include_untracked)
+    return AnalysisConfig(
+        depth=depth,
+        diff_current_state=current_state,
+        diff_include_untracked=include_untracked,
+    )
 
 
 def assert_success(result: VcsDiffCollection) -> tuple[ChangedFileEntry, ...]:
@@ -163,6 +168,57 @@ def test_explicit_base_sets_authoritative_base_resolution(tmp_path: Path) -> Non
     )
 
 
+def test_diff_changed_files_are_invariant_to_analysis_depth(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "first.py", "before\n")
+    write_file(repo / "pkg" / "second.py", "before\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    head_sha = rev_parse(repo, "HEAD")
+    write_file(repo / "pkg" / "first.py", "after\n")
+    write_file(repo / "pkg" / "second.py", "after\n")
+
+    collections = [
+        collect_diff_files(request(repo, base_ref=None), context(repo), config(depth=depth))
+        for depth in (0, 1, 2)
+    ]
+
+    assert [assert_success(result) for result in collections] == [
+        (ChangedFileEntry("pkg/first.py", "modified"), ChangedFileEntry("pkg/second.py", "modified")),
+    ] * 3
+    assert [result.collection.base_resolution for result in collections if result.collection is not None] == [
+        DiffBaseResolution(
+            requested_base_ref=None,
+            resolved_base_ref=head_sha,
+            resolution_kind="default_branch_head",
+            candidate_ref=None,
+        ),
+    ] * 3
+
+
+def test_explicit_revision_expression_is_preserved_and_tree_object_is_rejected(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "base\n")
+    commit_all(repo, "base")
+    write_file(repo / "tracked.py", "head\n")
+    commit_all(repo, "head")
+
+    result = collect_diff_files(request(repo, base_ref="HEAD~1"), context(repo), config())
+
+    assert assert_success(result) == (ChangedFileEntry("tracked.py", "modified"),)
+    assert result.collection is not None
+    assert result.collection.base_resolution == DiffBaseResolution(
+        requested_base_ref="HEAD~1",
+        resolved_base_ref="HEAD~1",
+        resolution_kind="explicit_base",
+        candidate_ref=None,
+    )
+
+    tree_ref = rev_parse(repo, "HEAD^{tree}")
+    invalid = collect_diff_files(request(repo, base_ref=tree_ref), context(repo), config())
+    assert_error(invalid, code="invalid_base_ref")
+
+
 def test_invalid_explicit_base_does_not_fallback(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "tracked.py")
@@ -197,12 +253,181 @@ def test_no_base_feature_branch_resolves_default_branch_merge_base(tmp_path: Pat
     )
 
 
-def test_no_base_without_usable_candidate_uses_initial_commit_fallback(tmp_path: Path) -> None:
+def test_no_base_detached_head_uses_valid_default_branch_merge_base(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "base\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    base_sha = rev_parse(repo, "HEAD")
+    git(repo, "update-ref", "refs/remotes/origin/main", base_sha)
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    git(repo, "checkout", "--detach", "HEAD")
+    write_file(repo / "tracked.py", "detached working tree\n")
+
+    result = collect_diff_files(request(repo, base_ref=None), context(repo), config())
+
+    assert assert_success(result) == (ChangedFileEntry("tracked.py", "modified"),)
+    assert result.collection is not None
+    assert result.collection.base_resolution == DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref=base_sha,
+        resolution_kind="default_branch_merge_base",
+        candidate_ref="origin/main",
+    )
+
+
+def test_no_base_detached_head_without_candidates_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "base\n")
+    commit_all(repo, "base")
+    git(repo, "checkout", "--detach", "HEAD")
+    monkeypatch.setattr(diff_collect, "_default_branch_candidates", lambda vcs_root: ())
+
+    result = collect_diff_files(request(repo, base_ref=None), context(repo), config())
+
+    assert_error(result, code="diff_base_resolution_unavailable")
+
+
+def test_no_base_default_branch_working_tree_uses_start_head_sha_without_history_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "initial\n")
+    commit_all(repo, "initial")
+    git(repo, "branch", "-M", "main")
+    write_file(repo / "tracked.py", "historical\n")
+    commit_all(repo, "historical")
+    head_sha = rev_parse(repo, "HEAD")
+    git(repo, "update-ref", "refs/remotes/origin/main", rev_parse(repo, "HEAD~1"))
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    write_file(repo / "tracked.py", "working tree\n")
+
+    original_run_git = diff_collect._run_git
+    seen_args: list[tuple[str, ...]] = []
+
+    def run_git_spy(
+        project_root: Path,
+        args: tuple[str, ...],
+        *,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[bytes]:
+        seen_args.append(args)
+        return original_run_git(project_root, args, check=check)
+
+    monkeypatch.setattr(diff_collect, "_run_git", run_git_spy)
+
+    result = collect_diff_files(request(repo, base_ref=None), context(repo), config())
+
+    assert assert_success(result) == (ChangedFileEntry("tracked.py", "modified"),)
+    assert result.collection is not None
+    assert result.collection.base_resolution == DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref=head_sha,
+        resolution_kind="default_branch_head",
+        candidate_ref=None,
+    )
+    assert sum(args == ("rev-parse", "--verify", "HEAD^{commit}") for args in seen_args) == 1
+    assert not any(args[:2] == ("rev-list", "--max-parents=0") for args in seen_args)
+
+
+def test_no_base_default_branch_head_requires_explicit_base_before_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "initial\n")
+    commit_all(repo, "initial")
+    git(repo, "branch", "-M", "main")
+    seen_args: list[tuple[str, ...]] = []
+    original_run_git = diff_collect._run_git
+
+    def run_git_spy(
+        project_root: Path,
+        args: tuple[str, ...],
+        *,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[bytes]:
+        seen_args.append(args)
+        return original_run_git(project_root, args, check=check)
+
+    monkeypatch.setattr(diff_collect, "_run_git", run_git_spy)
+
+    result = collect_diff_files(
+        request(repo, base_ref=None),
+        context(repo),
+        config(current_state=DiffCurrentState.HEAD),
+    )
+
+    assert_error(result, code="diff_default_branch_head_requires_base")
+    assert "HEAD~1" in result.diagnostics[0].message
+    assert "origin/<default-branch>" in result.diagnostics[0].message
+    assert not any(args[:1] == ("diff",) for args in seen_args)
+
+
+def test_origin_head_identity_takes_precedence_over_conventional_branch_name(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "base\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    base_sha = rev_parse(repo, "HEAD")
+    write_file(repo / "tracked.py", "main history\n")
+    commit_all(repo, "main history")
+    git(repo, "branch", "release/main", base_sha)
+    git(repo, "update-ref", "refs/remotes/origin/release/main", base_sha)
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/release/main")
+    write_file(repo / "tracked.py", "working tree\n")
+
+    result = collect_diff_files(request(repo, base_ref=None), context(repo), config())
+
+    assert result.collection is not None
+    assert result.collection.base_resolution == DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref=base_sha,
+        resolution_kind="default_branch_merge_base",
+        candidate_ref="origin/release/main",
+    )
+
+
+def test_configured_current_state_is_authoritative_over_raw_cli_state(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "base\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    write_file(repo / "tracked.py", "working tree\n")
+
+    request_head = request(repo, base_ref=None)
+    request_head = CommandRequest(
+        process_cwd=request_head.process_cwd,
+        cli_options=CommandOptions(
+            command=CommandName.DIFF,
+            diff=DiffOptions(
+                base_ref=None,
+                current_state=DiffCurrentState.HEAD,
+                include_untracked=False,
+            ),
+        ),
+    )
+    working_tree_result = collect_diff_files(request_head, context(repo), config())
+    assert assert_success(working_tree_result) == (ChangedFileEntry("tracked.py", "modified"),)
+
+    request_working_tree = request(repo, base_ref=None)
+    head_result = collect_diff_files(
+        request_working_tree,
+        context(repo),
+        config(current_state=DiffCurrentState.HEAD),
+    )
+    assert_error(head_result, code="diff_default_branch_head_requires_base")
+
+
+def test_no_base_without_usable_candidate_fails_without_initial_commit_fallback(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "tracked.py", "initial\n")
     commit_all(repo, "initial")
     git(repo, "branch", "-M", "feature/no-candidate")
-    initial_sha = rev_parse(repo, "HEAD")
     write_file(repo / "tracked.py", "head\n")
     commit_all(repo, "head")
 
@@ -227,24 +452,49 @@ def test_no_base_without_usable_candidate_uses_initial_commit_fallback(tmp_path:
 
     result = collect_diff_files(request(repo, base_ref=None), context(repo), config())
 
-    assert assert_success_with_diagnostics(result) == (ChangedFileEntry("tracked.py", "modified"),)
-    assert result.collection is not None
-    assert result.collection.base_resolution == DiffBaseResolution(
-        requested_base_ref=None,
-        resolved_base_ref=initial_sha,
-        resolution_kind="initial_commit_fallback",
-        candidate_ref=None,
-    )
-    assert len(result.diagnostics) == 1
-    diagnostic = result.diagnostics[0]
-    assert diagnostic.code == "diff_base_initial_commit_fallback"
-    assert diagnostic.severity is DiagnosticSeverity.WARNING
-    assert diagnostic.origin_seam is OriginSeam.VCS
-    assert diagnostic.recoverability is Recoverability.DEGRADED_OUTPUT
-    assert diagnostic.failure_reason is None
+    assert_error(result, code="diff_base_resolution_unavailable")
+    assert all(diagnostic.code != "diff_base_initial_commit_fallback" for diagnostic in result.diagnostics)
 
 
-def test_no_base_current_slashful_default_branch_uses_initial_commit_fallback(tmp_path: Path) -> None:
+def test_no_base_candidate_exhaustion_does_not_call_rev_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "base\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    base_sha = rev_parse(repo, "HEAD")
+    git(repo, "update-ref", "refs/remotes/origin/main", base_sha)
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    git(repo, "switch", "-c", "feature/no-merge-base")
+    write_file(repo / "tracked.py", "feature\n")
+
+    original_run_git = diff_collect._run_git
+    attempted_rev_list = False
+
+    def run_git_spy(
+        project_root: Path,
+        args: tuple[str, ...],
+        *,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[bytes]:
+        nonlocal attempted_rev_list
+        if args[:1] == ("merge-base",):
+            return subprocess.CompletedProcess(("git", *args), 1, b"", b"no merge base\n")
+        if args[:1] == ("rev-list",):
+            attempted_rev_list = True
+        return original_run_git(project_root, args, check=check)
+
+    monkeypatch.setattr(diff_collect, "_run_git", run_git_spy)
+
+    result = collect_diff_files(request(repo, base_ref=None), context(repo), config())
+
+    assert_error(result, code="diff_base_resolution_unavailable")
+    assert attempted_rev_list is False
+
+
+def test_no_base_current_slashful_default_branch_working_tree_uses_head(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "tracked.py", "initial\n")
     commit_all(repo, "initial")
@@ -259,12 +509,12 @@ def test_no_base_current_slashful_default_branch_uses_initial_commit_fallback(tm
 
     result = collect_diff_files(request(repo, base_ref=None), context(repo), config())
 
-    assert assert_success_with_diagnostics(result) == (ChangedFileEntry("tracked.py", "modified"),)
+    assert assert_success_with_diagnostics(result) == ()
     assert result.collection is not None
     assert result.collection.base_resolution == DiffBaseResolution(
         requested_base_ref=None,
-        resolved_base_ref=initial_sha,
-        resolution_kind="initial_commit_fallback",
+        resolved_base_ref=rev_parse(repo, "HEAD"),
+        resolution_kind="default_branch_head",
         candidate_ref=None,
     )
 
@@ -332,6 +582,8 @@ def test_no_base_candidate_order_skips_missing_duplicates_and_merge_base_failure
 
     original_run_git = diff_collect._run_git
     attempted_merge_bases: list[str] = []
+    attempted_merge_base_heads: list[str] = []
+    attempted_rev_list = False
 
     def run_git_spy(
         project_root: Path,
@@ -341,8 +593,12 @@ def test_no_base_candidate_order_skips_missing_duplicates_and_merge_base_failure
     ) -> subprocess.CompletedProcess[bytes]:
         if args[:1] == ("merge-base",):
             attempted_merge_bases.append(args[1])
+            attempted_merge_base_heads.append(args[2])
             if args[1] == "origin/main":
                 return subprocess.CompletedProcess(("git", *args), 1, b"", b"no merge base\n")
+        nonlocal attempted_rev_list
+        if args[:1] == ("rev-list",):
+            attempted_rev_list = True
         return original_run_git(project_root, args, check=check)
 
     monkeypatch.setattr(diff_collect, "_run_git", run_git_spy)
@@ -351,6 +607,8 @@ def test_no_base_candidate_order_skips_missing_duplicates_and_merge_base_failure
 
     assert assert_success(result) == (ChangedFileEntry("tracked.py", "modified"),)
     assert attempted_merge_bases == ["origin/main", "develop"]
+    assert attempted_merge_base_heads == [base_sha, base_sha]
+    assert attempted_rev_list is False
     assert result.collection is not None
     assert result.collection.base_resolution == DiffBaseResolution(
         requested_base_ref=None,
@@ -395,6 +653,61 @@ def test_modified_file_collects_current_side_changed_hunk_ranges(tmp_path: Path)
 
     assert entry == ChangedFileEntry("pkg/models.py", "modified")
     assert entry.current_changed_line_ranges == (ChangedLineRange(start=5, end=5),)
+
+
+def test_git_diff_collection_disables_lazy_fetch_external_diff_and_textconv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "pkg" / "model.py", "class Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    write_file(repo / "pkg" / "model.py", "class Model:\n    value = 2\n")
+
+    original_run = diff_collect.subprocess.run
+    calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+    def run_spy(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        calls.append((command, kwargs))
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(diff_collect.subprocess, "run", run_spy)
+
+    result = collect_diff_files(request(repo), context(repo), config())
+
+    assert assert_success(result) == (ChangedFileEntry("pkg/model.py", "modified"),)
+    assert calls
+    assert all(call_kwargs["env"]["GIT_NO_LAZY_FETCH"] == "1" for _, call_kwargs in calls)
+    diff_commands = [command for command, _ in calls if "diff" in command]
+    assert diff_commands
+    for command in diff_commands:
+        assert "--no-ext-diff" in command
+        assert "--no-textconv" in command
+        assert "--no-color" in command
+
+
+def test_git_diff_collection_does_not_invoke_external_diff_or_textconv_sentinels(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    marker = tmp_path / "sentinel-called"
+    external_diff = tmp_path / "external-diff.sh"
+    textconv = tmp_path / "textconv.sh"
+    write_file(external_diff, f"#!/bin/sh\ntouch '{marker}'\nexit 97\n")
+    write_file(textconv, f"#!/bin/sh\ntouch '{marker}'\ncat \"$1\"\n")
+    external_diff.chmod(0o755)
+    textconv.chmod(0o755)
+    write_file(repo / ".gitattributes", "pkg/model.py diff=sentinel\n")
+    write_file(repo / "pkg" / "model.py", "class Model:\n    value = 1\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    git(repo, "config", "diff.external", str(external_diff))
+    git(repo, "config", "diff.sentinel.textconv", str(textconv))
+    write_file(repo / "pkg" / "model.py", "class Model:\n    value = 2\n")
+
+    result = collect_diff_files(request(repo), context(repo), config())
+
+    assert assert_success(result) == (ChangedFileEntry("pkg/model.py", "modified"),)
+    assert not marker.exists()
 
 
 def test_deleted_only_hunk_uses_current_side_point_range(tmp_path: Path) -> None:
@@ -573,6 +886,94 @@ def test_working_tree_untracked_included_excluded_and_empty_success(tmp_path: Pa
     (repo / "untracked.py").unlink()
     empty = collect_diff_files(request(repo), context(repo), config(include_untracked=True))
     assert assert_success(empty) == ()
+
+
+def test_implicit_changed_path_limit_is_inclusive_and_explicit_base_bypasses() -> None:
+    implicit_resolution = DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref="abc123",
+        resolution_kind="default_branch_head",
+        candidate_ref=None,
+    )
+    entries = [diff_collect._RawChangedFileEntry(f"pkg/{index}.py", "modified") for index in range(1000)]
+
+    diff_collect._ensure_implicit_changed_path_limit(implicit_resolution, entries)
+
+    with pytest.raises(diff_collect.VcsDiffError, match="1001") as error_info:
+        diff_collect._ensure_implicit_changed_path_limit(
+            implicit_resolution,
+            [*entries, diff_collect._RawChangedFileEntry("pkg/1000.py", "modified")],
+        )
+    assert error_info.value.code == "diff_implicit_range_too_broad"
+
+    explicit_resolution = DiffBaseResolution(
+        requested_base_ref="base",
+        resolved_base_ref="base",
+        resolution_kind="explicit_base",
+        candidate_ref=None,
+    )
+    diff_collect._ensure_implicit_changed_path_limit(explicit_resolution, entries + entries[:1])
+
+
+def test_implicit_range_guard_stops_before_hunk_and_explicit_base_bypasses_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "one.py", "class One:\n    pass\n")
+    write_file(repo / "two.py", "class Two:\n    pass\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    git(repo, "branch", "-M", "main")
+    write_file(repo / "one.py", "class One:\n    value = 1\n")
+    write_file(repo / "two.py", "class Two:\n    value = 2\n")
+    head_sha = rev_parse(repo, "HEAD")
+    monkeypatch.setattr(diff_collect, "MAX_IMPLICIT_DIFF_CHANGED_PATHS", 1)
+    original_hunk = diff_collect._entry_with_current_changed_line_ranges
+    hunk_calls = 0
+
+    def hunk_spy(*args: object, **kwargs: object) -> diff_collect._RawChangedFileEntry:
+        nonlocal hunk_calls
+        hunk_calls += 1
+        return original_hunk(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(diff_collect, "_entry_with_current_changed_line_ranges", hunk_spy)
+
+    implicit = collect_diff_files(request(repo, base_ref=None), context(repo), config())
+    assert_error(implicit, code="diff_implicit_range_too_broad")
+    assert f"base {head_sha}" in implicit.diagnostics[0].message
+    assert "2 changed paths" in implicit.diagnostics[0].message
+    assert f"--base {head_sha}" in implicit.diagnostics[0].message
+    assert hunk_calls == 0
+
+    explicit = collect_diff_files(request(repo, base_ref="base"), context(repo), config())
+    assert assert_success(explicit) == (
+        ChangedFileEntry("one.py", "modified"),
+        ChangedFileEntry("two.py", "modified"),
+    )
+    assert hunk_calls == 2
+
+
+def test_implicit_range_guard_counts_included_untracked_before_target_filter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = init_repo(tmp_path / "repo")
+    write_file(repo / "tracked.py", "before\n")
+    commit_all(repo, "base")
+    git(repo, "branch", "-M", "main")
+    write_file(repo / "tracked.py", "after\n")
+    write_file(repo / "notes.txt", "untracked non-Python\n")
+    monkeypatch.setattr(diff_collect, "MAX_IMPLICIT_DIFF_CHANGED_PATHS", 1)
+
+    result = collect_diff_files(
+        request(repo, base_ref=None),
+        context(repo),
+        config(include_untracked=True),
+    )
+
+    assert_error(result, code="diff_implicit_range_too_broad")
+    assert "2 changed paths" in result.diagnostics[0].message
 
 
 def test_head_diff_uses_head_not_working_tree(tmp_path: Path) -> None:
@@ -782,6 +1183,27 @@ def test_nested_project_root_head_returns_project_relative_paths_only(tmp_path: 
     assert assert_success(result) == (ChangedFileEntry("inside.py", "modified"),)
 
 
+def test_nested_project_rename_uses_vcs_paths_for_hunk_and_project_paths_for_dto(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo")
+    project = repo / "packages" / "app"
+    write_file(project / "old.py", "class Model:\n    value = 1\n    keep = True\n    stable = True\n")
+    commit_all(repo, "base")
+    tag_base(repo)
+    git(repo, "mv", "packages/app/old.py", "packages/app/new.py")
+    write_file(project / "new.py", "class Model:\n    value = 2\n    keep = True\n    stable = True\n")
+
+    result = collect_diff_files(
+        request(project),
+        context(repo, project_root=project),
+        config(),
+    )
+
+    (entry,) = assert_success(result)
+    assert entry.current_project_relative_path == "new.py"
+    assert entry.previous_project_relative_path == "old.py"
+    assert entry.current_changed_line_ranges == (ChangedLineRange(start=2, end=2),)
+
+
 def test_entries_are_deduped_by_current_path_and_sorted(monkeypatch, tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "repo")
     write_file(repo / "tracked.py")
@@ -794,9 +1216,9 @@ def test_entries_are_deduped_by_current_path_and_sorted(monkeypatch, tmp_path: P
         diff_collect,
         "_tracked_entries",
         lambda vcs_root, project_root, base_ref, current_state: [
-            ChangedFileEntry("z.py", "modified"),
-            ChangedFileEntry("a.py", "added"),
-            ChangedFileEntry("z.py", "renamed", "old_z.py"),
+            diff_collect._RawChangedFileEntry("z.py", "modified"),
+            diff_collect._RawChangedFileEntry("a.py", "added"),
+            diff_collect._RawChangedFileEntry("z.py", "renamed", "old_z.py"),
         ],
     )
 

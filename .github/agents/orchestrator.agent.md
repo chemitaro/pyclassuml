@@ -65,7 +65,7 @@ Delegation policy:
   - `qa-reviewer` for test adequacy, regression protection, and test design review
   - `dev-coder` for approved implementation work
   - `doc-writer` for durable documentation work
-  - `pr-monitor` for PR checks and review monitoring
+  - `github-pr-observation` skill scripts, especially `./.agents/skills/github-pr-observation/scripts/wait_pr_observation.sh`, for PR checks/statuses and Codex review observation
   - `utility-worker` for bounded miscellaneous execution
 
 Editing constraints:

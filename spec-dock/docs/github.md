@@ -10,7 +10,7 @@
   - `gh` を導入先リポジトリの root で実行し、対象リポジトリの解決は **`gh` に委譲**します。
 - `--github-issue <n>` は既存 current-repo Issue にリンクするだけで、GitHub Issue は新規作成しません。
 - 新規ノード作成時は、spec-dock が対応する issue docs と `.meta.json` を管理対象として書き込みます。
-- `--no-github` は compatibility option として残っていますが、`initiative / epic / issue` では contract error で reject されます。
+- `--no-github` は `initiative / epic / issue` の node creation option ではありません。既存 Issue に紐づける場合は `--github-issue <n>` を使います。
 - `--slug` は **安全な文字のみ**許可します（空白や `!` などは禁止）
   - 許可: Unicode の英数字 + `-` `_` `.`
   - 追加制約: **小文字のみ**（大文字を含む場合はエラー）
@@ -66,12 +66,12 @@ create 系では spec-dock は `--repo owner/repo` を指定しません。
 - 必要に応じて `GH_REPO` 等の環境変数
 - `gh auth`（認証）状態と権限
 
-## 3) `--no-github`（互換フラグ / reject）
+## 3) 新規作成しない場合（GitHub Issue）
 
 現行 contract では、`initiative / epic / issue` の local-only create はサポートされません。
 
-- `--no-github` は compatibility option として残っていますが、成功経路にはなりません
 - GitHub Issue を新規作成したくない場合は、current repo の既存 Issue を `--github-issue <n>` で指定してください
+- `--no-github` は node creation parser に登録されていないため、未認識 option として失敗します
 - `gh` 未導入 / 未認証 / repo 未解決の状態では create は失敗します。先に GitHub linkage を整えてください
 
 ## 4) 内部処理のイメージ（PlantUML）
@@ -98,8 +98,8 @@ alt default (GitHub)
   GH --> Script: stdout/stderr
   deactivate GH
   Script -> Script: parse <num>\n-> id=iss-<num>
-else --no-github
-  Script -> Script: contract error\n(local-only create unsupported)
+else --github-issue <n>
+  Script -> Script: id=<kind>-<n>\n(link existing current-repo issue)
 end
 
 Script -> FS: write issue docs + .meta.json
@@ -110,5 +110,5 @@ deactivate Script
 ## 5) よくある失敗
 
 - `gh` が無い / 未認証: `new` がエラー → `gh` と current repo の GitHub linkage を先に整える
-- local-only で作りたい: `--no-github` は reject → current repo の既存 Issue に `--github-issue <n>` でリンクする
+- local-only で作りたい: local-only create は非対応。current repo の既存 Issue に `--github-issue <n>` でリンクする
 - GitHub リポジトリとして解決できない / 権限がない: `gh issue create` が失敗 → `git remote` / `gh auth` を確認

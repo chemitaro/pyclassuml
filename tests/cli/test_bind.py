@@ -92,6 +92,17 @@ def test_diff_binds_default_current_state_and_include_untracked() -> None:
     assert options.generate is None
 
 
+def test_bind_depth_preserves_none_and_explicit_zero() -> None:
+    for command in ("generate", "diff"):
+        assert bind_command_request((command,), Path("/repo")).cli_options.depth is None
+        assert (
+            bind_command_request(
+                (command, "--depth", "0"), Path("/repo")
+            ).cli_options.depth
+            == 0
+        )
+
+
 def test_diff_binds_specified_current_state_and_include_untracked() -> None:
     request = bind_command_request(
         ("diff", "--base", "origin/main", "--current-state", "head", "--include-untracked"),

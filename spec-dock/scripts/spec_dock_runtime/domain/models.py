@@ -1,10 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 SpecNodeKind = Literal["initiative", "epic", "issue"]
+DepsLifecycleState = Literal["open", "closed", "done", "unknown"]
+DepsDependencyDisposition = Literal["blocking", "satisfied", "indeterminate"]
+DepsDispositionBasis = Literal[
+    "empty_open_container",
+    "empty_unknown_container",
+    "lifecycle_closed",
+    "local_done",
+    "all_descendant_issues_done",
+    "descendant_issue_open",
+    "descendant_issue_unknown",
+]
 
 
 @dataclass(frozen=True)
@@ -113,12 +126,65 @@ class DepsState:
 
 
 @dataclass(frozen=True)
+class DepsDependencyContext:
+    source_node_id: str
+    source_issue_id: str
+    target_node_id: str
+    target_node_kind: SpecNodeKind
+    target_issue_ids: tuple[str, ...]
+    expansion: Literal["issue", "expanded", "empty"]
+    lifecycle_state: DepsLifecycleState | None = field(default=None, compare=False)
+    lifecycle_source: str | None = field(default=None, compare=False)
+    dependency_disposition: DepsDependencyDisposition | None = field(default=None, compare=False)
+    disposition_basis: DepsDispositionBasis | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
+class DepsDirectNodeDependency:
+    source_node_id: str
+    source_node_kind: SpecNodeKind
+    target_node_id: str
+    target_node_kind: SpecNodeKind
+    target_issue_ids: tuple[str, ...]
+    expansion: Literal["issue", "expanded", "empty"]
+    lifecycle_state: DepsLifecycleState
+    lifecycle_source: str
+    dependency_disposition: DepsDependencyDisposition
+    disposition_basis: DepsDispositionBasis
+
+
+@dataclass(frozen=True)
+class DepsHighLevelStatus:
+    node_id: str
+    state: DepsLifecycleState
+    source: str
+
+
+@dataclass(frozen=True)
+class DepsNodeBlocker:
+    node_id: str
+    reason: Literal["empty_open", "empty_unknown", "lifecycle_unknown"]
+    state: Literal["open", "unknown"]
+    state_source: str
+    source_issue_id: str
+    lifecycle_state: DepsLifecycleState | None = None
+    lifecycle_source: str | None = None
+    dependency_disposition: DepsDependencyDisposition | None = None
+    disposition_basis: DepsDispositionBasis | None = None
+
+
+@dataclass(frozen=True)
 class DepsEvaluation:
     ready: bool
     guard_reason: Literal["ready", "blocked", "unknown"]
     blockers: list[str]
     blockers_top: list[str]
     closure: list[str]
+    issue_blockers: list[str] = field(default_factory=list)
+    node_blockers: list[DepsNodeBlocker] = field(default_factory=list)
+    satisfied_dependencies: list[DepsDependencyContext] = field(default_factory=list)
+    dependency_contexts: list[DepsDependencyContext] = field(default_factory=list)
+    debug_context: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -129,6 +195,7 @@ class TargetDepsInspection:
     effective_depends_on: list[str]
     warnings: list[str]
     issue_statuses: dict[str, IssueStatusSnapshot] = field(default_factory=dict)
+    direct_node_dependencies: list[DepsDirectNodeDependency] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

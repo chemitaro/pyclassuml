@@ -29,7 +29,7 @@ _RELATION_TYPES = frozenset(
 )
 _ANNOTATION_SHAPES = frozenset({"direct", "optional", "union", "collection", "mapping_value"})
 _DIFF_BASE_RESOLUTION_KINDS = frozenset(
-    {"explicit_base", "default_branch_merge_base", "initial_commit_fallback"}
+    {"explicit_base", "default_branch_head", "default_branch_merge_base", "initial_commit_fallback"}
 )
 
 
@@ -142,7 +142,8 @@ def _ensure_non_empty_strings(values: tuple[object, ...], field_name: str) -> No
 def _ensure_diff_base_resolution_kind(value: object) -> None:
     if value not in _DIFF_BASE_RESOLUTION_KINDS:
         raise ValueError(
-            "resolution_kind must be one of: explicit_base, default_branch_merge_base, initial_commit_fallback"
+            "resolution_kind must be one of: explicit_base, default_branch_head, default_branch_merge_base, "
+            "initial_commit_fallback"
         )
 
 

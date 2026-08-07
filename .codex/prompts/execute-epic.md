@@ -1,13 +1,14 @@
 # Execute Epic
 
-Complete the relevant spec-dock epic by decomposing it into issues and executing
-those issues through the issue workflow.
+Complete the relevant spec-dock epic by coordinating execution of ready Issues
+from the approved Epic plan through the issue workflow.
 
-Use the `$spec-dock-epic-planning` skill for epic-level planning and
-decomposition. Use `/execute-issue` and the `$spec-dock-issue-execution` skill
-for each concrete issue implementation. Do not create a new skill for this
-workflow, and do not substantially rewrite existing skills as part of this
-prompt.
+Use `$spec-dock-epic-execution` as the first-read coordinator for Epic execution
+after Epic planning is complete. It routes incomplete Epic planning back to
+`$spec-dock-epic-planning`, selects one ready Issue at a time, and hands each
+concrete Issue to `/execute-issue` and `$spec-dock-issue-execution` when the
+Issue plan is executable. Do not substantially rewrite existing skills as part
+of this prompt.
 
 This prompt supports two operating modes:
 
@@ -26,43 +27,47 @@ When this prompt references `/execute-issue`, do not rely on nested slash comman
 expansion. It means: apply the same prompt contract as `/execute-issue` and use
 `$spec-dock-issue-execution` for the active issue.
 
-Before issue decomposition starts:
+Before Epic execution starts:
 
 1. Inspect `spec-dock/active/context-pack.md` and the current active state.
 2. Confirm the relevant initiative, epic, branch, and user objective.
-3. If no suitable epic is active, inspect existing epics under the relevant
-   initiative before creating or importing a new epic.
+3. If no suitable epic is active or requested, stop execution and route to
+   `$spec-dock-epic-planning` for Epic selection, import, creation, or authoring
+   as needed.
 4. Inspect the active epic `report.md` and confirm recorded Spec Authoring Gate
    evidence for fresh spec-reviewer pass on requirement, design, and plan. If
-   that evidence is missing, stale, or inconsistent, rerun and fix the authoring
-   gates before creating issues.
+   that evidence is missing, stale, or inconsistent, stop execution and hand
+   the Epic back to `$spec-dock-epic-planning`.
 5. Use `spec-dock/docs/workflow_epic.md` as the source of truth for epic reuse,
-   creation, authoring, issue decomposition, and epic quality gates.
+   creation, authoring, issue readiness, and epic quality gates.
 6. Use `spec-dock/docs/workflow_spec_authoring.md` for requirement/design/plan
    phase promotion.
 7. Use `spec-dock/docs/phase_plan_epic.md` for epic plan structure and issue
    readiness contracts.
+8. Treat `spec-dock/docs/rules/epic/issues.md` as an Epic planning handoff
+   reference for Issue decomposition and readiness, not as execution authority
+   for this prompt.
 
 If the epic requirement, design, or plan is missing, contradictory,
-template-only, or not ready for issue decomposition, do not create issues yet.
-Repair the epic docs through the spec authoring workflow and fresh
-spec-reviewer gates before decomposition.
+template-only, or not ready for Issue execution, do not execute or create Issues
+from this prompt. Hand the Epic back to `$spec-dock-epic-planning` for spec
+authoring, initiative-driven decomposition, dependency, or Issue readiness repair.
 
 When the epic is ready:
 
-- Decompose the epic plan into concrete issues with clear scope, order,
-  dependencies, readiness criteria, integration checkpoints, and acceptance
-  mapping back to the epic.
-- Create or update issues using `./spec-dock/scripts/spec-dock ...` commands and
-  the rules in `spec-dock/docs/workflow_epic.md`,
-  `spec-dock/docs/rules/epic/issues.md`, `spec-dock/docs/reference_github.md`,
-  `spec-dock/docs/reference_deps.md`, and `spec-dock/docs/reference_sync.md`.
-- For each issue, run `./spec-dock/scripts/spec-dock issue start <issue-id>`
-  before implementation, then execute the issue using the `/execute-issue`
-  contract.
+- Select the next ready Issue from the approved Epic plan, dependency state, and
+  `spec-dock/docs/workflow_epic.md`. If no Issue is ready because all required
+  Issues are complete or the reviewed plan explicitly has no executable Issue
+  work, record no-op / completion evidence and continue to the Epic completion
+  gate. If executable Issue work remains blocked or unready, record blocker
+  evidence and hand the Epic back to `$spec-dock-epic-planning` or the relevant
+  workflow gate instead of inventing execution work.
+- For the selected Issue, run
+  `./spec-dock/scripts/spec-dock issue start <issue-id>` before implementation,
+  then execute that active Issue using the `/execute-issue` contract.
 - Treat each issue as a complete TDD execution unit governed by
   `$spec-dock-issue-execution`.
-- Record epic-level decomposition decisions, issue handoff evidence,
+- Record issue selection evidence, issue handoff evidence,
   integration checkpoint evidence, skipped or blocked issue rationale, and final
   epic completion evidence in the epic `report.md`.
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
-from ..domain.models import IssueSnapshot, SpecGraph
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from spec_dock_runtime.domain.models import IssueSnapshot, SpecGraph
 
 
 def normalize_repo_slug(owner: str | None, repo: str | None) -> str | None:
@@ -44,7 +47,9 @@ def collect_repo_scoped_issue_view_targets(
         repo_slug = normalize_repo_slug(node.github_repo_owner, node.github_repo_name)
         if repo_slug is None:
             # Keep fail-closed behavior for malformed partial scoped linkage.
-            has_partial_scope = bool(str(node.github_repo_owner or "").strip()) or bool(str(node.github_repo_name or "").strip())
+            has_partial_scope = bool(str(node.github_repo_owner or "").strip()) or bool(
+                str(node.github_repo_name or "").strip()
+            )
             if has_partial_scope:
                 continue
             if not normalized_current_repo_slug:

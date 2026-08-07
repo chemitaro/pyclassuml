@@ -3,9 +3,16 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..domain.ids import deps_node_sort_key
+from spec_dock_runtime.domain.ids import deps_node_sort_key
 
 _TREE_BOARD_BLOCKERS_LABEL_LIMIT = 3
+
+
+def _deps_sort_key(node_id: str) -> tuple[int, int, str] | tuple[int, str]:
+    try:
+        return deps_node_sort_key(node_id)
+    except RuntimeError:
+        return (2, node_id)
 
 
 def _active_entry_id(entry: Any) -> str | None:
@@ -154,9 +161,13 @@ def _deps_disabled_error_text(error: str | None) -> str:
     return text.replace("\n", " ")
 
 
+def _deps_disabled_puml_note_error_text(error: str | None) -> str:
+    return _deps_disabled_error_text(error).replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _render_deps_disabled_tree_puml(*, todo_only: bool, error: str | None) -> str:
     mode = "todo" if todo_only else "all"
-    err = _deps_disabled_error_text(error)
+    err = _deps_disabled_puml_note_error_text(error)
     lines: list[str] = []
     lines.append("@startuml")
     lines.append("left to right direction")
@@ -169,13 +180,27 @@ def _render_deps_disabled_tree_puml(*, todo_only: bool, error: str | None) -> st
 
 
 def _render_deps_disabled_deps_issues_puml(*, error: str | None) -> str:
-    err = _deps_disabled_error_text(error)
+    err = _deps_disabled_puml_note_error_text(error)
     lines: list[str] = []
     lines.append("@startuml")
     lines.append("left to right direction")
     lines.append("skinparam shadowing false")
     lines.append("skinparam linetype ortho")
     lines.append("title deps-issues - DEPS_DISABLED")
+    lines.append(f'note "deps_preflight_failed\\ndeps.valid=false\\nmode=sync --force\\nerror: {err}" as Disabled')
+    lines.append("@enduml")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_deps_disabled_deps_raw_puml(*, error: str | None) -> str:
+    err = _deps_disabled_puml_note_error_text(error)
+    lines: list[str] = []
+    lines.append("@startuml")
+    lines.append("left to right direction")
+    lines.append("skinparam shadowing false")
+    lines.append("skinparam linetype ortho")
+    lines.append("title deps-raw - DEPS_DISABLED")
     lines.append(f'note "deps_preflight_failed\\ndeps.valid=false\\nmode=sync --force\\nerror: {err}" as Disabled')
     lines.append("@enduml")
     lines.append("")
@@ -194,6 +219,9 @@ def _render_deps_issues_puml(deps_issues_state: dict[str, Any]) -> str:
         "doing": "#DAE8FC",
         "ready": "#D5E8D4",
         "blocked": "#F8CECC",
+        "done": "#E3E3E3",
+        "closed": "#E3E3E3",
+        "open": "#FFFFFF",
         "unknown": "#EEEEEE",
     }
 
@@ -203,7 +231,7 @@ def _render_deps_issues_puml(deps_issues_state: dict[str, Any]) -> str:
             safe = "_" + safe
         return f"N{safe}"
 
-    include_ids = sorted([node_id for node_id in nodes.keys() if isinstance(node_id, str)], key=deps_node_sort_key)
+    include_ids = sorted([node_id for node_id in nodes if isinstance(node_id, str)], key=deps_node_sort_key)
     include_set = set(include_ids)
 
     lines: list[str] = []
@@ -218,9 +246,11 @@ def _render_deps_issues_puml(deps_issues_state: dict[str, Any]) -> str:
         ("doing", "#DAE8FC"),
         ("ready", "#D5E8D4"),
         ("blocked", "#F8CECC"),
+        ("done", "#E3E3E3"),
         ("unknown", "#EEEEEE"),
     ):
         lines.append(f"| {state} |<{color}> |")
+    lines.append("| blocking edge | solid |")
     lines.append("endlegend")
     lines.append("")
 
@@ -230,7 +260,8 @@ def _render_deps_issues_puml(deps_issues_state: dict[str, Any]) -> str:
             continue
         state = str(item.get("state") or "unknown")
         color = state_color.get(state, state_color["unknown"])
-        label = f"{node_id}\\n{state.capitalize()}"
+        node_type = str(item.get("type") or "issue")
+        label = f"{node_id}\\n{node_type}\\n{state.capitalize()}"
         if item.get("ready") is False:
             label += "\\nready=false"
         lines.append(f'rectangle "{label}" as {alias(node_id)} {color}')
@@ -246,10 +277,162 @@ def _render_deps_issues_puml(deps_issues_state: dict[str, Any]) -> str:
             continue
         if dependent not in include_set or prerequisite not in include_set:
             continue
+        state = str(edge.get("state") or "blocking")
+        if state != "blocking":
+            continue
         block_edges.append((prerequisite, dependent))
     block_edges.sort(key=lambda x: (deps_node_sort_key(x[0]), deps_node_sort_key(x[1])))
     for prerequisite, dependent in block_edges:
         lines.append(f"{alias(prerequisite)} --> {alias(dependent)} : blocks")
+
+    lines.append("@enduml")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_deps_raw_puml(deps_raw_state: dict[str, Any]) -> str:
+    raw_tree = deps_raw_state.get("tree")
+    if not isinstance(raw_tree, list):
+        raise RuntimeError("Invalid deps-raw payload: tree must be a list")
+    raw_edges = deps_raw_state.get("edges")
+    if not isinstance(raw_edges, list):
+        raise RuntimeError("Invalid deps-raw payload: edges must be a list")
+
+    state_color = {
+        "doing": "#DAE8FC",
+        "ready": "#D5E8D4",
+        "blocked": "#F8CECC",
+        "done": "#E3E3E3",
+        "closed": "#E3E3E3",
+        "open": "#FFFFFF",
+        "unknown": "#EEEEEE",
+    }
+
+    def alias(node_id: str) -> str:
+        safe = re.sub(r"[^0-9A-Za-z_]", "_", node_id)
+        if not safe or safe[0].isdigit():
+            safe = "_" + safe
+        return f"N{safe}"
+
+    def esc(text: Any) -> str:
+        return str(text).replace("\\", "\\\\").replace('"', '\\"')
+
+    include_ids: set[str] = set()
+    lines: list[str] = []
+    lines.append("@startuml")
+    lines.append("left to right direction")
+    lines.append("skinparam shadowing false")
+    lines.append("skinparam linetype ortho")
+    lines.append("skinparam packageStyle rectangle")
+    lines.append("skinparam package {")
+    lines.append("  BackgroundColor #FFFFFF")
+    lines.append("  BorderColor #9CA3AF")
+    lines.append("  FontColor #111827")
+    lines.append("}")
+    lines.append("skinparam rectangle {")
+    lines.append("  RoundCorner 6")
+    lines.append("}")
+    lines.append("")
+    lines.append("legend right")
+    lines.append("|= Kind / State |= Color |")
+    for state in ("doing", "ready", "blocked", "done", "unknown"):
+        lines.append(f"| issue {state} |<{state_color[state]}> |")
+    for state in ("open", "done", "unknown"):
+        lines.append(f"| high-level {state} |<{state_color[state]}> |")
+    lines.append("| raw direct dependencies; not readiness authority | |")
+    lines.append("endlegend")
+    lines.append("")
+
+    rendered_any = False
+    for init_item in raw_tree:
+        if not isinstance(init_item, dict):
+            continue
+        init_id = init_item.get("id")
+        init_title = init_item.get("title")
+        if not isinstance(init_id, str) or not init_id:
+            continue
+        if not isinstance(init_title, str):
+            init_title = ""
+        init_state = init_item.get("state")
+        init_state_source = init_item.get("state_source")
+        init_label = f"{esc(init_id)}\\n{esc(init_title)}"
+        init_color = ""
+        if isinstance(init_state, str):
+            state = init_state.lower()
+            source = str(init_state_source or "none")
+            init_label += f"\\n{state.capitalize()} ({esc(source)})"
+            init_color = f" {state_color.get(state, state_color['unknown'])}"
+        include_ids.add(init_id)
+        rendered_any = True
+        lines.append(f'package "{init_label}" as {alias(init_id)} <<initiative>>{init_color} {{')
+        raw_epics = init_item.get("epics")
+        if isinstance(raw_epics, list):
+            for epic_item in raw_epics:
+                if not isinstance(epic_item, dict):
+                    continue
+                epic_id = epic_item.get("id")
+                epic_title = epic_item.get("title")
+                if not isinstance(epic_id, str) or not epic_id:
+                    continue
+                if not isinstance(epic_title, str):
+                    epic_title = ""
+                epic_state = epic_item.get("state")
+                epic_state_source = epic_item.get("state_source")
+                epic_label = f"{esc(epic_id)}\\n{esc(epic_title)}"
+                epic_color = ""
+                if isinstance(epic_state, str):
+                    state = epic_state.lower()
+                    source = str(epic_state_source or "none")
+                    epic_label += f"\\n{state.capitalize()} ({esc(source)})"
+                    epic_color = f" {state_color.get(state, state_color['unknown'])}"
+                include_ids.add(epic_id)
+                lines.append(f'  package "{epic_label}" as {alias(epic_id)} <<epic>>{epic_color} {{')
+                raw_issues = epic_item.get("issues")
+                if isinstance(raw_issues, list):
+                    for issue_item in raw_issues:
+                        if not isinstance(issue_item, dict):
+                            continue
+                        issue_id = issue_item.get("id")
+                        issue_title = issue_item.get("title")
+                        if not isinstance(issue_id, str) or not issue_id:
+                            continue
+                        if not isinstance(issue_title, str):
+                            issue_title = ""
+                        state = str(issue_item.get("state") or "unknown").lower()
+                        color = state_color.get(state, state_color["unknown"])
+                        include_ids.add(issue_id)
+                        lines.append(
+                            f'    rectangle "{esc(issue_id)}\\n{esc(issue_title)}\\n{state.capitalize()}" '
+                            f"as {alias(issue_id)} {color}"
+                        )
+                lines.append("  }")
+                lines.append("")
+        lines.append("}")
+        lines.append("")
+
+    block_edges: list[tuple[str, str]] = []
+    seen_edges: set[tuple[str, str]] = set()
+    for edge in raw_edges:
+        if not isinstance(edge, dict):
+            continue
+        dependent = edge.get("from")
+        prerequisite = edge.get("to")
+        if not isinstance(dependent, str) or not isinstance(prerequisite, str):
+            continue
+        if dependent not in include_ids or prerequisite not in include_ids:
+            continue
+        edge_key = (prerequisite, dependent)
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
+        block_edges.append(edge_key)
+    block_edges.sort(key=lambda x: (_deps_sort_key(x[0]), _deps_sort_key(x[1])))
+
+    if block_edges:
+        for prerequisite, dependent in block_edges:
+            lines.append(f"{alias(prerequisite)} --> {alias(dependent)} : raw_direct")
+    elif not rendered_any:
+        lines.append('note "No raw direct dependencies to render" as Empty')
 
     lines.append("@enduml")
     lines.append("")
@@ -275,3 +458,11 @@ def render_deps_issues_puml(deps_issues_state: dict[str, Any]) -> str:
 
 def render_deps_disabled_deps_issues_puml(*, error: str | None) -> str:
     return _render_deps_disabled_deps_issues_puml(error=error)
+
+
+def render_deps_disabled_deps_raw_puml(*, error: str | None) -> str:
+    return _render_deps_disabled_deps_raw_puml(error=error)
+
+
+def render_deps_raw_puml(deps_raw_state: dict[str, Any]) -> str:
+    return _render_deps_raw_puml(deps_raw_state)

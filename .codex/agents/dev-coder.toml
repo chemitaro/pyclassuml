@@ -1,8 +1,6 @@
 name = "dev-coder"
 description = "Implementation agent for approved code changes with obligation-focused verification."
 
-model = "gpt-5.5"
-model_reasoning_effort = "medium"
 web_search = "live"
 # model_context_window = 400000
 # model_auto_compact_token_limit = 340000

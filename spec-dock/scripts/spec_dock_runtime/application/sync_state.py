@@ -1,46 +1,22 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass, replace
+from datetime import datetime
 import errno
 import json
 import os
-import shutil
-from datetime import datetime
-from dataclasses import dataclass
-from dataclasses import replace
 from pathlib import Path
-from typing import Literal, cast
+import shutil
+from typing import TYPE_CHECKING, Literal, cast
 from uuid import uuid4
 
-from ..domain.active import infer_active_node_from_branch
-from ..domain.deps import build_deps_state, build_effective_deps_map, evaluate_readiness, validate_deps_cycles
-from ..domain.models import (
-    ActiveSelection,
-    DepsEvaluation,
-    DepsState,
-    IssueSnapshot,
-    NodeId,
-    SpecGraph,
-    SpecNodeKind,
-    SpecNodeSeed,
+from spec_dock_runtime.application.artifact_preflight import validate_required_artifacts_for_graph
+from spec_dock_runtime.application.check_deps import (
+    load_cached_high_level_github_state_by_id,
+    resolve_high_level_status_context,
 )
-from ..domain.status import build_progress_map, resolve_issue_snapshot_by_issue_id
-from ..domain.tree import build_graph, select_active_chain
-from ..domain.validation import (
-    _DISCUSSION_DOC_TIMESTAMP_FILENAME_RE,
-    find_github_repo_scope_pairing_error,
-    validate_graph_and_deps,
-)
-from ..infra.contracts import ActiveManifest, StoredMetaRecord
-from ..presentation.contracts import ArtifactBundle
-from ..presentation.json_state import (
-    render_deps_issues_artifact,
-    render_index_artifact,
-    render_tree_artifact,
-)
-from ..presentation.markdown import render_dashboard
-from .artifact_preflight import validate_required_artifacts_for_graph
-from .contracts import (
+from spec_dock_runtime.application.contracts import (
     ActiveUpdateOutcome,
     ArtifactWriteFailure,
     ArtifactWriteResult,
@@ -49,17 +25,58 @@ from .contracts import (
     SyncRequest,
     SyncStateResult,
 )
-from .github_issue_targets import (
+from spec_dock_runtime.application.github_issue_targets import (
     collect_repo_scoped_issue_view_targets,
     normalize_repo_slug,
     snapshot_repo_issue_key,
 )
-from .ports import Ports
-from .repo_context import (
+from spec_dock_runtime.application.repo_context import (
     resolve_current_repo_slug,
 )
-from .set_active import build_active_manifest, build_context_pack_text, commit_active_state
-from .status_context import resolve_issue_status_context
+from spec_dock_runtime.application.set_active import build_active_manifest, build_context_pack_text, commit_active_state
+from spec_dock_runtime.application.status_context import resolve_issue_status_context
+from spec_dock_runtime.domain.active import infer_active_node_from_branch
+from spec_dock_runtime.domain.artifacts import parse_artifact_filename
+from spec_dock_runtime.domain.deps import (
+    build_deps_state,
+    build_effective_deps_map,
+    evaluate_readiness,
+    validate_deps_cycles,
+    validate_raw_node_dependency_graph,
+)
+from spec_dock_runtime.domain.discussion_docs import (
+    DISCUSSION_DOC_TIMESTAMP_FILENAME_RE as _DISCUSSION_DOC_TIMESTAMP_FILENAME_RE,
+)
+from spec_dock_runtime.domain.ids import deps_node_sort_key
+from spec_dock_runtime.domain.models import (
+    ActiveSelection,
+    DepsDependencyContext,
+    DepsEvaluation,
+    DepsState,
+    IssueSnapshot,
+    NodeId,
+    SpecGraph,
+    SpecNodeKind,
+    SpecNodeSeed,
+)
+from spec_dock_runtime.domain.status import build_progress_map, resolve_issue_snapshot_by_issue_id
+from spec_dock_runtime.domain.tree import build_graph, select_active_chain
+from spec_dock_runtime.domain.validation import (
+    find_github_repo_scope_pairing_error,
+    validate_graph_and_deps,
+)
+from spec_dock_runtime.presentation.contracts import ArtifactBundle
+from spec_dock_runtime.presentation.json_state import (
+    render_deps_issues_artifact,
+    render_deps_raw_artifact,
+    render_index_artifact,
+    render_tree_artifact,
+)
+from spec_dock_runtime.presentation.markdown import render_dashboard
+
+if TYPE_CHECKING:
+    from spec_dock_runtime.application.ports import Ports
+    from spec_dock_runtime.infra.contracts import ActiveManifest, DirectDependencyResolution, StoredMetaRecord
 
 
 class _ArtifactWriteExecutionError(RuntimeError):
@@ -75,6 +92,14 @@ class _AdrMirrorSource:
     source_path: Path
     basename: str
     doc_id: str
+
+
+@dataclass(frozen=True)
+class _AdrFrontMatter:
+    doc_id: str
+    parent_scope_id: str
+    authority: str | None
+    mirror_eligible: str | None
 
 
 @dataclass(frozen=True)
@@ -128,7 +153,7 @@ def _load_cached_issue_last_sync_at_by_id(ports: Ports, specdock_dir: Path) -> d
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
     return SpecNodeSeed(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -184,7 +209,7 @@ def _path_for_output(path: Path, *, repo_root: Path | None = None) -> str:
     return path.as_posix()
 
 
-def _parse_required_adr_front_matter(path: Path) -> tuple[str, str] | None:
+def _parse_required_adr_front_matter(path: Path) -> _AdrFrontMatter | None:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -221,7 +246,22 @@ def _parse_required_adr_front_matter(path: Path) -> tuple[str, str] | None:
         return None
     if not isinstance(parents, list) or not parents or not isinstance(parents[0], str):
         return None
-    return (doc_id[1:-1], parents[0])
+    return _AdrFrontMatter(
+        doc_id=doc_id[1:-1],
+        parent_scope_id=parents[0],
+        authority=_front_matter_scalar(entries.get("authority")),
+        mirror_eligible=_front_matter_scalar(entries.get("mirror_eligible")),
+    )
+
+
+def _front_matter_scalar(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.strip().strip('"').strip("'")
+
+
+def _artifact_adr_mirror_eligible(front_matter: _AdrFrontMatter) -> bool:
+    return front_matter.authority == "accepted" and front_matter.mirror_eligible == "true"
 
 
 def _adr_doc_id_from_basename(basename: str) -> str | None:
@@ -235,6 +275,23 @@ def _adr_doc_id_from_basename(basename: str) -> str | None:
     return f"{timestamp}-{int(suffix_raw):02d}-adr"
 
 
+def _artifact_adr_doc_id_from_basename(basename: str) -> str | None:
+    parsed = parse_artifact_filename(basename)
+    if parsed is None or parsed.artifact_type != "adr":
+        return None
+    return parsed.artifact_id
+
+
+def _ensure_collectable_artifacts_dir(artifacts_dir: Path) -> bool:
+    if artifacts_dir.is_symlink():
+        raise RuntimeError(f"Unsafe artifact directory: {artifacts_dir.as_posix()} is a symlink")
+    if not artifacts_dir.exists():
+        return False
+    if not artifacts_dir.is_dir():
+        raise RuntimeError(f"Unsafe artifact directory: {artifacts_dir.as_posix()} is not a directory")
+    return True
+
+
 def _collect_adr_mirror_sources(graph: SpecGraph) -> list[_AdrMirrorSource]:
     sources: list[_AdrMirrorSource] = []
     scope_nodes = sorted(
@@ -243,20 +300,47 @@ def _collect_adr_mirror_sources(graph: SpecGraph) -> list[_AdrMirrorSource]:
     )
     for scope in scope_nodes:
         discussions_dir = scope.path / "discussions"
-        if not discussions_dir.exists():
+        if discussions_dir.exists():
+            for path in sorted(discussions_dir.glob("*.md"), key=lambda p: p.as_posix()):
+                basename = path.name
+                doc_id = _adr_doc_id_from_basename(basename)
+                if doc_id is None:
+                    continue
+                front_matter = _parse_required_adr_front_matter(path)
+                if front_matter is None:
+                    continue
+                if front_matter.doc_id != doc_id:
+                    continue
+                if front_matter.parent_scope_id != scope.id:
+                    continue
+                sources.append(
+                    _AdrMirrorSource(
+                        scope_id=scope.id,
+                        source_path=path,
+                        basename=basename,
+                        doc_id=doc_id,
+                    )
+                )
+        artifacts_dir = scope.path / "artifacts"
+        if not _ensure_collectable_artifacts_dir(artifacts_dir):
             continue
-        for path in sorted(discussions_dir.glob("*.md"), key=lambda p: p.as_posix()):
+        for path in sorted(artifacts_dir.glob("*.md"), key=lambda p: p.as_posix()):
+            if path.name == "rules.md":
+                continue
+            if path.is_symlink():
+                raise RuntimeError(f"Unsafe artifact file: {path.as_posix()} is a symlink")
             basename = path.name
-            doc_id = _adr_doc_id_from_basename(basename)
+            doc_id = _artifact_adr_doc_id_from_basename(basename)
             if doc_id is None:
                 continue
             front_matter = _parse_required_adr_front_matter(path)
             if front_matter is None:
                 continue
-            front_matter_doc_id, parent_scope_id = front_matter
-            if front_matter_doc_id != doc_id:
+            if not _artifact_adr_mirror_eligible(front_matter):
                 continue
-            if parent_scope_id != scope.id:
+            if front_matter.doc_id != doc_id:
+                continue
+            if front_matter.parent_scope_id != scope.id:
                 continue
             sources.append(
                 _AdrMirrorSource(
@@ -274,11 +358,7 @@ def _preflight_adr_mirror_sources(result: SyncStateResult) -> list[_AdrMirrorSou
     sources_by_basename: dict[str, list[_AdrMirrorSource]] = {}
     for source in sources:
         sources_by_basename.setdefault(source.basename, []).append(source)
-    collisions = sorted(
-        (basename, entries)
-        for basename, entries in sources_by_basename.items()
-        if len(entries) > 1
-    )
+    collisions = sorted((basename, entries) for basename, entries in sources_by_basename.items() if len(entries) > 1)
     if collisions:
         basename, entries = collisions[0]
         source_list = ", ".join(
@@ -341,7 +421,7 @@ def _preflight_adr_mirror_symlink_support(specdock_dir: Path) -> bool:
             probe_path = _build_adr_mirror_probe_path(probe_location.probe_dir)
             probe_created = False
             try:
-                os.symlink(".spec-dock-adr-mirror-probe-target", probe_path)
+                Path(probe_path).symlink_to(".spec-dock-adr-mirror-probe-target")
                 probe_created = True
                 return True
             except FileExistsError:
@@ -378,7 +458,7 @@ def _rebuild_adr_mirror(
     for source in sorted(sources, key=lambda item: item.basename):
         link_path = adrs_dir / source.basename
         rel_target = os.path.relpath(source.source_path, start=adrs_dir)
-        os.symlink(rel_target, link_path)
+        Path(link_path).symlink_to(rel_target)
     return True
 
 
@@ -427,6 +507,8 @@ def collect_sync_state(
     warnings: list[str] = []
     deps_preflight_error: str | None = None
     issue_depends_on_map: dict[str, list[str]] = {}
+    raw_node_depends_on_map: dict[str, list[str]] = {}
+    dependency_contexts_by_issue_id: dict[str, list[DepsDependencyContext]] = {}
     validation = validate_graph_and_deps(
         graph,
         issue_depends_on_map=None,
@@ -452,13 +534,24 @@ def collect_sync_state(
                 deps_preflight_error = f"preflight validate failed: {error}"
                 _append_unique(warnings, "deps_preflight_failed")
             else:
-                raise RuntimeError(f"preflight validate failed: {error}")
+                raise RuntimeError(f"preflight validate failed: {error}") from error
         else:
             topology = ports.deps_topology_reader.load_issue_depends_on_map(specdock_dir, graph)
             issue_depends_on_map = dict(topology.issue_depends_on_map)
+            dependency_contexts_by_issue_id = dict(topology.dependency_contexts_by_issue_id)
             for warning in topology.warnings:
                 _append_unique(warnings, warning)
             try:
+                load_node_dependency_resolutions = getattr(
+                    ports.deps_topology_reader,
+                    "load_node_dependency_resolutions",
+                    None,
+                )
+                if callable(load_node_dependency_resolutions):
+                    raw_node_depends_on_map = _raw_node_depends_on_map(
+                        load_node_dependency_resolutions(specdock_dir, graph)
+                    )
+                    validate_raw_node_dependency_graph(graph, raw_node_depends_on_map)
                 validate_deps_cycles(issue_depends_on_map)
                 validate_graph_and_deps(
                     graph,
@@ -493,15 +586,13 @@ def collect_sync_state(
         except RuntimeError:
             _append_unique(warnings, "gh_fetch_failed")
         else:
-            linked_numbers = sorted(
-                {
-                    int(node.github_issue_number)
-                    for node in graph.nodes_by_id.values()
-                    if node.kind == "issue"
-                    and node.github_issue_number is not None
-                    and normalize_repo_slug(node.github_repo_owner, node.github_repo_name) is None
-                }
-            )
+            linked_numbers = sorted({
+                int(node.github_issue_number)
+                for node in graph.nodes_by_id.values()
+                if node.kind == "issue"
+                and node.github_issue_number is not None
+                and normalize_repo_slug(node.github_repo_owner, node.github_repo_name) is None
+            })
             indexed_numbers = {int(snapshot.issue_number) for snapshot in issue_index_snapshots}
             missing = [num for num in linked_numbers if num not in indexed_numbers]
             if missing:
@@ -543,9 +634,12 @@ def collect_sync_state(
 
     cached_issue_status_by_id: dict[str, str] = {}
     cached_issue_last_sync_at_by_id: dict[str, str | None] = {}
+    cached_high_level_github_state_by_id: dict[str, str] = {}
     if ports.derived_state_reader is not None:
         cached_issue_status_by_id = ports.derived_state_reader.load_cached_issue_status_by_id(specdock_dir)
         cached_issue_last_sync_at_by_id = _load_cached_issue_last_sync_at_by_id(ports, specdock_dir)
+        if not req.github_enabled:
+            cached_high_level_github_state_by_id = load_cached_high_level_github_state_by_id(specdock_dir)
     status_context = resolve_issue_status_context(
         graph,
         github_enabled=req.github_enabled,
@@ -569,6 +663,11 @@ def collect_sync_state(
 
     deps_state: DepsState
     deps_eval_by_id: dict[str, DepsEvaluation]
+    high_level_statuses_by_node_id = resolve_high_level_status_context(
+        graph,
+        issue_statuses=status_context.issue_statuses,
+        cached_high_level_github_state_by_id=cached_high_level_github_state_by_id,
+    )
     if deps_preflight_error is None:
         effective_deps_map = build_effective_deps_map(graph, issue_depends_on_map)
         deps_state = build_deps_state(
@@ -587,6 +686,8 @@ def collect_sync_state(
                 issue_depends_on_map,
                 NodeId(node_id),
                 status_context.issue_statuses,
+                dependency_contexts_by_issue_id=dependency_contexts_by_issue_id,
+                high_level_statuses_by_node_id=high_level_statuses_by_node_id,
             )
     else:
         deps_state = DepsState(nodes=[], warnings=[])
@@ -605,10 +706,29 @@ def collect_sync_state(
         deps_preflight_error=deps_preflight_error,
         repo_root=ports.repo_root,
         issue_depends_on_map=issue_depends_on_map,
+        raw_node_depends_on_map=raw_node_depends_on_map,
         github_snapshot_by_repo_and_issue_number=github_snapshot_by_repo_and_issue_number,
         github_snapshot_by_repo_scope_and_issue_number=github_snapshot_by_repo_scope_and_issue_number,
         github_snapshot_by_issue_id=github_snapshot_by_issue_id,
+        dependency_contexts_by_issue_id=dependency_contexts_by_issue_id,
+        high_level_statuses_by_node_id=high_level_statuses_by_node_id,
     )
+
+
+def _raw_node_depends_on_map(
+    resolutions_by_node: dict[str, list[DirectDependencyResolution]],
+) -> dict[str, list[str]]:
+    return {
+        node_id: sorted(
+            [resolution.resolved_node_id for resolution in resolutions],
+            key=deps_node_sort_key,
+        )
+        for node_id, resolutions in sorted(
+            resolutions_by_node.items(),
+            key=lambda item: deps_node_sort_key(item[0]),
+        )
+        if resolutions
+    }
 
 
 def maybe_auto_update_from_branch(
@@ -690,6 +810,7 @@ def write_sync_artifacts(
         tree=render_tree_artifact(persisted_result),
         deps_issues=render_deps_issues_artifact(persisted_result),
         dashboard=render_dashboard(persisted_result),
+        deps_raw=render_deps_raw_artifact(persisted_result),
     )
     try:
         write_result = ports.artifact_writer.write(specdock_dir, bundle)
@@ -741,14 +862,14 @@ def _sync_impl(
         final_state = replace(final_state, warnings=sync_warnings)
     except _ArtifactWriteExecutionError as error:
         final_state = replace(final_state, warnings=sync_warnings)
-        status = error.status
+        artifact_status = error.status
         if active_update is not None and active_update.applied:
-            status = "failed_partial_or_stale"
+            artifact_status = "failed_partial_or_stale"
         return SyncCommandResult(
             state=final_state,
             write_result=None,
             active_update=active_update,
-            artifact_failure=ArtifactWriteFailure(status=status, reason=error.reason),
+            artifact_failure=ArtifactWriteFailure(status=artifact_status, reason=error.reason),
         )
     except Exception as error:
         status: Literal["failed_before_write", "failed_partial_or_stale"]

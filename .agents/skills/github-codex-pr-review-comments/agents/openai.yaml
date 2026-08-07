@@ -1,4 +1,0 @@
-interface:
-  display_name: "GitHub Codex PR Review Comments"
-  short_description: "Fetch Codex review comments from GitHub PRs"
-  default_prompt: "Use $github-codex-pr-review-comments to fetch all Codex review comments for PR 13 in owner/repo."

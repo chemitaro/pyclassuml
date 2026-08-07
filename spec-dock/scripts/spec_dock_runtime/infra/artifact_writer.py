@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..application.contracts import ArtifactWriteResult
-from ..presentation.contracts import ArtifactBundle
+from spec_dock_runtime.application.contracts import ArtifactWriteResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from spec_dock_runtime.presentation.contracts import ArtifactBundle
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -36,6 +40,7 @@ def write(specdock_dir: Path, bundle: ArtifactBundle) -> ArtifactWriteResult:
     tree_todo_puml_path = specdock_dir / "tree.puml"
     deps_issues_json_path = agent_dir / "deps-issues.json"
     deps_issues_puml_path = specdock_dir / "deps-issues.puml"
+    deps_raw_puml_path = specdock_dir / "deps-raw.puml"
     dashboard_md_path = specdock_dir / "dashboard.md"
 
     _write_text(index_all_path, bundle.index.all_json_text)
@@ -46,6 +51,7 @@ def write(specdock_dir: Path, bundle: ArtifactBundle) -> ArtifactWriteResult:
     _write_text(tree_todo_puml_path, bundle.tree.todo_puml_text)
     _write_text(deps_issues_json_path, bundle.deps_issues.json_text)
     _write_text(deps_issues_puml_path, bundle.deps_issues.puml_text)
+    _write_text(deps_raw_puml_path, bundle.deps_raw.puml_text)
     _write_text(dashboard_md_path, bundle.dashboard.markdown_text)
     cleanup_legacy_outputs(specdock_dir)
 
@@ -59,6 +65,7 @@ def write(specdock_dir: Path, bundle: ArtifactBundle) -> ArtifactWriteResult:
         tree_todo_puml_path=tree_todo_puml_path.relative_to(repo_root).as_posix(),
         deps_issues_json_path=deps_issues_json_path.relative_to(repo_root).as_posix(),
         deps_issues_puml_path=deps_issues_puml_path.relative_to(repo_root).as_posix(),
+        deps_raw_puml_path=deps_raw_puml_path.relative_to(repo_root).as_posix(),
         dashboard_md_path=dashboard_md_path.relative_to(repo_root).as_posix(),
     )
 

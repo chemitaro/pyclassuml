@@ -11,10 +11,26 @@ ID: "<EPIC_ID>"
 
 # <EPIC_ID> <EPIC_TITLE> — 要件定義（何を、なぜ行うか）
 
+## 作成方針
+- この文書は Epic が束ねる能力、モデル境界、受け入れ条件、後続 Issue への seed を固定する。
+- 日本語ファーストで作成し、ファイルパス、コマンド、コード識別子、SpecDock 固定語は原文のまま扱ってよい。
+- 既存プロダクトでは、現行のアーキテクチャ、設計指針、用語、境界に合わせて整理する。方針が不明または新規開発の場合は、コード・既存資料・ユーザー確認に基づいて方針を明確化してから進める。
+- Issue-level の実装手順や private implementation design はここで必須化しない。
+
 ## 目的（Initiative との紐づき）
 - Initiative 目標 / 指標:
   - ...
 - この epic が提供する能力:
+  - ...
+
+## 能力 / モデル envelope（capability / model envelope）
+- 対象 capability:
+  - ...
+- model / lifecycle boundary:
+  - ...
+- cross-Issue invariant の seed:
+  - ...
+- 対象外の model / capability:
   - ...
 
 ## ユースケース
@@ -37,6 +53,22 @@ ID: "<EPIC_ID>"
   - 観測点:
 - E-AC-002:
   - ...
+
+## 証跡の権限境界（artifact authority）
+- raw evidence として扱うもの:
+  - `artifacts/`:
+    - ...
+- canonical authority として扱うもの:
+  - `requirement.md`:
+    - ...
+  - `design.md`:
+    - ...
+  - `plan.md`:
+    - ...
+  - accepted ADR:
+    - ...
+  - `report.md` Evidence Adoption Ledger:
+    - ...
 
 ## スコープ
 - 必須:
@@ -70,6 +102,20 @@ ID: "<EPIC_ID>"
 - 外部依存:
   - ...
 - 互換性:
+  - ...
+
+## 後続 Issue seed
+- parent requirement trace:
+  - ...
+- acceptance seed:
+  - ...
+- allowed local delta:
+  - ...
+- forbidden parent boundary changes:
+  - ...
+- expected evidence:
+  - ...
+- suggested grade:
   - ...
 
 ## 未確定事項

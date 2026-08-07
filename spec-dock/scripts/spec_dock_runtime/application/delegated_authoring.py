@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import json
 import os
-import subprocess
-from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 
-from ..domain import delegated_authoring as domain
+from spec_dock_runtime.domain import delegated_authoring as domain
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,7 @@ def generate_delegated_authoring_manifest(
 
 @dataclass(frozen=True)
 class DelegatedAuthoringDiffGuardRequest:
+    role: str
     scope_id: str
     repo_root: Path
     specdock_dir: Path
@@ -50,6 +51,14 @@ class DelegatedAuthoringBaselineStatusRequest:
 def run_delegated_authoring_diff_guard(
     req: DelegatedAuthoringDiffGuardRequest,
 ) -> domain.DiffGuardResult:
+    if req.baseline_status is None:
+        return domain.DiffGuardResult(
+            ok=False,
+            status="blocked",
+            reason="missing_baseline_status",
+            scope_id=req.scope_id,
+            details=("baseline_status_required=true",),
+        )
     scope_dir = _resolve_scope_dir(req.specdock_dir, req.scope_id)
     if scope_dir is None:
         return domain.DiffGuardResult(
@@ -88,8 +97,41 @@ def run_delegated_authoring_diff_guard(
                 scope_id=req.scope_id,
                 details=baseline.errors,
             )
+        existing_create_keys = _create_entries_existing_at_baseline_keys(
+            entries,
+            repo_root=req.repo_root,
+            baseline_entries=baseline.entries,
+            baseline_file_states=_file_state_map(baseline.file_states),
+        )
+        entries = tuple(entry for entry in entries if _entry_key(entry) not in existing_create_keys)
+        current_head = _git_head(req.repo_root)
+        if baseline.head is not None:
+            if current_head is None:
+                return domain.DiffGuardResult(
+                    ok=False,
+                    status="blocked",
+                    reason="git_head_failed",
+                    scope_id=req.scope_id,
+                    details=("current_head_unavailable",),
+                )
+            if current_head != baseline.head:
+                return domain.DiffGuardResult(
+                    ok=False,
+                    status="blocked",
+                    reason="committed_side_effect",
+                    scope_id=req.scope_id,
+                    details=(f"baseline_head={baseline.head}", f"current_head={current_head}"),
+                )
+        elif current_head is not None:
+            return domain.DiffGuardResult(
+                ok=False,
+                status="blocked",
+                reason="committed_side_effect",
+                scope_id=req.scope_id,
+                details=("baseline_head=unborn", f"current_head={current_head}"),
+            )
         baseline_path = _repo_path(baseline_status_path, req.repo_root)
-        baseline_errors = _dirty_discussion_baseline_errors(
+        baseline_errors = _dirty_artifact_baseline_errors(
             baseline.entries,
             repo_root=req.repo_root,
             scope_dir=scope_dir,
@@ -99,7 +141,7 @@ def run_delegated_authoring_diff_guard(
             return domain.DiffGuardResult(
                 ok=False,
                 status="blocked",
-                reason="dirty_baseline_discussion",
+                reason="dirty_baseline_artifact",
                 scope_id=req.scope_id,
                 details=tuple(baseline_errors),
             )
@@ -116,15 +158,21 @@ def run_delegated_authoring_diff_guard(
         baseline_only_entries = tuple(
             entry
             for entry in baseline.entries
-            if _entry_key(entry) not in current_keys and _repo_path(entry.path, req.repo_root) != baseline_path
+            if _entry_key(entry) not in current_keys
+            and _repo_path(entry.path, req.repo_root) != baseline_path
+            and _entry_key(entry) not in existing_create_keys
         )
-        entries = tuple(
-            entry
-            for entry in entries
-            if _entry_key(entry) not in baseline_keys and _repo_path(entry.path, req.repo_root) != baseline_path
-        ) + baseline_only_entries
+        entries = (
+            tuple(
+                entry
+                for entry in entries
+                if _entry_key(entry) not in baseline_keys and _repo_path(entry.path, req.repo_root) != baseline_path
+            )
+            + baseline_only_entries
+        )
     entries = _attach_pre_change_text(req.repo_root, entries)
     return domain.evaluate_diff_guard(
+        authorized_role=req.role,
         scope_id=req.scope_id,
         repo_root=req.repo_root,
         scope_dir=scope_dir,
@@ -179,7 +227,8 @@ class _StatusParseResult:
     ok: bool
     entries: tuple[domain.DiffGuardEntry, ...] = ()
     errors: tuple[str, ...] = ()
-    file_states: tuple["_BaselineFileState", ...] = ()
+    file_states: tuple[_BaselineFileState, ...] = ()
+    head: str | None = None
 
 
 @dataclass(frozen=True)
@@ -187,6 +236,31 @@ class _BaselineFileState:
     path: Path
     mode: str
     sha256: str
+
+
+_BOUNDED_IGNORED_STATUS_PATHS = (
+    ".env*",
+    ".env*/**",
+    "manual-tests",
+    "manual-tests/**",
+    ".agents",
+    ".agents/**",
+    ".codex",
+    ".codex/**",
+    ".github",
+    ".github/**",
+    "src",
+    "src/**",
+    "tests",
+    "tests/**",
+)
+
+_BOUNDED_IGNORED_ENV_FILE_PATHS = (
+    ".env*",
+    ":(glob)**/.env*",
+    ".env*/**",
+    ":(glob)**/.env*/**",
+)
 
 
 def _git_status_entries(repo_root: Path) -> _StatusParseResult:
@@ -205,16 +279,67 @@ def _git_status_entries(repo_root: Path) -> _StatusParseResult:
         return _StatusParseResult(ok=False, errors=(stderr or stdout,))
     current = _parse_status_z(result.stdout, repo_root=repo_root)
     ignored = _git_ignored_forbidden_entries(repo_root)
-    if not current.ok or not ignored.ok:
-        return _StatusParseResult(ok=False, errors=current.errors + ignored.errors)
+    ignored_env_files = _git_ignored_env_file_entries(repo_root)
+    if not current.ok or not ignored.ok or not ignored_env_files.ok:
+        return _StatusParseResult(ok=False, errors=current.errors + ignored.errors + ignored_env_files.errors)
+    entries = _dedupe_entries(current.entries + ignored.entries + ignored_env_files.entries)
     return _StatusParseResult(
         ok=True,
-        entries=_dedupe_entries(current.entries + ignored.entries),
-        file_states=current.file_states + ignored.file_states,
+        entries=entries,
+        file_states=_file_states_for_entries(repo_root, entries),
     )
 
 
+def _git_head(repo_root: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    head = result.stdout.strip()
+    return head or None
+
+
 def _git_ignored_forbidden_entries(repo_root: Path) -> _StatusParseResult:
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--ignored=matching",
+                "--untracked-files=all",
+                "--",
+                *_BOUNDED_IGNORED_STATUS_PATHS,
+            ],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as error:
+        return _StatusParseResult(ok=False, errors=(str(error),))
+    if result.returncode != 0:
+        stderr = result.stderr.decode("utf-8", errors="replace").strip()
+        stdout = result.stdout.decode("utf-8", errors="replace").strip()
+        return _StatusParseResult(ok=False, errors=(stderr or stdout,))
+    parsed = _parse_status_z(result.stdout, repo_root=repo_root)
+    if not parsed.ok:
+        return parsed
+    return _StatusParseResult(
+        ok=True,
+        entries=tuple(entry for entry in parsed.entries if entry.status == "!!"),
+    )
+
+
+def _git_ignored_env_file_entries(repo_root: Path) -> _StatusParseResult:
     try:
         result = subprocess.run(
             [
@@ -225,15 +350,7 @@ def _git_ignored_forbidden_entries(repo_root: Path) -> _StatusParseResult:
                 "--exclude-standard",
                 "-z",
                 "--",
-                ".env*",
-                ":(glob)**/.env*",
-                ".env*/**",
-                ":(glob)**/.env*/**",
-                ".agents",
-                ".codex",
-                ".github",
-                "src",
-                "tests",
+                *_BOUNDED_IGNORED_ENV_FILE_PATHS,
             ],
             cwd=repo_root,
             capture_output=True,
@@ -253,6 +370,29 @@ def _git_ignored_forbidden_entries(repo_root: Path) -> _StatusParseResult:
     return _StatusParseResult(ok=True, entries=entries)
 
 
+def _create_entries_existing_at_baseline_keys(
+    entries: tuple[domain.DiffGuardEntry, ...],
+    *,
+    repo_root: Path,
+    baseline_entries: tuple[domain.DiffGuardEntry, ...],
+    baseline_file_states: dict[Path, tuple[str, str]],
+) -> set[tuple[str, str, str | None]]:
+    baseline_create_keys = {_entry_key(entry) for entry in baseline_entries if entry.status in ("!!", "??")}
+    keys: set[tuple[str, str, str | None]] = set()
+    for entry in entries:
+        if not (entry.status == "!!" or entry.status == "??"):
+            continue
+        if _entry_key(entry) not in baseline_create_keys:
+            continue
+        if _matches_baseline_file_state(
+            entry,
+            repo_root=repo_root,
+            baseline_file_states=baseline_file_states,
+        ):
+            keys.add(_entry_key(entry))
+    return keys
+
+
 def _read_status_file(path: Path, *, repo_root: Path) -> _StatusParseResult:
     if not path.is_file():
         return _StatusParseResult(ok=False, errors=(f"missing_baseline_status={path}",))
@@ -266,8 +406,16 @@ def _parse_status_text(text: str, *, repo_root: Path) -> _StatusParseResult:
     entries: list[domain.DiffGuardEntry] = []
     file_states: list[_BaselineFileState] = []
     errors: list[str] = []
+    head: str | None = None
     for raw_line in text.splitlines():
         if not raw_line:
+            continue
+        if raw_line.startswith("# head\t"):
+            parts = raw_line.split("\t")
+            if len(parts) != 2 or not parts[1]:
+                errors.append(f"invalid_baseline_head={raw_line}")
+                continue
+            head = parts[1]
             continue
         if raw_line.startswith("# file-state-sha256\t"):
             parts = raw_line.split("\t")
@@ -307,7 +455,7 @@ def _parse_status_text(text: str, *, repo_root: Path) -> _StatusParseResult:
         )
     if errors:
         return _StatusParseResult(ok=False, errors=tuple(errors))
-    return _StatusParseResult(ok=True, entries=tuple(entries), file_states=tuple(file_states))
+    return _StatusParseResult(ok=True, entries=tuple(entries), file_states=tuple(file_states), head=head)
 
 
 def _parse_status_z(data: bytes, *, repo_root: Path) -> _StatusParseResult:
@@ -352,6 +500,9 @@ def _parse_status_z(data: bytes, *, repo_root: Path) -> _StatusParseResult:
 
 def _render_baseline_status(repo_root: Path, entries: tuple[domain.DiffGuardEntry, ...]) -> str:
     lines = ["# spec-dock delegated-authoring baseline-status v1"]
+    head = _git_head(repo_root)
+    if head is not None:
+        lines.append(f"# head\t{head}")
     for entry in entries:
         state = _file_state(repo_root / _repo_path(entry.path, repo_root))
         if state is not None:
@@ -379,7 +530,12 @@ def _file_sha256(path: Path) -> str | None:
 
 def _file_state(path: Path) -> tuple[str, str] | None:
     try:
-        if path.is_symlink() or not path.is_file():
+        if path.is_symlink():
+            target = os.readlink(path)  # noqa: PTH115 - diff guard hashes raw symlink payload bytes.
+            return "symlink", hashlib.sha256(os.fsencode(target)).hexdigest()
+        if path.is_dir():
+            return _directory_state(path)
+        if not path.is_file():
             return None
         mode = f"{path.stat().st_mode & 0o777:o}"
     except OSError:
@@ -388,6 +544,38 @@ def _file_state(path: Path) -> tuple[str, str] | None:
     if digest is None:
         return None
     return mode, digest
+
+
+def _directory_state(path: Path) -> tuple[str, str] | None:
+    digest = hashlib.sha256()
+    try:
+        mode = f"dir:{path.stat().st_mode & 0o777:o}"
+        for child in sorted(path.rglob("*"), key=lambda item: item.relative_to(path).as_posix()):
+            rel = child.relative_to(path).as_posix()
+            digest.update(rel.encode("utf-8", errors="surrogateescape"))
+            digest.update(b"\0")
+            if child.is_symlink():
+                digest.update(b"symlink\0")
+                digest.update(os.fsencode(os.readlink(child)))  # noqa: PTH115 - preserve raw symlink payload.
+                digest.update(b"\0")
+                continue
+            if child.is_dir():
+                digest.update(f"dir:{child.stat().st_mode & 0o777:o}".encode("ascii"))
+                digest.update(b"\0")
+                continue
+            if child.is_file():
+                digest.update(f"file:{child.stat().st_mode & 0o777:o}".encode("ascii"))
+                digest.update(b"\0")
+                file_digest = _file_sha256(child)
+                if file_digest is None:
+                    return None
+                digest.update(file_digest.encode("ascii"))
+                digest.update(b"\0")
+                continue
+            digest.update(b"other\0")
+    except OSError:
+        return None
+    return mode, digest.hexdigest()
 
 
 def _entry_key(entry: domain.DiffGuardEntry) -> tuple[str, str, str | None]:
@@ -557,32 +745,32 @@ def _git_head_text(repo_root: Path, rel_path: Path) -> _GitHeadTextResult:
     try:
         return _GitHeadTextResult(text=result.stdout.decode("utf-8"))
     except UnicodeDecodeError:
-        return _GitHeadTextResult(error="existing_discussion_head_non_utf8")
+        return _GitHeadTextResult(error="existing_artifact_head_non_utf8")
 
 
 def _is_update_status(status: str) -> bool:
     return len(status) == 2 and (status[0] in ("M", "T") or status[1] in ("M", "T"))
 
 
-def _dirty_discussion_baseline_errors(
+def _dirty_artifact_baseline_errors(
     entries: tuple[domain.DiffGuardEntry, ...],
     *,
     repo_root: Path,
     scope_dir: Path,
     baseline_path: Path,
 ) -> list[str]:
-    discussions_dir = scope_dir / "discussions"
+    artifacts_dir = scope_dir / "artifacts"
     errors: list[str] = []
     for entry in entries:
         rel_path = _repo_path(entry.path, repo_root)
         if rel_path == baseline_path:
             continue
         try:
-            (repo_root / rel_path).relative_to(discussions_dir)
+            (repo_root / rel_path).relative_to(artifacts_dir)
         except ValueError:
             continue
         else:
-            errors.append(f"blocked path={rel_path.as_posix()} reason=dirty_baseline_discussion")
+            errors.append(f"blocked path={rel_path.as_posix()} reason=dirty_baseline_artifact")
     return errors
 
 
@@ -599,6 +787,16 @@ def _ignorable_baseline_keys(
     keys: set[tuple[str, str, str | None]] = set()
     for entry in entries:
         if _repo_path(entry.path, repo_root) == baseline_path:
+            keys.add(_entry_key(entry))
+            continue
+        if entry.status == "!!" and (
+            _repo_path(entry.path, repo_root) not in baseline_file_states
+            or _matches_baseline_file_state(
+                entry,
+                repo_root=repo_root,
+                baseline_file_states=baseline_file_states,
+            )
+        ):
             keys.add(_entry_key(entry))
             continue
         baseline_entry = _attach_pre_change_text(repo_root, (entry,))[0]
@@ -643,20 +841,63 @@ def _file_state_map(file_states: tuple[_BaselineFileState, ...]) -> dict[Path, t
     return {file_state.path: (file_state.mode, file_state.sha256) for file_state in file_states}
 
 
+def _file_states_for_entries(
+    repo_root: Path, entries: tuple[domain.DiffGuardEntry, ...]
+) -> tuple[_BaselineFileState, ...]:
+    file_states: list[_BaselineFileState] = []
+    for entry in entries:
+        rel_path = _repo_path(entry.path, repo_root)
+        state = _file_state(repo_root / rel_path)
+        if state is None:
+            continue
+        mode, digest = state
+        file_states.append(_BaselineFileState(path=rel_path, mode=mode, sha256=digest))
+    return tuple(file_states)
+
+
 def _resolve_scope_dir(specdock_dir: Path, scope_id: str) -> Path | None:
-    meta_paths = sorted(specdock_dir.glob(f"initiatives/**/{scope_id}*/.meta.json"))
+    meta_paths = _iter_scope_meta_paths(specdock_dir / "initiatives")
     for meta_path in meta_paths:
         if _scope_meta_matches(meta_path, scope_id):
             return meta_path.parent
     active_issue = specdock_dir / "active" / "issue"
     if active_issue.exists():
         try:
-            resolved = active_issue.resolve()
+            target = active_issue.readlink() if active_issue.is_symlink() else active_issue
+            candidate = target if target.is_absolute() else active_issue.parent / target
         except OSError:
-            resolved = active_issue
+            candidate = active_issue
+        if _is_workbench_descendant(candidate, specdock_dir):
+            return None
+        resolved = candidate.resolve()
         if _scope_meta_matches(resolved / ".meta.json", scope_id):
             return resolved
     return None
+
+
+def _iter_scope_meta_paths(initiatives_root: Path) -> list[Path]:
+    matches: list[Path] = []
+    for current_root, child_dirnames, filenames in os.walk(initiatives_root, topdown=True):
+        child_dirnames[:] = sorted(name for name in child_dirnames if name != ".workbench")
+        if ".meta.json" in filenames:
+            matches.append(Path(current_root) / ".meta.json")
+    return sorted(matches, key=lambda path: path.as_posix())
+
+
+def _is_workbench_descendant(path: Path, specdock_dir: Path) -> bool:
+    lexical_path = path.absolute()
+    for root in (specdock_dir.absolute(), specdock_dir.resolve()):
+        try:
+            lexical_relative = lexical_path.relative_to(root)
+        except ValueError:
+            continue
+        if ".workbench" in lexical_relative.parts:
+            return True
+    try:
+        relative = path.resolve().relative_to(specdock_dir.resolve())
+    except (OSError, ValueError):
+        return False
+    return ".workbench" in relative.parts
 
 
 def _scope_meta_matches(meta_path: Path, scope_id: str) -> bool:

@@ -1,22 +1,25 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ..application.contracts import (
+from spec_dock_runtime.application.contracts import (
     ClearActiveRequest,
     SetActiveRequest,
     ShowActiveRequest,
     TargetRef,
     UseCases,
 )
-from ..presentation.cli_text import (
+from spec_dock_runtime.commands.contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.commands.targets import parse_explicit_target_flags
+from spec_dock_runtime.presentation.cli_text import (
     render_active_clear_text,
     render_active_set_text,
     render_active_show_text,
 )
-from .contracts import CommandArgs, CommandOutcome, CommandSpec
-from .targets import parse_explicit_target_flags
+
+if TYPE_CHECKING:
+    import argparse
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
 # イニシアチブ計画フェーズ playbook（phase playbook: plan / initiative）
 
 Initiative plan の playbook です。
-shared axiom は [phase_plan.md](phase_plan.md)、Initiative の lifecycle / governance は [workflow_initiative.md](workflow_initiative.md) を参照します。
+shared axiom は [phase_plan.md](phase_plan.md)、Initiative の lifecycle / governance は [workflow_initiative.md](workflow_initiative.md)、scope ownership と authority flow は [authoring/scope-layering.md](authoring/scope-layering.md) を参照します。
 
 ## スコープ契約（scope contract）
 
@@ -34,6 +34,7 @@ shared axiom は [phase_plan.md](phase_plan.md)、Initiative の lifecycle / gov
 - `意思決定ゲート` で strategy / milestone / governance review を固定する
 - `指標レビュー計画` を置く
 - `Epic readiness contract` を置く
+- Epic へ渡す判断が Initiative-owned か Epic-owned か迷う場合は、責務表を複製せず [authoring/scope-layering.md](authoring/scope-layering.md) を authoritative routing として参照する
 - `final exit contract` を置く
 
 ## 図表 / trace 指針（diagram / trace guidance）

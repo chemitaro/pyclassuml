@@ -21,19 +21,32 @@ prefix_rule(
     ],
 )
 
-# Allow the PR monitor to fetch GitHub PR review data through the fixed
-# read-only wrapper only. Do not allow direct `gh api` as an agent command.
+# Allow PR observation through fixed read-only wrappers only. Do not allow
+# direct `gh api` as an agent command.
 prefix_rule(
-    pattern = [["./.agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh"]],
+    pattern = [["./.agents/skills/github-pr-observation/scripts/wait_pr_observation.sh"]],
     decision = "allow",
-    justification = "Allow the PR monitor read-only GitHub PR review comment wrapper without exposing arbitrary gh api operations.",
+    justification = "Allow fixed read-only PR observation wrappers without exposing arbitrary gh api operations.",
     match = [
-        "./.agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh --repo owner/repo --pr 13",
-        "./.agents/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh --repo owner/repo --pr 13 --out /tmp/pr13",
+        "./.agents/skills/github-pr-observation/scripts/wait_pr_observation.sh --repo owner/repo --pr 13 --head-sha abc123",
     ],
     not_match = [
         "gh api repos/owner/repo/pulls/13/comments",
         "curl https://api.github.com/repos/owner/repo/pulls/13/comments",
-        "/srv/mount/.codex/skills/github-codex-pr-review-comments/scripts/fetch_codex_pr_review_comments.sh --repo owner/repo --pr 13",
+        "/srv/mount/.codex/skills/github-pr-observation/scripts/wait_pr_observation.sh --repo owner/repo --pr 13 --head-sha abc123",
+    ],
+)
+
+prefix_rule(
+    pattern = [["./.agents/skills/github-pr-observation/scripts/fetch_pr_observation_snapshot.sh"]],
+    decision = "allow",
+    justification = "Allow fixed read-only PR observation wrappers without exposing arbitrary gh api operations.",
+    match = [
+        "./.agents/skills/github-pr-observation/scripts/fetch_pr_observation_snapshot.sh --repo owner/repo --pr 13",
+    ],
+    not_match = [
+        "gh api repos/owner/repo/pulls/13/comments",
+        "curl https://api.github.com/repos/owner/repo/pulls/13/comments",
+        "/srv/mount/.codex/skills/github-pr-observation/scripts/fetch_pr_observation_snapshot.sh --repo owner/repo --pr 13",
     ],
 )

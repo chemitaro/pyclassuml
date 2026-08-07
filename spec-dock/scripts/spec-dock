@@ -5,6 +5,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# Importing the installed runtime must not dirty the managed consumer repository.
+sys.dont_write_bytecode = True
+
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _RUNTIME_DIR = _SCRIPT_DIR / "spec_dock_runtime"
 _APP_PATH = _RUNTIME_DIR / "app.py"

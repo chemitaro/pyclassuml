@@ -5,11 +5,12 @@ decomposing those epics into issues, and executing the issues through the issue
 workflow.
 
 Use the `$spec-dock-initiative-planning` skill for initiative-level planning and
-epic portfolio decomposition. Use `/execute-epic` and
-`$spec-dock-epic-planning` for each epic. Use `/execute-issue` and the
-`$spec-dock-issue-execution` skill for each concrete issue implementation. Do
-not create a new skill for this workflow, and do not substantially rewrite
-existing skills as part of this prompt.
+epic portfolio decomposition. Use `$spec-dock-epic-planning` for epic-level
+planning and Issue decomposition. Use `/execute-epic` and
+`$spec-dock-epic-execution` for each reviewed epic's execution coordination,
+including ready Issue selection, `issue start`, `/execute-issue`, PR preparation,
+and issue-finish handoff. Do not create a new skill for this workflow, and do
+not substantially rewrite existing skills as part of this prompt.
 
 This prompt supports two operating modes:
 
@@ -63,13 +64,18 @@ When the initiative is ready:
   `spec-dock/docs/rules/initiative/epics.md`,
   `spec-dock/docs/reference_github.md`, `spec-dock/docs/reference_deps.md`, and
   `spec-dock/docs/reference_sync.md`.
-- For each epic, execute epic-level planning and issue decomposition using the
-  `/execute-epic` contract.
-- For each issue produced by those epics, run
-  `./spec-dock/scripts/spec-dock issue start <issue-id>` before implementation,
-  then execute the issue using the `/execute-issue` contract.
-- Treat each epic as an autonomous planning and integration unit, and each issue
-  as a complete TDD execution unit governed by `$spec-dock-issue-execution`.
+- For each epic that still needs planning or issue decomposition, use
+  `$spec-dock-epic-planning` before execution.
+- For each epic with reviewed planning outputs and ready Issue work, hand control
+  to `/execute-epic` as the sole owner of Epic execution coordination.
+- Do not start or execute Issues directly from initiative execution after
+  handing a reviewed Epic to `/execute-epic`; Epic execution owns one-ready-Issue
+  selection, `issue start`, `/execute-issue`, PR preparation, and issue-finish
+  handoff.
+- Treat each epic as an autonomous planning and integration unit. Treat each
+  Issue as a complete TDD execution unit only after Epic execution has selected
+  and started it; the active Issue is then governed by `$spec-dock-issue-execution`
+  through `/execute-issue`, not by initiative execution directly.
 - Record initiative-level decomposition decisions, epic handoff evidence,
   milestone / metric review evidence, skipped or blocked epic rationale, and
   final initiative completion evidence in the initiative `report.md`.

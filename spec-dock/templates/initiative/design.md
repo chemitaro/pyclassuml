@@ -11,6 +11,12 @@ ID: "<INIT_ID>"
 
 # <INIT_ID> <INIT_TITLE> — 設計（どう実現し、何を守るか）
 
+## 作成方針
+- この文書は Initiative 全体の設計境界、意思決定権限、Epic への handoff 方針を固定する。
+- 日本語を主文とし、ファイルパス、コマンド、コード識別子、SpecDock 固定語は原文のまま扱ってよい。
+- 既存プロダクトでは、対象システムの現行アーキテクチャ、設計指針、用語、境界に合わせて設計する。方針が不明または新規開発の場合は、コード・既存資料・ユーザー確認に基づいて方針を明確化してから設計する。
+- Issue-level の実装詳細、検証の細かな実行手順、内部 class / file 設計はここで必須化しない。
+
 ## アーキテクチャ上の狙い
 - ...
 
@@ -19,6 +25,18 @@ ID: "<INIT_ID>"
   - ...
 - 目指す姿:
   - ...
+
+## 対象範囲と責務境界（scope boundary）
+- Initiative が所有する判断:
+  - ...
+- Epic に委譲する判断:
+  - ...
+- Issue に委譲する実装判断:
+  - ...
+- 対象外として固定するもの:
+  - ...
+- scope-layering reference:
+  - `docs/authoring/scope-layering.md` を参照する。この template には責務表を複製しない。
 
 ## システムコンテキスト
 - タイトル:
@@ -50,12 +68,12 @@ Rel(system, external, "依存する")
 @enduml
 ```
 
-## ドメイン境界 / ユビキタス言語（必要時）
-- 境界づけられたコンテキスト / ドメイン領域:
+## 業務領域 / 概念境界（必要時）
+- 対象領域 / 責務境界:
   - ...
-- 中核 / 支援 / 汎用ドメイン:
+- 主要な関心領域:
   - ...
-- 主要ドメイン用語:
+- 主要用語:
   - ...
 - Epic 横断の actor-goal 概要:
   - N/A: 理由
@@ -82,6 +100,26 @@ Rel(system, external, "依存する")
 - 境界方針:
   - ...
 
+## 意思決定権限（decision authority）
+- Initiative で確定する設計判断:
+  - ...
+- ADR に昇格する判断:
+  - ...
+- Epic / Issue planning に渡す未確定判断:
+  - ...
+- ユーザー確認が必要な判断:
+  - ...
+
+## 証跡採用（artifact adoption）
+- 採用する research / discussion / draft artifact:
+  - ...
+- 採用しない、または歴史的証跡として残す artifact:
+  - ...
+- `report.md` の Evidence Adoption Ledger に残す採否:
+  - ...
+- 正本 `requirement.md` / `design.md` / `plan.md` へ反映する範囲:
+  - ...
+
 ## ガードレール
 - 互換性:
   - ...
@@ -90,6 +128,18 @@ Rel(system, external, "依存する")
 - データ境界:
   - ...
 - 品質条件:
+  - ...
+
+## レビューゲート（reviewer gate）
+- 必須 reviewer:
+  - spec-reviewer:
+    - ...
+- 必要時の専門家:
+  - system-architect:
+    - ...
+  - implementation-planner:
+    - ...
+- promotion 条件:
   - ...
 
 ## ロールアウト原則
@@ -116,6 +166,21 @@ Rel(system, external, "依存する")
 
 ## 関連 ADR
 - adr-...:
+  - ...
+
+## エピック分割境界（Epic boundary）
+- Epic 候補:
+  - ...
+- Epic 間依存:
+  - ...
+- Epic ごとの handoff package:
+  - requirement:
+    - ...
+  - draft design:
+    - ...
+  - draft implementation plan:
+    - ...
+- controlled re-slicing が必要になる条件:
   - ...
 
 ## 未確定事項

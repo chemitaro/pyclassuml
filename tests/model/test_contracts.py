@@ -590,6 +590,12 @@ def test_diff_base_resolution_contract_is_public_and_validated() -> None:
     assert DiffBaseResolution(
         requested_base_ref=None,
         resolved_base_ref="abc123",
+        resolution_kind="default_branch_head",
+        candidate_ref=None,
+    )
+    assert DiffBaseResolution(
+        requested_base_ref=None,
+        resolved_base_ref="abc123",
         resolution_kind="initial_commit_fallback",
         candidate_ref=None,
     )

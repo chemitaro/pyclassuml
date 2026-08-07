@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .infra import clock as _infra_clock
-from .infra import json_store as _infra_json_store
+from spec_dock_runtime.infra import clock as _infra_clock, json_store as _infra_json_store
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _now_iso() -> str:

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Mapping
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 AUTHORITY_PROPOSED = "proposed"
 AUTHORITY_APPROVED = "approved"
@@ -32,6 +35,8 @@ DOWNSTREAM_LIFECYCLE_GRANTS: tuple[str, ...] = (
     GRANT_ISSUE_FINISH,
     GRANT_PHASE_COMPLETION,
 )
+PROMOTION_DECISION_RUNTIME_ACTIVE_SELECTION = "runtime_active_selection"
+PROMOTION_DECISION_ISSUE_FINISH_LIFECYCLE_TRANSITION = "issue_finish_lifecycle_transition"
 REQUIRED_DRAFT_METADATA_FIELDS: tuple[str, ...] = (
     "status",
     "authority",
@@ -90,12 +95,34 @@ def approved_runtime_promotion_record(*, node_id: str) -> dict[str, str]:
         "approved_revision": revision,
         "approved_hash": revision,
         "reviewer_target_hash": revision,
-        "promotion_decision": "runtime_active_selection",
+        "promotion_decision": PROMOTION_DECISION_RUNTIME_ACTIVE_SELECTION,
     }
 
 
 def approved_runtime_grants() -> tuple[str, ...]:
     return VALID_GRANTS
+
+
+def approved_issue_finish_transition_promotion_record(*, node_id: str) -> dict[str, str]:
+    revision = f"active:{node_id}"
+    return {
+        "status": AUTHORITY_APPROVED,
+        "authority": AUTHORITY_APPROVED,
+        "source_revision": revision,
+        "approved_revision": revision,
+        "approved_hash": revision,
+        "reviewer_target_hash": revision,
+        "promotion_decision": PROMOTION_DECISION_ISSUE_FINISH_LIFECYCLE_TRANSITION,
+    }
+
+
+def approved_issue_finish_transition_grants() -> tuple[str, ...]:
+    return (
+        GRANT_REVIEW_INPUT,
+        GRANT_PLANNING_INPUT,
+        GRANT_DESIGN_BASELINE,
+        GRANT_ISSUE_FINISH,
+    )
 
 
 def _normalize_grants(raw_grants: object) -> tuple[str, ...] | None:
@@ -147,7 +174,9 @@ def evaluate_authority_gate(
     normalized_grants = _normalize_grants(grants)
     if normalized_grants is None:
         return AuthorityGateResult(False, "missing_or_invalid_grants", (f"purpose={purpose}",))
-    invalid = tuple(grant for grant in normalized_grants if grant in INVALID_WILDCARD_GRANTS or grant not in VALID_GRANTS)
+    invalid = tuple(
+        grant for grant in normalized_grants if grant in INVALID_WILDCARD_GRANTS or grant not in VALID_GRANTS
+    )
     if invalid:
         return AuthorityGateResult(False, "invalid_grants", tuple(f"grant={grant}" for grant in invalid))
     if required_grant not in normalized_grants:
@@ -175,17 +204,30 @@ def evaluate_authority_gate(
         return AuthorityGateResult(False, "promotion_not_approved", (f"status={promotion_record.get('status')}",))
     if _promotion_value(promotion_record, "authority") != AUTHORITY_APPROVED:
         return AuthorityGateResult(False, "promotion_authority_not_approved", ())
-    if _promotion_value(promotion_record, "approved_hash") != _promotion_value(promotion_record, "reviewer_target_hash"):
+    if _promotion_value(promotion_record, "approved_hash") != _promotion_value(
+        promotion_record, "reviewer_target_hash"
+    ):
         return AuthorityGateResult(False, "stale_promotion_hash", ())
     if _promotion_value(promotion_record, "source_revision") != _promotion_value(promotion_record, "approved_revision"):
         return AuthorityGateResult(False, "stale_promotion_revision", ())
     if (
         required_grant in DOWNSTREAM_LIFECYCLE_GRANTS
-        and _promotion_value(promotion_record, "promotion_decision") == "runtime_active_selection"
+        and _promotion_value(promotion_record, "promotion_decision") == PROMOTION_DECISION_RUNTIME_ACTIVE_SELECTION
     ):
         return AuthorityGateResult(
             False,
             "active_synthetic_approval_not_lifecycle_approval",
+            (f"required_grant={required_grant}", f"purpose={purpose}"),
+        )
+    if (
+        required_grant in DOWNSTREAM_LIFECYCLE_GRANTS
+        and required_grant != GRANT_ISSUE_FINISH
+        and _promotion_value(promotion_record, "promotion_decision")
+        == PROMOTION_DECISION_ISSUE_FINISH_LIFECYCLE_TRANSITION
+    ):
+        return AuthorityGateResult(
+            False,
+            "finish_transition_not_valid_for_required_grant",
             (f"required_grant={required_grant}", f"purpose={purpose}"),
         )
     if expected_revision is not None:
@@ -239,7 +281,10 @@ def validate_draft_artifact_metadata(
             (f"positive_probe_result={metadata.get('positive_probe_result')}",),
         )
     promotion_record = metadata.get("promotion_record")
-    if isinstance(promotion_record, Mapping) and _promotion_value(promotion_record, "promotion_decision") == "runtime_active_selection":
+    if (
+        isinstance(promotion_record, Mapping)
+        and _promotion_value(promotion_record, "promotion_decision") == PROMOTION_DECISION_RUNTIME_ACTIVE_SELECTION
+    ):
         return AuthorityGateResult(False, "active_synthetic_approval_not_artifact_approval", ())
     return evaluate_authority_gate(
         authority=metadata.get("authority"),

@@ -1,19 +1,20 @@
 # 要件フェーズ playbook（phase playbook: requirement）
 
 Initiative / Epic / Issue に共通する requirement の shared playbook です。
-scope 固有の entry / quality gate は `workflow_*.md` が additive に定義します。議論資料の置き方は対象 scope 配下の `discussions/rules.md`、命名は [reference_naming.md](reference_naming.md) を参照してください。
+scope 固有の entry / quality gate は `workflow_*.md` が additive に定義します。作業成果物の置き方は対象 scope 配下の `artifacts/rules.md`、legacy discussion preservation は `discussions/rules.md`、命名は [reference_naming.md](reference_naming.md) を参照してください。
 
 関連:
 - 全体像: [guide.md](guide.md)
 - Spec authoring workflow: [workflow_spec_authoring.md](workflow_spec_authoring.md)
 - Scope workflow: [workflow_initiative.md](workflow_initiative.md), [workflow_epic.md](workflow_epic.md), [workflow_issue.md](workflow_issue.md)
-- 議論資料の置き方と命名: 対象 scope 配下の `discussions/rules.md`, [reference_naming.md](reference_naming.md)
+- Scope layering: [authoring/scope-layering.md](authoring/scope-layering.md)
+- 作業成果物の置き方と命名: 対象 scope 配下の `artifacts/rules.md`, legacy `discussions/rules.md`, [reference_naming.md](reference_naming.md)
 
 ## フェーズ契約（phase contract）
 
 - 位置: 全体 workflow の `調査分析 → requirement → design → plan → 実装/品質ゲート` の `requirement`
 - 責務: 調査分析の結果を `何を / なぜ / スコープ / 成功条件（WHAT / WHY / scope / success）` に固定する
-- 前提入力: 対象 scope、As-Is の一次情報、対象 `workflow_*.md`、既存 `discussions/` / ADR
+- 前提入力: 対象 scope、As-Is の一次情報、対象 `workflow_*.md`、既存 `artifacts/` / legacy `discussions/` / ADR
 - 固定すること: 目的、背景・現状、成功条件、スコープ / 非スコープ、主要 TBD の置き場
 - 出力: reviewer が design へ送れる `requirement.md` と必要な `research` / `disc` / `adr`
 - 非ゴール: HOW の先取り、source のない断定、未確定論点の隠蔽
@@ -39,6 +40,7 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
 - trace rule:
   - 下位文書は上位文書を再記述せず、参照と具体化差分だけを書く
   - 下位で上位 requirement と矛盾する場合は、下位で上書きせず上位文書または ADR / decision log を更新する
+  - 判断の置き場に迷う場合は [authoring/scope-layering.md](authoring/scope-layering.md) と対象 `workflow_*.md` を authoritative routing として確認する
 
 ## 標準順
 
@@ -65,12 +67,21 @@ scope 固有の entry / quality gate は `workflow_*.md` が additive に定義�
   - Epic: `spec-dock/templates/epic/requirement.md`
   - Issue: `spec-dock/templates/issue/requirement.md`
 
+## グレード補足（issue grade guidance）
+
+Issue requirement は [workflow_spec_authoring.md](workflow_spec_authoring.md) の `グレード別authoring matrix（Issue grade authoring matrix）` を入口にします。
+
+- Lite は default ではなく、低リスク根拠、scope の狭さ、既存 contract への影響が限定される理由を requirement に残す。
+- grade が unknown / ambiguous、または影響範囲、受け入れ条件、reviewer obligation が判断できない場合は Standard 以上へ倒し、clarification または上位 design / ADR 確認へ戻す。
+- `authorized_profile` は template / guidance / obligation authority として扱い、manual escalation は reviewer / specialist / evidence gate を強める補助判断として `report.md` に記録する。
+- Strict / Critical では、design や plan に送る前に上位 Epic / ADR / workflow contract との trace、non-scope、risk acceptance の要否を requirement で見える状態にする。
+
 ## 要件 checklist（requirement checklist）
 
 - As-Is は一次情報を根拠にし、事実 / 推測 / 未確定を混ぜない
 - `何を / なぜ / スコープ / 成功条件（WHAT / WHY / scope / success）` を先に固め、HOW は入れすぎない
 - `MUST / MUST NOT / OUT OF SCOPE` と `Always / Ask / Never` を早めに仮置きする
-- requirement 本文には結論と制約を残し、長い比較や調査ログは `discussions/` へ逃がす
+- requirement 本文には結論と制約を残し、長い比較や調査ログは `artifacts/` へ分離する
 - generic DoR / DoD や `省略/例外メモ` は template に戻さない
 - 先に埋める節:
   - Initiative: `目的`, `背景と Why now`, `成功指標`, `スコープ`, `境界`, `非交渉制約`, `未確定事項`

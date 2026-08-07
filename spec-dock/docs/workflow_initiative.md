@@ -14,6 +14,9 @@ Initiative は投資単位です。
 - GitHub 連携: [reference_github.md](reference_github.md)
 - 共通 phase playbook: [phase_requirement.md](phase_requirement.md), [phase_design.md](phase_design.md), [phase_plan.md](phase_plan.md)
 - Initiative plan playbook: [phase_plan_initiative.md](phase_plan_initiative.md)
+- Decision routing: [authoring/decision-routing.md](authoring/decision-routing.md)
+- Scope layering: [authoring/scope-layering.md](authoring/scope-layering.md)
+- ChatGPT authoring evidence lane: [workflow_chatgpt_authoring_pack.md](workflow_chatgpt_authoring_pack.md)
 
 ## 再利用判定
 
@@ -41,8 +44,11 @@ Initiative は投資単位です。
 - `requirement.md`: 投資理由、成功条件、スコープ
 - `design.md`: 方針、境界、依存、リスク
 - `plan.md`: Epic 分解、順序、ブロッカー。shared axiom は `phase_plan.md`、Initiative 固有の書き方は `phase_plan_initiative.md`
+- Initiative は複数 Epic にまたがる product / architecture / operating model / investment decision を所有する。Epic 分解、success metric、責任主体、長期方針を変える判断は Initiative requirement / design / plan に反映してから Epic へ落とす。単一 Epic の設計 backbone に閉じる場合は Epic へ、単一 Issue の軽量 tradeoff に閉じる場合は Issue-local に戻す。責務境界と authority flow の共通参照は [authoring/scope-layering.md](authoring/scope-layering.md)、routing 例は [authoring/decision-routing.md](authoring/decision-routing.md) を参照する
+- ChatGPT / Oracle は非自明な Initiative planning の ChatGPT-first primary route として、Initiative design / plan と Epic candidate の evidence producer に使う。candidate validation は node creation approval ではないため、Epic node 作成前に人間の明示的承認を通し、採用判断を `report.md` に残す。`local-context` は明示的な lower-authority evidence として扱う
+- `spec-dock-initiative-planning-manual` は human-approved emergency backup であり、hard / unrecoverable ChatGPT route failure と recovery attempts、explicit approval、fresh reviewer gate の evidence がある場合だけ使う
 - Requirement / design / plan の phase promotion は `workflow_spec_authoring.md` を正本にし、各 artifact ごとに fresh `spec-reviewer` の `review_status: pass` まで次 phase へ進めない
-- `discussions/`: `new doc <type> --initiative <initiative-id> --title "..."` で、この initiative の `discussions/` 配下に timestamp-prefixed original を作成する。current catalog は `scratch` / `interview` / `research` / `disc` / `adr` / `draft-requirement` / `draft-design` / `draft-plan`。標準形は `<ts>-<kind>-<slug>.md`、same-second collision は `<ts>-<nn>-<kind>-<slug>.md`。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
+- `artifacts/`: `new artifact <type> --initiative <initiative-id> --title "..."` で、この initiative の `artifacts/` 配下に timestamp-prefixed original を作成する。current catalog は `blank` / `adr` / `disc` / `research` / `interview` / `decision-candidate` / `pr-repair-batch`。`draft-requirement` / `draft-design` / `draft-plan` は Issue-only artifact として扱う。runtime が filename / path を生成し、caller は stdout の `path=...` を正本として扱う。標準形は `<ts>-<kind>-<slug>.md`、same-second collision fallback は `<ts>-<nn>-<kind>-<slug>.md`。既存 `discussions/` 配下の artifact は legacy/grandfathered として保持する。詳細 contract は [reference_naming.md](reference_naming.md) を参照する
 - `note` は新規作成 catalog から retired。既存 `note` artifact は grandfathered として壊さない。
 - shared な書き方は `phase_*.md`、lifecycle / governance と Initiative 固有の分解判断はこの workflow を正本とする
 

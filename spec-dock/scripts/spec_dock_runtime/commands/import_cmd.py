@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ..application.contracts import ImportNodeRequest, ImportNodeResult, UseCases
-from ..presentation.cli_text import render_import_text
-from .contracts import CommandArgs, CommandOutcome, CommandSpec
-from .targets import parse_github_issue_target_ref
+from spec_dock_runtime.application.contracts import ImportNodeRequest, ImportNodeResult, UseCases
+from spec_dock_runtime.commands.contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.commands.targets import parse_github_issue_target_ref
+from spec_dock_runtime.presentation.cli_text import render_import_text
+
+if TYPE_CHECKING:
+    import argparse
 
 
 @dataclass(frozen=True)

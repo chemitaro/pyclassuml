@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..application.contracts import UseCases
-from ..application.delegated_authoring import (
+from spec_dock_runtime.application.delegated_authoring import (
     DelegatedAuthoringBaselineStatusRequest,
     DelegatedAuthoringDiffGuardRequest,
     DelegatedAuthoringManifestRequest,
@@ -13,8 +12,13 @@ from ..application.delegated_authoring import (
     run_delegated_authoring_diff_guard,
     write_delegated_authoring_baseline_status,
 )
-from ..presentation.contracts import CliText
-from .contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.commands.contracts import CommandArgs, CommandOutcome, CommandSpec
+from spec_dock_runtime.presentation.contracts import CliText
+
+if TYPE_CHECKING:
+    import argparse
+
+    from spec_dock_runtime.application.contracts import UseCases
 
 
 @dataclass(frozen=True)
@@ -28,8 +32,9 @@ class DelegatedAuthoringManifestArgs(CommandArgs):
 
 @dataclass(frozen=True)
 class DelegatedAuthoringDiffGuardArgs(CommandArgs):
+    role: str
     scope: str
-    baseline_status: Path | None
+    baseline_status: Path
     allow_existing_discussions: tuple[Path, ...]
 
 
@@ -77,8 +82,9 @@ def _manifest_args(ns: argparse.Namespace) -> CommandArgs:
 
 
 def _add_diff_guard_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--role", required=True, choices=("system-architect", "implementation-planner"))
     parser.add_argument("--scope", required=True, help="Scope node id, e.g. iss-00127")
-    parser.add_argument("--baseline-status", type=Path)
+    parser.add_argument("--baseline-status", required=True, type=Path)
     parser.add_argument("--allow-existing-discussion", action="append", default=[], type=Path)
 
 
@@ -88,8 +94,9 @@ def _add_baseline_status_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _diff_guard_args(ns: argparse.Namespace) -> CommandArgs:
     return DelegatedAuthoringDiffGuardArgs(
+        role=str(ns.role),
         scope=str(ns.scope),
-        baseline_status=Path(ns.baseline_status) if ns.baseline_status is not None else None,
+        baseline_status=Path(ns.baseline_status),
         allow_existing_discussions=tuple(Path(path) for path in ns.allow_existing_discussion),
     )
 
@@ -129,6 +136,7 @@ def _run_diff_guard(args: CommandArgs, use_cases: UseCases) -> CommandOutcome:
     repo_root, specdock_dir = _runtime_paths(use_cases)
     result = run_delegated_authoring_diff_guard(
         DelegatedAuthoringDiffGuardRequest(
+            role=typed.role,
             scope_id=typed.scope,
             repo_root=repo_root,
             specdock_dir=specdock_dir,

@@ -28,7 +28,7 @@ developer_instructions = """
 オーケストレーターとしての責務:
 - 適切な役割の sub-agent へ bounded task を委任し、成果を統合してタスク完了まで導く。
 - SpecDock のコマンド操作は原則として `spec-manager` へ委任する。
-- 実装は dev-coder、コードレビューは code-reviewer、仕様レビューは spec-reviewer、issue 単位以外の恒久ドキュメント保守は doc-writer、QA テストレビューは qa-reviewer、外部・横断調査は researcher、repo 内部解析は repo-analyst、意思決定支援は consultant、高速な軽量 read-only 作業は spark-worker、PR 作成後の checks / statuses / Codex review 監視は pr-monitor、専門ロールに明確に属さない bounded な雑多作業は utility-worker に委任する。
+- 実装は dev-coder、コードレビューは code-reviewer、仕様レビューは spec-reviewer、issue 単位以外の恒久ドキュメント保守は doc-writer、QA テストレビューは qa-reviewer、外部・横断調査は researcher、repo 内部解析は repo-analyst、意思決定支援は consultant、高速な軽量 read-only 作業は spark-worker、PR 作成後の checks / statuses / Codex review 監視は `github-pr-observation` skill の `./.agents/skills/github-pr-observation/scripts/wait_pr_observation.sh` direct invocation、専門ロールに明確に属さない bounded な雑多作業は utility-worker に委任する。
 - 独立した作業は必要に応じて並列に委任してよい。
 - 各委任では 目的 / 範囲 / 関連文書 / 完了条件 / 制約 / 検証方法 / 必要なら rollback を明示する。
 - 戻りには changed files または evidence / validation results / risks / recommended next action を求める。

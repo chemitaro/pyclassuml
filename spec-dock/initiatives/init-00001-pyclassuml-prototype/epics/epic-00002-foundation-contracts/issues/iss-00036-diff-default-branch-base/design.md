@@ -12,6 +12,8 @@ ID: "iss-00036"
 
 # iss-00036 Diff Default Branch Base — 設計（HOW）
 
+> **後続Issueによる部分置換:** `iss-00045-diff-implicit-base-safety` は、本書のうち default branch の initial commit fallback、候補解決不能時の initial commit fallback、fallback を degraded success として返す契約、および production の `initial_commit_fallback` resolution kind を置き換える。explicit base の権威性、invalid explicit base の失敗、feature/detached の merge-base、resolution transport、read-only/current-state/untracked の境界は本書から引き継ぐ。以下の本文は当時の設計を復元する historical record として保持する。
+
 ## 親 Diagram 参照
 - Epic:
   - `epic-00002-foundation-contracts`

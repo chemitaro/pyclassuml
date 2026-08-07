@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .presentation import puml as _presentation_puml
+from spec_dock_runtime.presentation import puml as _presentation_puml
 
 _TREE_BOARD_BLOCKERS_LABEL_LIMIT = _presentation_puml._TREE_BOARD_BLOCKERS_LABEL_LIMIT
 

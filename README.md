@@ -102,9 +102,19 @@ pyclassuml generate [options] [targets ...]
 pyclassuml diff [options] [--base <ref>]
 ```
 
-`diff` は Git 差分から対象ファイルを集めてクラス図を作ります。`--base <ref>` を省略すると、現在の branch で積み上げた変更を扱うために、default branch 候補との merge-base を best effort で resolved base として使います。default branch 自身で実行している場合、または使える候補がない場合は、empty tree ではなく repository の initial commit object を fallback base として使います。
+`diff` は Git 差分から対象ファイルを集めてクラス図を作ります。`--base <ref>` を省略した場合の解決は、現在の branch と `--current-state` によって次のように決まります。
 
-明示的に `--base <ref>` を指定した場合は、従来どおり `<ref>` 自体を比較基点として使います。明示した base が無効な場合は failure になり、no-base 用の default branch 推定や initial commit fallback には切り替わりません。
+| branch / state | no-base の比較基点 |
+| --- | --- |
+| default branch / `working-tree` | 実行開始時に解決した local `HEAD` commit |
+| default branch / `head` | 明示的な `--base` が必要。暗黙の履歴走査は行わず failure |
+| feature branch または detached HEAD | default branch 候補との valid な merge-base |
+
+feature branch または detached HEAD で候補を解決できない場合も failure になります。initial commit への暗黙 fallback、自動 fetch、shallow/partial clone の deepen は行いません。意図する比較基点がある場合は `--base` で明示してください。
+
+base 解決不能、implicit range breadth 超過、invalid explicit base などの fatal VCS failure は exit code `1` となり、PlantUML artifact を生成せず、target normalization 以降の downstream stage を実行しません。
+
+明示的に `--base <ref>` を指定した場合は、`<ref>^{commit}` が解決できる Git revision expression（branch、tag、commit hash、`HEAD~1` など）を比較基点として使います。requested stringは summary に保持されます。明示した base が無効な場合は failure になり、no-base 用の default branch 推定には切り替わりません。明示 base は implicit changed-path breadth guardの対象外です。
 
 `--current-state` は比較対象を選びます。
 
@@ -115,12 +125,18 @@ pyclassuml diff [options] [--base <ref>]
 
 `--include-untracked` / `--no-include-untracked` は、未追跡ファイルを差分対象に含めるかを指定します。デフォルトは include です。`--current-state head` の場合、未追跡ファイルは Git の `HEAD` 差分に含まれないため、この指定は実質的に効きません。
 
+名前変更として検出されたファイルは、比較前後のパスを保持して扱います。履歴側の source は読み取り専用の Git blob として収集し、Git metadata、branch、index、working tree は変更しません。Git subprocessでは lazy fetch、external diff、textconv、colorized diffを無効化し、対象 repositoryへの fetch / checkout / reset / stash は行いません。
+
+実装上は各 Git subprocess に `GIT_NO_LAZY_FETCH=1` を渡し、diff invocation に `--no-ext-diff --no-textconv --no-color` を指定します。partial clone や不足 object では自動取得せず、解決不能として扱います。
+
+implicit no-base collectionには、変更パス1,000件の固定安全上限があります。1,000件までは処理し、1,001件以上では hunk取得や解析を始めず failure とします。診断に表示された resolved `HEAD` SHAまたは別の commitを `--base` に渡すことで、明示的な大きい範囲として再実行できます。scope rootの外側にある変更だけの場合は、`diff_zero_target_scope_excluded_only` として「変更がない」と区別して報告します。
+
 `diff` の summary には、実際に使った base を確認するための情報が表示されます。
 
-- `base_resolution`: `explicit_base`、`default_branch_merge_base`、`initial_commit_fallback` のいずれかです。
+- `base_resolution`: `explicit_base`、`default_branch_head`、`default_branch_merge_base` のいずれかです。`initial_commit_fallback` は過去のDTO/report互換用で、現行のimplicit resolverは生成しません。
 - `resolved_base`: Git 差分の比較基点として使った ref または commit です。
 - `requested_base`: 利用者が `--base <ref>` で指定した値です。no-base の場合は `none` です。
-- `base_candidate`: no-base 解決で merge-base を取れた default branch 候補です。explicit base や initial commit fallback の場合は `none` です。
+- `base_candidate`: no-base 解決で merge-base を取れた default branch 候補です。explicit base や `default_branch_head` の場合は `none` です。
 
 ### 共通オプション
 
@@ -167,6 +183,7 @@ CLI に渡す相対パスは、基本的に `execution_cwd` 基準で解決さ�
 設定ファイル名は `.pyclassuml.toml` です。`pyproject.toml` は PyClassUML の設定ファイルとしては使いません。
 
 ```toml
+# generate / diff の共通ベース
 project_root = "."
 package_root = "src"
 scope_root = "src"
@@ -177,26 +194,38 @@ mode = "warn"
 target_python = "3.12"
 relative_path_base = "config"
 
+# generate だけの上書き
+[generate]
+output = "generate.puml"
+depth = 5
+ignore = []
+
+# diff の共通設定上書きと diff 固有設定
 [diff]
+output = "diff.puml"
+depth = 1
 current_state = "working-tree"
 include_untracked = true
 ```
 
-現在利用できる主な設定は次のとおりです。
+トップレベルには次の 9 個の共通キーを記述できます。`[generate]` はこの 9 個、`[diff]` はこの 9 個に `current_state` と `include_untracked` を加えたキーを記述できます。
 
-- `project_root`, `package_root`, `scope_root`
-- `output`
-- `ignore`
-- `depth`
+- `project_root`, `package_root`, `scope_root`, `output`, `ignore`, `depth`
 - `mode`: `warn` または `strict`
 - `target_python`
 - `relative_path_base`: `config` または `cwd`
 - `[diff].current_state`: `working-tree` または `head`
 - `[diff].include_untracked`: `true` または `false`
 
-CLI オプションで指定した値は、設定ファイルの値より優先されます。
+各共通キーの優先順位は、`CLI で明示した値 > active command の section > トップレベル共通設定 > command default` です。`relative_path_base` には CLI オプションがないため、command section、トップレベル、default の順で解決されます。`generate` の positional `targets` と `diff --base <ref>` は CLI-only であり、設定ファイルには記述できません。
 
-設定ファイル内の相対パスは、デフォルトでは設定ファイル自身の場所を基準に解決されます。`relative_path_base = "cwd"` を指定すると、設定ファイル内の `project_root`、`package_root`、`scope_root`、`output` は `execution_cwd` 基準で解決されます。CLI オプションで渡した相対パスは、この設定に関係なく `execution_cwd` 基準です。
+`ignore` は各レイヤーで連結しません。command section の `ignore = []` はトップレベルの ignore を clear します。CLI の `--ignore` は 1 回以上指定した場合に設定値を置換しますが、空の CLI 指定で clear する方法はありません。`--strict` は `strict` への一方向の上書きであり、CLI から `warn` を明示するオプションはありません。
+
+`depth` は import hop の最大値です。seed は hop 0 であり、`depth = 0` は seed-only です。全レイヤーで未指定の場合、`generate` の depth は unlimited (`None`)、`diff` の depth は 1 です。
+
+設定ファイル内の相対 path は、デフォルトでは設定ファイル自身の場所を基準に解決されます。active command の `relative_path_base = "cwd"` は、command section に書いた path だけでなく、その command が継承したトップレベル path にも `execution_cwd` 基準を適用します。CLI オプションで渡した相対 path は、この設定に関係なく `execution_cwd` 基準です。`ignore` の glob は `project_root` 相対で評価されます。
+
+`project_root` の default は、設定ファイルがあればその parent、なければ `execution_cwd` です。この default は `relative_path_base` で再解釈されません。`package_root` と `scope_root` の default は、すでに解決された親 root を継承します。
 
 設定ファイルを明示しない場合、PyClassUML はまず `--project-root` 配下の `.pyclassuml.toml` を探し、見つからない場合は `execution_cwd` から親ディレクトリへ向かって `.pyclassuml.toml` を探します。
 
@@ -223,7 +252,10 @@ PyClassUML は、解析対象プロジェクトに対して非侵襲に動作す
 - 解析対象のソースコードを書き換えません。
 - 解析対象コードを import 実行しません。
 - AST ベースの静的解析だけで扱います。
-- 同じ入力からはできるだけ決定的な出力になるようにします。
+- `depth` は dependency traversal / render frontier だけを制限し、Git の変更ファイル収集や AST parse frontier は制限しません。
+- 同じ入力・設定・Git state では、図の内容と順序が決定的になるようにします。自動出力名は timestamp に依存します。
+
+設定では unlimited を明示する sentinel がありません。特に `diff` を unlimited に戻す、またはトップレベルの nullable な `depth`、`output`、`target_python` を command section から default に reset することはできません。
 
 ## 開発者向け情報
 

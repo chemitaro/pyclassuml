@@ -1,50 +1,69 @@
 from __future__ import annotations
 
-import os
-import re
-import shlex
-import time
-import uuid
 from dataclasses import replace
 from datetime import date, datetime, timezone
+import os
 from pathlib import Path
-from typing import Literal
-from typing import cast
+import shlex
+import time
+from typing import TYPE_CHECKING, Literal, Protocol, cast
+import uuid
 
-from ..domain.ids import (
-    find_existing_id_by_num,
-    format_id,
-    normalize_local_id_input,
-    parse_id,
-    resolve_id_input,
-    resolve_input_title_and_slug,
-    slugify,
-    validate_input_slug_kebab,
-)
-from ..domain.models import SpecGraph, SpecNode, SpecNodeKind, SpecNodeSeed
-from ..domain.tree import build_graph
-from ..domain.validation import find_malformed_discussion_doc_filename_error, validate_graph_and_deps
-from ..infra.contracts import StoredMetaRecord
-from .contracts import (
+from spec_dock_runtime.application.contracts import (
     CreateDiscussionDocRequest,
     CreateDiscussionDocResult,
     CreateNodeRequest,
     CreateNodeResult,
     CreatePlan,
 )
-from .ports import Ports
-from .repo_context import require_current_repo_slug, resolve_current_repo_slug, split_repo_slug
-from .sync_state import post_mutation_sync
+from spec_dock_runtime.application.repo_context import (
+    require_current_repo_slug,
+    resolve_current_repo_slug,
+    split_repo_slug,
+)
+from spec_dock_runtime.application.sync_state import post_mutation_sync
+from spec_dock_runtime.domain.discussion_docs import (
+    CREATABLE_DISCUSSION_DOC_TYPES as _CREATABLE_DISCUSSION_DOC_TYPES,
+    DRAFT_DISCUSSION_DOC_TYPES as _DRAFT_DISCUSSION_DOC_TYPES,
+    RETIRED_DISCUSSION_DOC_TYPES as _RETIRED_DISCUSSION_DOC_TYPES,
+    discussion_doc_id_from_path,
+    parse_timestamp_discussion_doc_filename,
+)
+from spec_dock_runtime.domain.ids import (
+    find_existing_id_by_num,
+    format_id,
+    parse_id,
+    resolve_id_input,
+    resolve_input_title_and_slug,
+    slugify,
+    validate_input_slug_kebab,
+)
+from spec_dock_runtime.domain.models import SpecGraph, SpecNode, SpecNodeKind, SpecNodeSeed
+from spec_dock_runtime.domain.tree import build_graph
+from spec_dock_runtime.domain.validation import find_malformed_discussion_doc_filename_error, validate_graph_and_deps
+from spec_dock_runtime.infra.contracts import StoredMetaRecord
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from spec_dock_runtime.application.ports import Ports
+
+
+class _AssuranceStoreLike(Protocol):
+    def resolve_issue_target(self, issue: str | None = None): ...
+
+    def verify_contract(self, target): ...
+
+
+class _ArtifactStoreLike(Protocol):
+    def load_profile_artifact_template_text(
+        self,
+        artifact: Literal["design", "plan"],
+        profile: Literal["lite", "standard", "strict", "critical"],
+    ) -> str: ...
+
 
 _META_FILENAME = ".meta.json"
-_DRAFT_DISCUSSION_DOC_TYPES = ("draft-requirement", "draft-design", "draft-plan")
-_CREATABLE_DISCUSSION_DOC_TYPES = ("adr", "disc", "research", "interview", "scratch", *_DRAFT_DISCUSSION_DOC_TYPES)
-_RETIRED_DISCUSSION_DOC_TYPES = ("note",)
-_DISCUSSION_DOC_FILENAME_RE = re.compile(
-    r"^(?P<ts>[0-9]{8}t[0-9]{6}z)(?:-(?P<nn>0[1-9]|[1-9][0-9]))?"
-    r"-(?P<doc_type>adr|disc|research|interview|scratch|draft-requirement|draft-design|draft-plan|note)-"
-    r"(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$"
-)
 _DRAFT_TARGET_BY_DOC_TYPE = {
     "draft-requirement": "requirement",
     "draft-design": "design",
@@ -58,6 +77,10 @@ _ENV_CREATE_LOCK_STALE_SECONDS = "SPEC_DOCK_CREATE_LOCK_STALE_SECONDS"
 _DEFAULT_CREATE_LOCK_WAIT_SECONDS = 3.0
 _DEFAULT_CREATE_LOCK_POLL_SECONDS = 0.05
 _DEFAULT_CREATE_LOCK_STALE_SECONDS = 600.0
+_ENV_DISCUSSION_TIMESTAMP_WAIT_SECONDS = "SPEC_DOCK_DISCUSSION_TIMESTAMP_WAIT_SECONDS"
+_ENV_DISCUSSION_TIMESTAMP_POLL_SECONDS = "SPEC_DOCK_DISCUSSION_TIMESTAMP_POLL_SECONDS"
+_DEFAULT_DISCUSSION_TIMESTAMP_WAIT_SECONDS = 1.1
+_DEFAULT_DISCUSSION_TIMESTAMP_POLL_SECONDS = 0.05
 
 CreateWritePhase = Literal["none", "scaffold_copied", "meta_written", "post_write_verified"]
 _PARTIAL_LOCAL_WRITE_PHASES: tuple[CreateWritePhase, ...] = (
@@ -83,6 +106,19 @@ def _resolve_duration_seconds(env_name: str, default: float, *, minimum: float) 
         raise RuntimeError(f"Invalid {env_name}: {raw!r}") from exc
     if value < minimum:
         raise RuntimeError(f"Invalid {env_name}: {value} (must be >= {minimum})")
+    return value
+
+
+def _resolve_duration_seconds_exclusive(env_name: str, default: float, *, minimum: float) -> float:
+    raw = os.environ.get(env_name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid {env_name}: {raw!r}") from exc
+    if value <= minimum:
+        raise RuntimeError(f"Invalid {env_name}: {value} (must be > {minimum})")
     return value
 
 
@@ -221,7 +257,7 @@ def _acquire_create_lock(specdock_dir: Path) -> tuple[Path, str]:
                         stale=True,
                         lock_meta_summary=summary,
                     )
-                )
+                ) from None
             if elapsed >= wait_seconds:
                 raise RuntimeError(
                     _lock_failure_message(
@@ -232,7 +268,7 @@ def _acquire_create_lock(specdock_dir: Path) -> tuple[Path, str]:
                         stale=False,
                         lock_meta_summary=summary,
                     )
-                )
+                ) from None
             remaining = max(0.0, deadline - time.monotonic())
             if remaining <= 0:
                 continue
@@ -311,8 +347,7 @@ def _scan_discussion_timestamp_duplicate_state(discussions_dir: Path) -> tuple[s
         dup_slot = duplicate_standard_slots[0]
         files = ", ".join(path.name for path in sorted(by_standard_slot[dup_slot], key=lambda p: p.as_posix()))
         return (
-            f"Duplicate discussion timestamp slot detected under {discussions_dir}: "
-            f"slot={dup_slot} files=[{files}]",
+            f"Duplicate discussion timestamp slot detected under {discussions_dir}: slot={dup_slot} files=[{files}]",
             doc_ids,
         )
 
@@ -320,7 +355,7 @@ def _scan_discussion_timestamp_duplicate_state(discussions_dir: Path) -> tuple[s
     if duplicate_suffix_slots:
         dup_timestamp, dup_suffix = duplicate_suffix_slots[0]
         files = ", ".join(
-            path.name for path in sorted(by_suffix_slot[(dup_timestamp, dup_suffix)], key=lambda p: p.as_posix())
+            path.name for path in sorted(by_suffix_slot[dup_timestamp, dup_suffix], key=lambda p: p.as_posix())
         )
         return (
             f"Duplicate discussion timestamp suffix detected under {discussions_dir}: "
@@ -411,7 +446,7 @@ def _resolve_template_scaffolder(ports: Ports):
 
 def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
     return SpecNodeSeed(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -428,7 +463,7 @@ def _to_spec_node_seed(record: StoredMetaRecord) -> SpecNodeSeed:
 
 def _to_spec_node(record: StoredMetaRecord) -> SpecNode:
     return SpecNode(
-        kind=cast(SpecNodeKind, record.kind),
+        kind=cast("SpecNodeKind", record.kind),
         id=record.id,
         title=record.title,
         slug=record.slug,
@@ -471,29 +506,14 @@ def _prefix_for_kind(kind: Literal["initiative", "epic", "issue"]) -> str:
 
 def _resolve_github_mode(
     req: CreateNodeRequest, kind: Literal["initiative", "epic", "issue"]
-) -> Literal["create", "link_existing", "local_only"]:
+) -> Literal["create", "link_existing"]:
+    del kind
+
     if req.github_mode is None:
         return "create"
-    if req.github_mode not in ("create", "link_existing", "local_only"):
+    if req.github_mode not in ("create", "link_existing"):
         raise RuntimeError(f"Unsupported github mode: {req.github_mode}")
-    if req.github_mode == "local_only":
-        raise RuntimeError(f"GitHub linkage is mandatory for {kind}; local_only is not supported.")
     return req.github_mode
-
-
-def _next_id(graph: SpecGraph, prefix: str, *, local: bool) -> str:
-    max_num = 0
-    for node_id in graph.nodes_by_id:
-        try:
-            parsed_prefix, is_local, num = parse_id(str(node_id))
-        except RuntimeError:
-            continue
-        if parsed_prefix != prefix:
-            continue
-        if is_local != local:
-            continue
-        max_num = max(max_num, num)
-    return format_id(prefix, max_num + 1, local=local)
 
 
 def resolve_parent_for_create(
@@ -589,10 +609,7 @@ def guard_github_issue_uniqueness(
                 mixed_scope_conflict.append(node)
                 continue
         if mixed_scope_conflict:
-            found = ", ".join(
-                f"{node.kind}:{node.id} ({node.meta_path.as_posix()})"
-                for node in mixed_scope_conflict
-            )
+            found = ", ".join(f"{node.kind}:{node.id} ({node.meta_path.as_posix()})" for node in mixed_scope_conflict)
             requested_repo_label = requested_repo_slug if requested_repo_slug is not None else "(current-or-unknown)"
             raise RuntimeError(
                 "github linkage scope is ambiguous and rejected (fail-closed): "
@@ -638,14 +655,14 @@ def _rules_source_paths(
     if kind == "initiative":
         return [
             docs_rules_dir / "initiative" / "epics.md",
-            docs_rules_dir / "initiative" / "discussions.md",
+            docs_rules_dir / "initiative" / "artifacts.md",
         ]
     if kind == "epic":
         return [
             docs_rules_dir / "epic" / "issues.md",
-            docs_rules_dir / "epic" / "discussions.md",
+            docs_rules_dir / "epic" / "artifacts.md",
         ]
-    return [docs_rules_dir / "issue" / "discussions.md"]
+    return [docs_rules_dir / "issue" / "artifacts.md"]
 
 
 def _rules_scaffold_specs(
@@ -658,15 +675,15 @@ def _rules_scaffold_specs(
     if kind == "initiative":
         return [
             (dest_dir / "epics" / "rules.md", rules_source_paths[0]),
-            (dest_dir / "discussions" / "rules.md", rules_source_paths[1]),
+            (dest_dir / "artifacts" / "rules.md", rules_source_paths[1]),
         ]
     if kind == "epic":
         return [
             (dest_dir / "issues" / "rules.md", rules_source_paths[0]),
-            (dest_dir / "discussions" / "rules.md", rules_source_paths[1]),
+            (dest_dir / "artifacts" / "rules.md", rules_source_paths[1]),
         ]
     return [
-        (dest_dir / "discussions" / "rules.md", rules_source_paths[0]),
+        (dest_dir / "artifacts" / "rules.md", rules_source_paths[0]),
     ]
 
 
@@ -674,7 +691,7 @@ def _create_relative_symlink(link_path: Path, target_path: Path) -> None:
     _validate_rules_symlink_preflight(link_path=link_path, target_path=target_path)
     link_path.parent.mkdir(parents=True, exist_ok=True)
     rel_target = os.path.relpath(target_path, start=link_path.parent)
-    os.symlink(rel_target, link_path)
+    Path(link_path).symlink_to(rel_target)
 
 
 def _validate_parent_dir_preflight(parent_dir: Path) -> None:
@@ -717,7 +734,7 @@ def _preflight_symlink_creation_capability(*, link_path: Path) -> None:
     probe_path = probe_dir / f".spec-dock-symlink-probe-{os.getpid()}-{uuid.uuid4().hex}"
     probe_target = f".spec-dock-symlink-target-{uuid.uuid4().hex}"
     try:
-        os.symlink(probe_target, probe_path)
+        Path(probe_path).symlink_to(probe_target)
     except OSError as exc:
         raise RuntimeError(f"Symlink creation preflight failed at {link_path.parent}: {exc}") from exc
     try:
@@ -863,32 +880,24 @@ def plan_node_creation(
     prefix = _prefix_for_kind(kind)
     requested_repo_slug = _resolve_requested_repo_slug(req, current_repo_slug=current_repo_slug)
 
-    if mode in ("create", "link_existing"):
-        if req.requested_node_id is not None:
-            raise RuntimeError("Cannot combine '--id' with GitHub-backed node creation.")
-        if req.github_issue_number is None:
-            raise RuntimeError("github_issue_number is required for github mode")
-        node_id = format_id(prefix, int(req.github_issue_number), local=False)
-        guard_github_issue_uniqueness(
-            graph,
-            int(req.github_issue_number),
-            github_repo_owner=req.github_repo_owner,
-            github_repo_name=req.github_repo_name,
-            current_repo_slug=current_repo_slug,
-        )
-    else:
-        if req.github_issue_number is not None:
-            raise RuntimeError("Cannot combine '--no-github' with '--github-issue'.")
-        if req.requested_node_id is None:
-            node_id = _next_id(graph, prefix, local=True)
-        else:
-            node_id = normalize_local_id_input(str(req.requested_node_id), prefix=prefix, field="id")
+    if req.github_issue_number is None:
+        raise RuntimeError("github_issue_number is required for github mode")
+    node_id = format_id(prefix, int(req.github_issue_number), local=False)
+    guard_github_issue_uniqueness(
+        graph,
+        int(req.github_issue_number),
+        github_repo_owner=req.github_repo_owner,
+        github_repo_name=req.github_repo_name,
+        current_repo_slug=current_repo_slug,
+    )
 
     parsed_prefix, is_local, num = parse_id(node_id)
     existing_id = find_existing_id_by_num(graph.nodes_by_id, prefix=parsed_prefix, num=num, local=is_local)
     if existing_id and mode in ("create", "link_existing") and req.github_issue_number is not None:
         existing = graph.nodes_by_id[existing_id]
-        existing_repo_slug = _normalize_repo_slug(existing.github_repo_owner, existing.github_repo_name) or current_repo_slug
+        existing_repo_slug = (
+            _normalize_repo_slug(existing.github_repo_owner, existing.github_repo_name) or current_repo_slug
+        )
         if existing_repo_slug != requested_repo_slug:
             existing_repo_label = existing_repo_slug if existing_repo_slug is not None else "(current-or-unknown)"
             requested_repo_label = requested_repo_slug if requested_repo_slug is not None else "(current-or-unknown)"
@@ -927,7 +936,10 @@ def plan_node_creation(
             github_repo_owner, github_repo_name = current_scope
     template_dir = specdock_dir / "templates" / kind
     planned_paths = _scaffold_file_paths(template_dir, dest_dir)
-    planned_paths.extend(link_path for link_path, _target_path in _rules_scaffold_specs(kind=kind, dest_dir=dest_dir, specdock_dir=specdock_dir))
+    planned_paths.extend(
+        link_path
+        for link_path, _target_path in _rules_scaffold_specs(kind=kind, dest_dir=dest_dir, specdock_dir=specdock_dir)
+    )
     planned_paths.append(dest_dir / _META_FILENAME)
     meta_path = dest_dir / _META_FILENAME
     return CreatePlan(
@@ -1071,6 +1083,11 @@ def _format_discussion_date(now_iso: str | None = None) -> str:
     return _resolve_discussion_instant_utc(now_iso).date().isoformat()
 
 
+def _format_discussion_date_from_doc_id(doc_id: str) -> str:
+    timestamp = doc_id.split("-", 1)[0]
+    return datetime.strptime(timestamp, "%Y%m%dt%H%M%Sz").date().isoformat()
+
+
 def _scan_discussion_timestamp_sources(
     discussions_dir: Path,
 ) -> list[tuple[str, int | None, str, Path]]:
@@ -1078,29 +1095,47 @@ def _scan_discussion_timestamp_sources(
     if not discussions_dir.exists():
         return refs
     for path in sorted(discussions_dir.glob("*.md"), key=lambda p: p.as_posix()):
-        matched = _DISCUSSION_DOC_FILENAME_RE.fullmatch(path.name)
-        if not matched:
+        parsed = parse_timestamp_discussion_doc_filename(path.name)
+        if parsed is None:
             continue
-        suffix_raw = matched.group("nn")
-        refs.append(
-            (
-                str(matched.group("ts")),
-                int(suffix_raw) if suffix_raw is not None else None,
-                str(matched.group("doc_type")),
-                path,
-            )
-        )
+        refs.append((
+            parsed.timestamp,
+            parsed.suffix,
+            parsed.doc_type,
+            path,
+        ))
     return refs
 
 
-def _format_discussion_doc_identity(
-    *, timestamp: str, doc_type: str, slug: str, suffix: int | None
-) -> tuple[str, str]:
+def _format_discussion_doc_identity(*, timestamp: str, doc_type: str, slug: str, suffix: int | None) -> tuple[str, str]:
     stem_prefix = f"{timestamp}-{doc_type}" if suffix is None else f"{timestamp}-{suffix:02d}-{doc_type}"
     return f"{stem_prefix}-{slug}", stem_prefix
 
 
-def _allocate_discussion_doc_filename(
+def _sleep_discussion_timestamp_poll(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def _resolve_discussion_timestamp_wait_config() -> tuple[float, float]:
+    wait_seconds = _resolve_duration_seconds_exclusive(
+        _ENV_DISCUSSION_TIMESTAMP_WAIT_SECONDS,
+        _DEFAULT_DISCUSSION_TIMESTAMP_WAIT_SECONDS,
+        minimum=0.0,
+    )
+    poll_seconds = _resolve_duration_seconds(
+        _ENV_DISCUSSION_TIMESTAMP_POLL_SECONDS,
+        _DEFAULT_DISCUSSION_TIMESTAMP_POLL_SECONDS,
+        minimum=0.001,
+    )
+    return wait_seconds, poll_seconds
+
+
+def _discussion_standard_slot_is_free(discussions_dir: Path, timestamp: str) -> bool:
+    refs = _scan_discussion_timestamp_sources(discussions_dir)
+    return not any(existing_timestamp == timestamp for existing_timestamp, _suffix, _doc_type, _path in refs)
+
+
+def _allocate_discussion_doc_filename_for_timestamp(
     discussions_dir: Path,
     *,
     timestamp: str,
@@ -1136,6 +1171,58 @@ def _allocate_discussion_doc_filename(
     )
 
 
+def _allocate_discussion_doc_filename(
+    discussions_dir: Path,
+    *,
+    timestamp: str,
+    doc_type: str,
+    slug: str,
+    now_iso_provider: Callable[[], str | None] | None = None,
+    sleep_fn: Callable[[float], None] | None = None,
+) -> tuple[Path, str]:
+    wait_config = _resolve_discussion_timestamp_wait_config() if now_iso_provider is not None else None
+    if _discussion_standard_slot_is_free(discussions_dir, timestamp):
+        return _allocate_discussion_doc_filename_for_timestamp(
+            discussions_dir,
+            timestamp=timestamp,
+            doc_type=doc_type,
+            slug=slug,
+        )
+    if now_iso_provider is None:
+        return _allocate_discussion_doc_filename_for_timestamp(
+            discussions_dir,
+            timestamp=timestamp,
+            doc_type=doc_type,
+            slug=slug,
+        )
+
+    assert wait_config is not None
+    wait_seconds, poll_seconds = wait_config
+    effective_sleep_fn = sleep_fn if sleep_fn is not None else _sleep_discussion_timestamp_poll
+    remaining_seconds = wait_seconds
+    while remaining_seconds > 0:
+        sleep_seconds = min(poll_seconds, remaining_seconds)
+        if sleep_seconds <= 0:
+            break
+        effective_sleep_fn(sleep_seconds)
+        remaining_seconds -= sleep_seconds
+        next_timestamp = _format_discussion_timestamp(now_iso_provider())
+        if next_timestamp > timestamp and _discussion_standard_slot_is_free(discussions_dir, next_timestamp):
+            return _allocate_discussion_doc_filename_for_timestamp(
+                discussions_dir,
+                timestamp=next_timestamp,
+                doc_type=doc_type,
+                slug=slug,
+            )
+
+    return _allocate_discussion_doc_filename_for_timestamp(
+        discussions_dir,
+        timestamp=timestamp,
+        doc_type=doc_type,
+        slug=slug,
+    )
+
+
 def _resolve_specdock_root(path: Path) -> Path:
     for current in [path, *path.parents]:
         if current.name == "spec-dock":
@@ -1144,13 +1231,7 @@ def _resolve_specdock_root(path: Path) -> Path:
 
 
 def _doc_id_from_path(path: Path) -> str:
-    matched = _DISCUSSION_DOC_FILENAME_RE.fullmatch(path.name)
-    if matched is None:
-        raise RuntimeError(f"Invalid discussion document filename: {path.name}")
-    suffix_raw = matched.group("nn")
-    if suffix_raw is None:
-        return f"{matched.group('ts')}-{matched.group('doc_type')}"
-    return f"{matched.group('ts')}-{suffix_raw}-{matched.group('doc_type')}"
+    return discussion_doc_id_from_path(path)
 
 
 def _draft_canonical_template_path(*, specdock_dir: Path, scope_kind: SpecNodeKind, doc_type: str) -> Path | None:
@@ -1160,25 +1241,118 @@ def _draft_canonical_template_path(*, specdock_dir: Path, scope_kind: SpecNodeKi
     return specdock_dir / "templates" / scope_kind / f"{target}.md"
 
 
-def plan_discussion_doc(
+def _normalize_draft_discussion_text(rendered_text: str, *, doc_type: str) -> str:
+    if doc_type not in _DRAFT_DISCUSSION_DOC_TYPES:
+        return rendered_text
+    if "artifact_state: awaiting-assurance-compose" not in rendered_text:
+        return rendered_text
+
+    text = rendered_text.replace('状態: "draft"\n', '状態: "draft | approved"\n', 1)
+    text = text.replace("artifact_state: awaiting-assurance-compose\n", "", 1)
+    parts = text.split("---", 2)
+    if len(parts) != 3:
+        return text
+    _prefix, frontmatter, body = parts
+    current_heading, _body_separator, _rest = body.partition("\n\n")
+    heading_prefix = current_heading.split(" — ", 1)[0] if current_heading.startswith("# ") else "# <SCOPE_ID>"
+    if doc_type == "draft-design":
+        body = (
+            f"{heading_prefix} — 設計（どう実現するか）\n\n## 目的・制約\n- ...\n\n## 採用方針 / トレードオフ\n- ...\n"
+        )
+    elif doc_type == "draft-plan":
+        body = (
+            f"{heading_prefix} — 実装計画（実行契約 / Execution Contract）\n\n"
+            "## 計画（Issue と実施順序）\n"
+            "- ...\n\n"
+            "## 検証\n"
+            "- ...\n"
+        )
+    else:
+        return text
+    return f"---{frontmatter}---\n{body.lstrip()}"
+
+
+def _draft_profile_artifact(doc_type: str) -> Literal["design", "plan"] | None:
+    if doc_type == "draft-design":
+        return "design"
+    if doc_type == "draft-plan":
+        return "plan"
+    return None
+
+
+def _resolve_issue_profile_draft_template_text(
+    *,
+    scope: SpecNode,
+    doc_type: str,
+    assurance_store: _AssuranceStoreLike | None,
+    artifact_store: _ArtifactStoreLike | None,
+) -> str | None:
+    artifact = _draft_profile_artifact(doc_type)
+    if scope.kind != "issue" or artifact is None:
+        return None
+    if assurance_store is None and artifact_store is None:
+        return None
+    if assurance_store is None:
+        raise RuntimeError(f"assurance_store is required for issue {doc_type}")
+    if artifact_store is None:
+        raise RuntimeError(f"artifact_store is required for issue {doc_type}")
+    target = assurance_store.resolve_issue_target(scope.id)
+    store_result = assurance_store.verify_contract(target)
+    if store_result.status != "valid" or store_result.contract is None:
+        details = "; ".join(getattr(store_result, "details", ()) or ())
+        suffix = f" details={details}" if details else ""
+        raise RuntimeError(
+            f"Valid assurance contract is required before creating issue {doc_type}: "
+            f"reason={store_result.reason}{suffix}"
+        )
+    profile = store_result.contract.classification.authorized_profile.value
+    return artifact_store.load_profile_artifact_template_text(artifact, profile)
+
+
+def _plan_discussion_doc_extended(
     req: CreateDiscussionDocRequest,
     graph: SpecGraph,
     *,
+    assurance_store: _AssuranceStoreLike | None = None,
+    artifact_store: _ArtifactStoreLike | None = None,
     today: str | None = None,
     timestamp: str | None = None,
-) -> tuple[Path, Path, dict[str, str]]:
+    now_iso_provider: Callable[[], str | None] | None = None,
+    sleep_fn: Callable[[float], None] | None = None,
+) -> tuple[Path, Path, dict[str, str], str | None, bool]:
+    del today
+
     scope = _resolve_scope_node(req, graph)
     doc_type, title, slug = _normalize_discussion_doc_inputs(req)
 
     specdock_dir = _resolve_specdock_root(scope.path)
+    template_text_override = _resolve_issue_profile_draft_template_text(
+        scope=scope,
+        doc_type=doc_type,
+        assurance_store=assurance_store,
+        artifact_store=artifact_store,
+    )
+    profile_sourced = template_text_override is not None
     if doc_type in _DRAFT_DISCUSSION_DOC_TYPES:
-        template_path = _draft_canonical_template_path(
-            specdock_dir=specdock_dir,
-            scope_kind=scope.kind,
-            doc_type=doc_type,
-        )
-        if template_path is None or not template_path.is_file():
-            raise RuntimeError(f"Missing canonical template source for {scope.kind} {doc_type}: {template_path}")
+        if profile_sourced:
+            template_path = (
+                specdock_dir
+                / "templates"
+                / "issue-profiles"
+                / "<authorized_profile>"
+                / (f"{_draft_profile_artifact(doc_type)}.md")
+            )
+        else:
+            canonical_template_path = _draft_canonical_template_path(
+                specdock_dir=specdock_dir,
+                scope_kind=scope.kind,
+                doc_type=doc_type,
+            )
+            if canonical_template_path is None or not canonical_template_path.is_file():
+                raise RuntimeError(
+                    f"Missing canonical template source for {scope.kind} {doc_type}: {canonical_template_path}"
+                )
+            template_path = canonical_template_path
     else:
         template_path = specdock_dir / "templates" / "discussions" / f"{doc_type}.md"
     discussions_dir = scope.path / "discussions"
@@ -1188,10 +1362,13 @@ def plan_discussion_doc(
         timestamp=effective_timestamp,
         doc_type=doc_type,
         slug=slug,
+        now_iso_provider=now_iso_provider,
+        sleep_fn=sleep_fn,
     )
     if dest_path.exists():
         raise RuntimeError(f"Discussion doc already exists: {dest_path}")
 
+    rendered_date = _format_discussion_date_from_doc_id(doc_id)
     if doc_type in _DRAFT_DISCUSSION_DOC_TYPES:
         replacements = _replacements(
             kind=scope.kind,
@@ -1200,7 +1377,7 @@ def plan_discussion_doc(
             parent_id=scope.parent_id,
             initiative_id=scope.initiative_id,
             github_issue_number=scope.github_issue_number,
-            today=today if today is not None else date.today().isoformat(),
+            today=rendered_date,
         )
         replacements["<SCOPE_ID>"] = scope.id
     else:
@@ -1215,16 +1392,48 @@ def plan_discussion_doc(
             "<INTERVIEW_TITLE>": title,
             "<SCRATCH_ID>": doc_id,
             "<SCRATCH_TITLE>": title,
+            "<PR_REPAIR_BATCH_ID>": doc_id,
+            "<PR_REPAIR_BATCH_TITLE>": title,
             "<NOTE_ID>": doc_id,
             "<NOTE_TITLE>": title,
             "<SCOPE_ID>": scope.id,
             "<YOUR_NAME>": os.environ.get("USER", "<YOUR_NAME>"),
-            "YYYY-MM-DD": today if today is not None else date.today().isoformat(),
+            "YYYY-MM-DD": rendered_date,
         }
+    return template_path, dest_path, replacements, template_text_override, profile_sourced
+
+
+def plan_discussion_doc(
+    req: CreateDiscussionDocRequest,
+    graph: SpecGraph,
+    *,
+    assurance_store: _AssuranceStoreLike | None = None,
+    artifact_store: _ArtifactStoreLike | None = None,
+    today: str | None = None,
+    timestamp: str | None = None,
+    now_iso_provider: Callable[[], str | None] | None = None,
+    sleep_fn: Callable[[float], None] | None = None,
+) -> tuple[Path, Path, dict[str, str]]:
+    template_path, dest_path, replacements, _template_text_override, _profile_sourced = _plan_discussion_doc_extended(
+        req,
+        graph,
+        assurance_store=assurance_store,
+        artifact_store=artifact_store,
+        today=today,
+        timestamp=timestamp,
+        now_iso_provider=now_iso_provider,
+        sleep_fn=sleep_fn,
+    )
     return template_path, dest_path, replacements
 
 
-def create_discussion_doc(req: CreateDiscussionDocRequest, ports: Ports) -> CreateDiscussionDocResult:
+def create_discussion_doc(
+    req: CreateDiscussionDocRequest,
+    ports: Ports,
+    *,
+    assurance_store: _AssuranceStoreLike | None = None,
+    artifact_store: _ArtifactStoreLike | None = None,
+) -> CreateDiscussionDocResult:
     template_scaffolder = _resolve_template_scaffolder(ports)
     specdock_dir = _resolve_specdock_dir(ports)
     _preflight_discussion_duplicate_guard(req, ports, specdock_dir=specdock_dir)
@@ -1233,20 +1442,38 @@ def create_discussion_doc(req: CreateDiscussionDocRequest, ports: Ports) -> Crea
     body_error: Exception | None = None
     try:
         graph = load_graph(ports, validate=False)
-        now_iso = ports.clock.now_iso() if ports.clock is not None else None
+
+        def _now_iso() -> str | None:
+            return ports.clock.now_iso() if ports.clock is not None else None
+
+        now_iso = _now_iso()
         today = _format_discussion_date(now_iso)
         timestamp = _format_discussion_timestamp(now_iso)
-        template_path, dest_path, replacements = plan_discussion_doc(req, graph, today=today, timestamp=timestamp)
+        template_path, dest_path, replacements, template_text_override, profile_sourced = _plan_discussion_doc_extended(
+            req,
+            graph,
+            assurance_store=assurance_store,
+            artifact_store=artifact_store,
+            today=today,
+            timestamp=timestamp,
+            now_iso_provider=_now_iso,
+        )
         duplicate_error, _doc_ids = _scan_discussion_timestamp_duplicate_state(dest_path.parent)
         if duplicate_error is not None:
             raise RuntimeError(duplicate_error)
 
-        template_text = template_scaffolder.load_template_text(template_path)
+        template_text = (
+            template_text_override
+            if template_text_override is not None
+            else template_scaffolder.load_template_text(template_path)
+        )
         rendered_text = template_scaffolder.render_text(template_text, replacements)
+        doc_type, _title, _slug = _normalize_discussion_doc_inputs(req)
+        if not profile_sourced:
+            rendered_text = _normalize_draft_discussion_text(rendered_text, doc_type=doc_type)
         template_scaffolder.write_text(dest_path, rendered_text)
         doc_id = _doc_id_from_path(dest_path)
         _post_write_discussion_duplicate_guard(dest_path.parent, doc_id=doc_id)
-        doc_type, _title, _slug = _normalize_discussion_doc_inputs(req)
         result = CreateDiscussionDocResult(
             doc_id=doc_id,
             doc_type=doc_type,
@@ -1280,37 +1507,21 @@ def _github_issue_body(
     kind: Literal["initiative", "epic", "issue"],
 ) -> str:
     if kind == "initiative":
-        return (
-            "Created by spec-dock.\n\n"
-            "Type: initiative\n"
-            "Local specs are stored under `spec-dock/initiatives/`.\n"
-        )
+        return "Created by spec-dock.\n\nType: initiative\nLocal specs are stored under `spec-dock/initiatives/`.\n"
 
     if kind == "epic":
-        return (
-            "Created by spec-dock.\n\n"
-            "Type: epic\n"
-            "Local specs are stored under `spec-dock/initiatives/`.\n"
-        )
+        return "Created by spec-dock.\n\nType: epic\nLocal specs are stored under `spec-dock/initiatives/`.\n"
 
-    return (
-        "Created by spec-dock.\n\n"
-        "Type: issue\n"
-        "Local specs are stored under `spec-dock/initiatives/`.\n"
-    )
+    return "Created by spec-dock.\n\nType: issue\nLocal specs are stored under `spec-dock/initiatives/`.\n"
 
 
 def _validate_pre_github_create_inputs(
     req: CreateNodeRequest,
     *,
     kind: Literal["initiative", "epic", "issue"],
-    mode: Literal["create", "link_existing", "local_only"],
+    mode: Literal["create", "link_existing"],
 ) -> None:
-    if mode not in ("create", "link_existing"):
-        return
-
-    if req.requested_node_id is not None:
-        raise RuntimeError("Cannot combine '--id' with GitHub-backed node creation.")
+    del mode
 
     if kind == "epic" and req.parent_id is None:
         raise RuntimeError("--initiative is required")
@@ -1320,9 +1531,8 @@ def _validate_pre_github_create_inputs(
 
     owner = (req.github_repo_owner or "").strip()
     repo = (req.github_repo_name or "").strip()
-    if owner or repo:
-        if not owner or not repo:
-            raise RuntimeError("github_repo_owner and github_repo_name must be provided together")
+    if (owner or repo) and (not owner or not repo):
+        raise RuntimeError("github_repo_owner and github_repo_name must be provided together")
 
 
 def _precheck_pre_github_create_parent(
@@ -1388,9 +1598,7 @@ def _post_github_doctor_first_guidance(
     local_node_id: str | None,
 ) -> str:
     node_hint = (
-        f"local node `{local_node_id}`"
-        if local_node_id is not None
-        else "the local node created by this request"
+        f"local node `{local_node_id}`" if local_node_id is not None else "the local node created by this request"
     )
     return (
         "Create may already have succeeded. Do not rerun blindly. "
@@ -1399,7 +1607,7 @@ def _post_github_doctor_first_guidance(
 
 
 def _build_pre_github_create_failure(*, error: Exception) -> RuntimeError:
-    return RuntimeError("Outcome: pre_github_fail. " f"{error}")
+    return RuntimeError(f"Outcome: pre_github_fail. {error}")
 
 
 def _build_post_github_create_failure(

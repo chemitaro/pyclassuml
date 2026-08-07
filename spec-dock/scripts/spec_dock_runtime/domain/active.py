@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import re
 
-from .ids import find_existing_id_by_num, parse_id
-from .models import BranchDecision, SpecNode
-from .models import SpecGraph
+from spec_dock_runtime.domain.ids import find_existing_id_by_num, parse_id
+from spec_dock_runtime.domain.models import BranchDecision, SpecGraph, SpecNode
 
 # Branch inference helpers (best-effort):
 # - Prefer explicit ids embedded in branch names.
@@ -117,10 +117,8 @@ def infer_active_node_from_branch(
             continue
     leading = _LEADING_NUMBER_IN_TEXT_RE.match(leaf)
     if leading:
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             nums.add(int(leading.group("num")))
-        except (TypeError, ValueError):
-            pass
 
     if not nums:
         return (None, None)
@@ -134,7 +132,8 @@ def infer_active_node_from_branch(
         current_repo_matches = [
             node
             for node in matches
-            if _effective_repo_slug(node, current_repo_slug=normalized_current_repo_slug) == normalized_current_repo_slug
+            if _effective_repo_slug(node, current_repo_slug=normalized_current_repo_slug)
+            == normalized_current_repo_slug
         ]
         if len(current_repo_matches) == 1:
             node = current_repo_matches[0]

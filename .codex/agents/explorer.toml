@@ -1,9 +1,11 @@
 name = "explorer"
 description = "Deprecated legacy explorer role kept for compatibility."
 
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
 # model_context_window = 400000
 # model_auto_compact_token_limit = 340000
-sandbox_mode = "workspace-write"
+sandbox_mode = "read-only"
 approval_policy = "never"
 
 # サブエージェントでは外部 notify フックを起動しない
@@ -12,5 +14,6 @@ notify = ["uvx", "--from", "git+https://github.com/chemitaro/codex-agent-logger"
 developer_instructions = """
 Legacy compatibility explorer role.
 Follow higher-priority instructions from the invoking context.
+Remain read-only while inspecting and reporting repository evidence.
 Keep behavior neutral and concise.
 """

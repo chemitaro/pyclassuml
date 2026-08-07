@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .json_store import load_json
+from spec_dock_runtime.infra.json_store import load_json
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _load_cached_state_index(specdock_dir: Path) -> dict[str, object] | None:

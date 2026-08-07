@@ -1,27 +1,37 @@
 # 課題 plan 作成（authoring: issue plan）
 
-Issue の `plan.md` を作成・更新するときの agent-facing entrypoint です。
-共通正本は `workflow_spec_authoring.md`、`phase_plan.md`、`phase_plan_issue.md`、`workflow_issue.md` です。
-この文書は Issue plan の field semantics と executable step schema の正本です。Lifecycle / execution / reviewer / completion policy は `workflow_issue.md`、plan philosophy と review checklist は `phase_plan_issue.md` を参照します。
+Issue の `plan.md` を作成・更新するときに、`spec-dock-issue-planning` skill から到達する detail / reference surface です。
+共通参照は `workflow_spec_authoring.md`、`phase_plan.md`、`phase_plan_issue.md`、`workflow_issue.md` です。
+この文書は Issue plan の field semantics と executable step schema の詳細参照です。Lifecycle / execution / reviewer / completion policy は `workflow_issue.md`、plan philosophy と review checklist は `phase_plan_issue.md` を参照します。
 
 ## 読む順序
 
-この文書を入口として読んだあと、次の共通正本へ進む。
+`spec-dock-issue-planning` skill を operational entrypoint / first-read spine として読んだあと、この文書で schema semantics を確認し、次の共通参照へ進む。
 
 1. `workflow_spec_authoring.md`
 2. `phase_plan.md`
 3. `phase_plan_issue.md`
 4. `workflow_issue.md`
-5. `templates/issue/plan.md`
+5. `templates/issue/plan.md` は compose 前 placeholder として確認し、実体の plan template は `templates/issue-profiles/<profile>/plan.md` を `.assurance.json` の `authorized_profile` に従って compose する
+
+`templates/issue/plan.md` の placeholder のまま実装計画本文を書き始めない。先に `requirement.md` を具体化し、`assurance classify --stage requirement` と `assurance compose --artifact plan|all` で profile 別 plan template を materialize してから編集する。
+
+Issue templates（共通 `requirement.md` と profile 別 `design.md` / `plan.md`）の title 行、見出し、小見出しは日本語を優先する。日本語だけで正確性が落ちる場合だけ、日本語表現の後に括弧内英語名称を併記する。
+
+Option 3+ の Issue planning では、Epic planning から渡された draft requirement / draft design / draft plan を handoff-ready evidence として扱います。Issue planning は current repository state、prior completed Issues、dependency state、unresolved report ledger を確認し、Evidence Adoption Ledger に adopted / rejected / stale / blocked を記録してから canonical docs を正式化します。draft-only / validation-only / raw ChatGPT output は execution-ready ではありません。
+
+ChatGPT-first Issue planning route は非自明な Issue planning の primary evidence-production route です。Issue Planning は単一 workflow であり、`requirement-heavy`、`draft-heavy`、`context-heavy` は入力 context framing であって別 workflow mode ではありません。`spec-dock-issue-planning-manual` は human-approved emergency backup であり、hard / unrecoverable ChatGPT route failure と recovery attempts、explicit approval、fresh reviewer gate evidence がある場合だけ使います。
 
 ## この artifact の責務
 
-- reviewer-pass 済みの `requirement.md` と `design.md` を、実装可能な step、検証、review gate、commit gate、最終品質ゲート（final quality gate）へ変換する。
+- reviewer-pass 済みの `requirement.md` と `design.md` を、実装可能な step、検証、review gate、commit候補 gate、最終品質ゲート（final quality gate）へ変換する。
 - `plan.md` を planned contract として扱い、実装者が step を上から順に実行できる command queue にする。
 - `report.md` を observed evidence ledger として扱い、実際の Red / Green / Refactor 結果、discovered tests、closure delta、reviewer verdict、commit/no-op evidence の記録先にする。
 - 仕様固定クロージャ索引（`Spec-Locked Closure Index`）で仕様 coverage を固定し、各 implementation step の `具体テストケース一覧` で step-local obligation と concrete red / characterization / inspect / manual seeds を固定する。
 - step 順、依存、対象ファイル、検証方法、report evidence destination、amendment trigger を実装者が判断せずに実行できる粒度へ落とす。
 - `workflow_issue.md` の delegated-by-default policy を再定義せず、各 implementation step の `delegation contract` として委任先、入力、許可範囲、検証、reviewer focus、停止条件、出力を具体化する。
+- テンプレート内の `001` / `002` などの連番例示は上限ではない。目的に応じて必要な数だけ項目を追加・削除し、`XXX` placeholder は実IDへ置換するか削除する。
+- `standard` / `strict` / `critical` の plan では、マイルストーン完了ゲートの `commit候補` でレビュー可能な履歴を残す。review scope と commit scope は一致してもよいが、常に完全一致するとは定義しない。
 
 ## 計画契約 / 観測 evidence 台帳（planned contract / observed evidence ledger）
 
@@ -43,7 +53,7 @@ Issue の `plan.md` を作成・更新するときの agent-facing entrypoint �
   - closure delta and amendment history
   - delegated worker evidence
   - reviewer gate status
-  - step commit / approved-no-op evidence
+  - step / milestone result approval / approved-no-op evidence
 - `report.md` は仕様解釈 / 判断台帳（`Spec Interpretation / Decision Ledger`）も持つ。実行中に発生した material な仕様解釈、判断、plan 逸脱、tradeoff、open question、promotion / follow-up は report 側に記録し、`plan.md` を実行中判断の追記先にしない。
 - `plan.md` は decision result を所有しない。将来も効く durable decision が実行中に見つかった場合は、report に evidence と disposition を残したうえで、必要に応じて `design.md`、ADR、plan amendment、follow-up issue へ昇格する。
 - 実行中に見つかった新しい bug class、外部 contract risk、仕様差分が既存 plan obligation の範囲外なら、report に発見を残すだけで閉じず、plan amendment と re-review を先に行う。
@@ -86,11 +96,14 @@ Sxx behavior slice
 ```
 
 - `test obligation` は raw test count ではなく、AC / EC、changed contract、negative / error path、regression、invariant、manual / integration risk に基づく risk-calibrated obligation coverage として書く。
+- TDD の first case は private method や内部構造ではなく、`public interface / observable behavior` を観測する。最初の Green は、必要最小限の `vertical tracer bullet` として interface、実装、verification path を薄く通し、その後に `one test -> minimal implementation` で広げる。
+- 具体テストケースは Issue 全体の test inventory ではなく step-local seeds として置く。DB / API / UI / docs などの層を先にまとめて作る `horizontal batching` に見える場合は、behavior slice、test obligation、verification evidence を縦に切り直す。
+- Epic -> Issue slicing を plan に落とす step では、各 Issue または step の `vertical behavior slice`、`dependency order`、`integration checkpoint`、`HITL` / `AFK` annotation を concrete field か本文で追跡できるようにする。`HITL` / `AFK` は補助 annotation であり、approval、reviewer pass、plan readiness の代替ではない。
 - `red or alternative evidence requirement` は `red-required`、`covered-existing`、`inspect-only`、`manual-required` のいずれかを使い、failing-first を完全要求できない場合も test sensitivity または代替 evidence path を固定する。
 - docs-only / template-only / skill-text-only step は code test を無理に作らず、inspection、structural assertion、manual evidence、docs diff、spec-review evidence を planned verification として書く。
 - `report evidence destination` は、実行結果を `report.md` のどの ledger に残すかを明示する。`plan.md` へ observed evidence を戻して正本を二重化しない。
-- scope-local discussion direct-write step は、target scope `discussions/` direct child、filename rule、allowed paths、forbidden paths、post-run diff guard、fallback decision、lightweight provenance、report evidence destination を step-local contract に置く。最低 fields は `created_by_role`、`scope_id`、`source_paths`、`intended_targets`、`adoption_status: unreviewed`、`reflected_to: []`、`diff_guard_result`、allowed paths、forbidden paths、fallback decision、report evidence destination。
-- report evidence destination は、candidate evidence path だけでなく scope-local `report.md` の Evidence Adoption Ledger、Delegated Draft Evidence、Workflow Delegation Consent、Step Contract Closure、Test Contract Closure のどこへ採否・diff guard・fallback を記録するかを示す。Evidence Adoption Ledger に採否がない delegated evidence は downstream authority に使えない。
+- scope-local artifact direct-write step は、target scope `artifacts/` direct child、filename rule、allowed paths、forbidden paths、post-run diff guard、fallback decision、lightweight provenance、report evidence destination を step-local contract に置く。最低 fields は `created_by_role`、`scope_id`、`source_paths`、`intended_targets`、`adoption_status: unreviewed`、`reflected_to: []`、`diff_guard_result`、allowed paths、forbidden paths、fallback decision、report evidence destination。
+- report evidence destination は、candidate evidence path だけでなく scope-local `report.md` の Evidence Adoption Ledger、Delegated Draft Evidence、Workflow-Scoped Authorization、Step Contract Closure、Test Contract Closure のどこへ採否・diff guard・fallback を記録するかを示す。Evidence Adoption Ledger に採否がない delegated evidence は downstream authority に使えない。
 - `amendment trigger` は、どの発見が report 記録だけで足りず plan amendment / re-review を必要にするかを示す。
 
 ## 委任 contract（delegation contract）
@@ -118,7 +131,7 @@ Sxx behavior slice
   - 入力 docs の矛盾、許可パス外変更が必要、検証不能、delegated role 不適合、host policy / tool 制約、acceptance 未達など。
 - `output required`:
   - changed files、worker summary、verification result、unresolved risks、report へ転記する delegation evidence。
-  - scope-local discussion direct-write authoring の場合は discussion draft path、lightweight provenance、diff guard result、fallback decision、draft artifact metadata、Evidence Adoption Ledger に転記できる採否 note。
+  - scope-local artifact direct-write authoring の場合は artifact draft path、lightweight provenance、diff guard result、fallback decision、draft artifact metadata、Evidence Adoption Ledger に転記できる採否 note。
   - `Ledger Note` または `No material implementation decisions beyond the approved plan.`。
   - `Ledger Note` は worker の一次情報であり accepted decision ではない。material な仕様解釈、判断、逸脱、tradeoff、open question、follow-up がある場合は、source-agent、topic、trigger、ambiguity / constraint、observed facts、options considered、proposed decision、rationale、affected files、affected tests、risk if wrong、rollback or revisit、confidence、needs orchestrator decision を含める。
 
@@ -171,5 +184,5 @@ Sxx behavior slice
 - 標準の下位項目は `前提`、`操作`、`期待結果`、`失敗検出`、`検証方法` の5つにする。
 - 必要な場合だけ `対象ファイル`、`fixture`、`manual evidence` を追加する。
 - `関連 closure id` は、step に複数の closure id または複数の concrete test case がある場合は必須にする。1 step = 1 closure id = 1 concrete case で対応が明らかな場合だけ省略してよい。
-- 1項目が長くなりすぎる場合は2文までに抑え、詳細は `discussions/` または `report.md` に分離する。
+- 1項目が長くなりすぎる場合は2文までに抑え、詳細は `artifacts/` または `report.md` に分離する。
 - 仕様固定クロージャ索引（`Spec-Locked Closure Index`）は coverage ledger なので table のままでよい。具体テストケース本文とは役割を分ける。

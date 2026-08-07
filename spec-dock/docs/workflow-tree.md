@@ -42,7 +42,7 @@
 ```
 
 - `initiative / epic / issue` の local-only create はサポートされません。
-- `--no-github` は compatibility option として残っていますが、contract error で reject されます。
+- `--no-github` は node creation option ではありません。既存 GitHub Issue へリンクする場合は `--github-issue <n>` を使います。
 
 ---
 
